@@ -78,6 +78,7 @@ In the last case, static suspicions may still be shown; they never change status
 | --- | --- |
 | `load_table()` | Returns tracked `(X: DataFrame, y: Series)` for **development** rows. Index = `row_id` (unique, validated against the manifest). `X` holds only the declared feature columns. |
 | `load_holdout_features()` | Returns tracked final-holdout `X` only (no target), for evaluation runs. Holdout labels never enter the container (§8). |
+| `load_metadata()` | Returns the table's non-feature, non-target columns (e.g. group IDs) for building splits. **Untracked**: data from it has no ancestry, so fitting on it is a coverage gap. Added during T-01. |
 | `take(obj, row_ids)` | **Supported row selection.** Returns a tracked subset of a tracked frame/series. `row_ids` must be a subset of `obj`'s rows. Splitter output is turned into row IDs and passed through `take`. |
 | `declare_split(fold, train_ids, eval_ids, kind[, training_cutoff])` | Opens fold context `fold`. `kind` ∈ {development_eval, final_holdout}. `training_cutoff` is required for `future_time`. Validated: IDs exist, no duplicates within a list. |
 | `write_predictions(fold, row_ids, y_pred[, y_score])` | Writes predictions keyed by row ID. Validated against the declared `eval_ids`. `y_pred` must be a tracked output of a recorded prediction use in that fold; otherwise prediction ancestry is missing (a coverage gap). |
@@ -202,6 +203,7 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 
 - **Run directory:** `runs/<run_id>/` (git-ignored). `run_id` derives from a hash of the project snapshot, the confirmed claim, the policy version and a timestamp.
 - **Artifacts:** `manifest.snapshot.json`, `claim.json`, `provenance.jsonl` (ancestry records, fitted-state versions, use events), `splits.json`, `predictions/<fold>.parquet`, `checks/<check_id>.json`, `outcome.json`, `agent_log.jsonl`, `report.json`, `report.md`. Each is hashed into `index.json`.
+  - T-01 writes `manifest.snapshot.json`, `execution.json`, `provenance.jsonl`, `splits.json`, `predictions/<fold>.parquet`, `checks/<check_id>.json`, `outcome.json`, `report.json` and `index.json`. `claim.json`, `agent_log.jsonl` and `report.md` are not yet produced.
 - **Integrity:** a missing or hash-mismatched artifact makes dependent assertions ERROR. Assertions with independent evidence keep their valid results.
 - **Reproducibility:** the report records dependency versions (from `uv.lock`), the evaluator version, the policy version, the adapter version, the model ID and the seed list.
 - **Curation:** sanitized example reports are curated explicitly into the repo; raw runs are not committed.

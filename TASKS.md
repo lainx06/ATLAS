@@ -10,7 +10,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
-| T-01 | 9 | Next (ready; not started) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-01 | 9 | Implemented and self-tested (base `35016bb`); **awaiting local Codex review**, not independently reviewed | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
@@ -87,7 +87,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - Every run lists every applicable required assertion; none is omitted.
   - NOT_ASSESSED always carries its reason, and no FAIL is invented from unknown ancestry.
   - **Mutation check** (each mutation applied to a copy, then restored; each must make at least one scenario test fail):
-    - (m1) the dependency check uses the fold where a state was *fitted* instead of where it was *used*; caught by 5a;
+    - (m1) the dependency check uses the fold where a state was *fitted* instead of where it was *used*. Planned as "caught by 5a", but that was wrong: under m1, 5a still FAILs, because its classifier is refit in the use fold on the reused selector's output and the dependency propagates. It is caught by the added test `test_whole_model_fitted_in_one_fold_and_reused_to_predict_another_fails`;
     - (m2) group overlap compares row IDs instead of group IDs; caught by 1;
     - (m3) a valid index is accepted as ancestry; caught by 3a.
 - **RUN:**
@@ -99,6 +99,32 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** `runs/<run_id>/` outcome and check JSON for scenarios 1, 2 and 7 (hashes recorded in STATUS.md); the pytest output; the mutation-check log; fixture generator settings in `benchmarks/t01/README.md`.
 - **HANDOFF:** a local Codex review of the diff and evidence (Start Here Step 9 prompt). No browser packet.
 - **RECOVERY:** preserve the failing fixture and output. Two focused repair rounds, then diagnosis by Codex. Never edit an expected status to make a test pass without recording the reason in DECISIONS.md.
+- **RESULT (2026-10-14, Claude Code, Opus 5.5 high; self-tested, not independently reviewed):**
+  - **Checkpoints:** base `35016bb`; head = the local commit "Implement T-01 deterministic audit slice" (parent `35016bb`).
+  - **Changed files:**
+    - `src/atlas/`: `contracts.py`, `policy.py`, `adapter.py`, `recorder.py`, `intake.py`, `audit.py`, `reports.py`, `cli.py`, `checks/{split_integrity,fit_provenance,metric_ids}.py`, `runner/{trusted,bootstrap}.py`, `runner/trusted_fixtures.json`;
+    - `benchmarks/t01/` (`generate.py`, `README.md`, 14 scenario directories);
+    - `tests/unit/` (4 files), `tests/integration/` (3 files);
+    - `scripts/mutation_check.py`;
+    - `docs/SPEC.md` (adapter `load_metadata()` row; T-01 artifact list).
+  - **Beyond the planned owned paths:** `intake.py`, `audit.py`, `reports.py`, `runner/bootstrap.py`, the allowlist JSON and `scripts/mutation_check.py` (small modules needed for the slice). Scenario fixtures live under `benchmarks/t01/<scenario>/`.
+  - **Commands actually run and their results:**
+    - `uv run --locked pytest tests/unit tests/integration -q` → **83 passed**, exit 0. This covers all 16 scenario rows (statuses per assertion and outcome) plus listing and reason checks, 9a/9b corruption, the CLI, fixture integrity and unit tests.
+    - `uv run --locked python scripts/mutation_check.py` → **3/3 caught**, exit 0. m1 is caught by the added whole-model reuse test, m2 by s01, m3 by s03a. Each run confirmed the mutated package was imported from its temporary copy, including in the fixture child (m3).
+    - `uv run --locked python -m atlas.cli audit benchmarks/t01/<s> --mode audit --runs-dir runs` for s01, s02 and s07 → `VIOLATION_FOUND`, `NO_VIOLATION_FOUND` and `INCONCLUSIVE` (`split.no_window_overlap` unimplemented). Each exited 0. Evidence is in git-ignored `runs/`; hashes are in STATUS.md.
+    - `uv run --locked ruff check .` → All checks passed. `uv run --locked ruff format --check .` → 57 files already formatted.
+    - `uv run --locked python scripts/sync_skills.py --check` → problems 0.
+  - **Defects found and fixed during the task:**
+    1. **Relative `--runs-dir`:** the fixture child (cwd = fixture folder) wrote its evidence into the fixture folder, and every assertion became ERROR (failing closed). The root cause was a relative output path. The fix resolves the run directory to an absolute path and the runner passes absolute paths; regression test `tests/integration/test_cli.py`. One repair cycle; the stray outputs were removed.
+    2. **m1 not caught by the planned scenario:** fixed by adding a discriminating test (above).
+  - **Limitations (stated, not hidden):**
+    - Host execution is limited to allowlisted trusted fixtures; the capability is `trusted_pipeline_only`, with no isolation.
+    - The recorder runs in the candidate process and is not tamper-proof. Fingerprints detect changes to tracked objects only, and missing traces don't prove absence.
+    - Fitted-state violations are reported at the use event (for example, the scaler or classifier in s01). The upstream origin (the global selector) is visible in `provenance.jsonl` but not summarized in the check output.
+    - No static analyzer: s08b reports `NOT_SUPPORTED` with no suspicions.
+    - `load_holdout_features()`, the T-02 assertions and `report.md` are not implemented.
+    - Planned-later assertions are materialized as NOT_ASSESSED `unimplemented_assertion`.
+    - Fixture settings are test fixtures, not benchmark measurements.
 
 ### T-02 Independent metrics, conditional split rules, temporal checks
 - **OWNER:** Claude Code (writer); Codex reviews.
