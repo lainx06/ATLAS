@@ -10,3 +10,8 @@ Brief dated decisions with reasons. Reopen only with new evidence.
 - **Env-file loading:** `python-dotenv` for local `.env`. Credentials stay out of Git (`.gitignore`) and out of candidate containers.
 - **Ruff excludes `docs/handoff/`:** Ruff 0.17 formats Markdown files too; excluding the handoff keeps the original documents unmodified.
 - **Writer:** Claude Code is the primary writer from Step 5 (STATUS.md WRITER).
+
+## 2026-10-14 — Skills and Step 7 workflow (Start Here Step 6)
+- **Selective pinned skill copies:** 8 skills (Matt: setup-matt-pocock-skills, grill-with-docs, to-spec, plus companions grilling and domain-modeling; Addy: code-review-and-quality, debugging-and-error-recovery, test-driven-development) and 3 Addy shared references, copied from pinned commits into `.claude/` and `.agents/` by `scripts/sync_skills.py`. No plugins, packs, or hooks. Pins and statuses are in docs/TOOLING.md.
+- **Step 7 uses local files:** durable specifications live in `docs/` (e.g. `docs/PRD.md`, `docs/SPEC.md`); `TASKS.md` is the task index. `.scratch/` is **not** the canonical spec location. When a Matt skill would "publish to the issue tracker", write to these local files instead. Reason: ATLAS forbids publishing without approval, and the project already has its source-of-truth files (AGENTS.md "Source of truth").
+- **Instruction placement:** shared workflow instructions belong in `AGENTS.md`. `CLAUDE.md` stays a short pointer plus Claude-specific instructions. If `/setup-matt-pocock-skills` proposes an `## Agent skills` block for CLAUDE.md, put the shared content in AGENTS.md instead and keep CLAUDE.md a pointer. Reason: one shared rule set for Claude and Codex, no duplication.

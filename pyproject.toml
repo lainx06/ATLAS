@@ -18,8 +18,9 @@ requires = ["uv_build>=0.13.1,<0.14.0"]
 build-backend = "uv_build"
 
 [tool.ruff]
-# Ruff 0.17 also formats Markdown; keep the handoff documents byte-for-byte.
-extend-exclude = ["docs/handoff"]
+# Ruff 0.17 also formats Markdown; keep the handoff documents and the vendored
+# third-party skills (pinned upstream copies, see docs/TOOLING.md) byte-for-byte.
+extend-exclude = ["docs/handoff", ".claude/skills", ".claude/references", ".agents"]
 
 [dependency-groups]
 dev = [
