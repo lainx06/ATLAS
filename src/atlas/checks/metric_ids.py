@@ -1,5 +1,8 @@
 """Independent metric check, identifier assertion only (SPEC §5). Trusted side.
 
+The expected prediction inventory is the set of declared folds, never the files that happen to
+exist. A missing or invalid artifact for a declared fold, or an artifact for an undeclared fold, is
+ERROR; a valid artifact whose row IDs are wrong is FAIL, and such a FAIL survives ERRORs elsewhere.
 Metric recomputation, baselines and reported-metric comparison are T-02.
 """
 
@@ -10,10 +13,11 @@ AID = "metric.prediction_ids_match_eval_ids"
 
 def prediction_id_assertions(
     splits: list[dict],
-    predictions: dict[str, list[str]],
+    artifacts: dict[str, list[str] | None],
     evidence: list[EvidenceRef],
     evidence_valid: bool = True,
 ) -> dict[str, AssertionResult]:
+    """`artifacts`: fold -> row IDs from a verified artifact, or None if present but invalid."""
     if not evidence_valid:
         return {
             AID: AssertionResult(
@@ -34,11 +38,12 @@ def prediction_id_assertions(
             )
         }
 
-    missing_folds, mismatches = [], {}
+    declared = [s["fold"] for s in splits]
+    missing_or_invalid, mismatches = [], {}
     for s in splits:
-        rows = predictions.get(s["fold"])
+        rows = artifacts.get(s["fold"])
         if rows is None:
-            missing_folds.append(s["fold"])
+            missing_or_invalid.append(s["fold"])
             continue
         expected = set(s["eval_ids"])
         problems = {}
@@ -50,16 +55,36 @@ def prediction_id_assertions(
             problems["unexpected_rows"] = sorted(set(rows) - expected)[:10]
         if problems:
             mismatches[s["fold"]] = problems
-    failed = bool(missing_folds or mismatches)
+    undeclared = sorted(set(artifacts) - set(declared))
+    observed = {
+        "missing_or_invalid_artifacts": missing_or_invalid,
+        "artifacts_for_undeclared_folds": undeclared,
+        "mismatches": mismatches,
+        "folds": len(splits),
+    }
+    # Evidence-backed by valid artifacts; survives missing artifacts elsewhere.
+    if mismatches:
+        return {
+            AID: AssertionResult(
+                assertion_id=AID,
+                status=Status.FAIL,
+                observed=observed,
+                evidence=evidence,
+            )
+        }
+    if missing_or_invalid or undeclared:
+        return {
+            AID: AssertionResult(
+                assertion_id=AID,
+                status=Status.ERROR,
+                reason=Reason.EVIDENCE_INVALID,
+                observed=observed,
+                evidence=evidence,
+                evidence_valid=False,
+            )
+        }
     return {
         AID: AssertionResult(
-            assertion_id=AID,
-            status=Status.FAIL if failed else Status.PASS,
-            observed={
-                "folds_without_predictions": missing_folds,
-                "mismatches": mismatches,
-                "folds": len(splits),
-            },
-            evidence=evidence,
+            assertion_id=AID, status=Status.PASS, observed=observed, evidence=evidence
         )
     }

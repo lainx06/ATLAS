@@ -1,9 +1,14 @@
 """Trusted-fixture runner (SPEC §10, fixture rule).
 
-Only repo-authored, reviewed fixtures whose entry point and manifest hashes are on the allowlist
-may run, in a host subprocess. Candidate or generated code never runs here. A subprocess,
-timeout, cwd or reduced environment is not a sandbox; this runner provides no isolation and its
-capability is reported as `trusted_pipeline_only`.
+Only repo-authored, reviewed fixtures whose complete file inventory matches an allowlist entry may
+run, in a host subprocess. Candidate or generated code never runs here.
+
+Import resolution is controlled: the child starts in Python isolated mode (`-I`: safe path, no
+PYTHON* environment variables, no user site), so neither the fixture directory nor the working
+directory is on `sys.path`. The parent's resolved `atlas` package directory is inserted explicitly.
+
+This is NOT a sandbox. A subprocess, isolated mode, timeout, cwd or reduced environment does not
+confine code; the runner's capability is reported as `trusted_pipeline_only`.
 
 Regenerate the allowlist only after reviewing fixture changes:
   uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01
@@ -17,10 +22,18 @@ import sys
 import time
 from pathlib import Path
 
+import atlas
+
 ALLOWLIST_PATH = Path(__file__).with_name("trusted_fixtures.json")
 CAPABILITY = "trusted_pipeline_only"
 TIMEOUT_S = 30
 _SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD")
+# Runs as `python -I -c LAUNCHER <atlas_parent> <project> <out_dir>`.
+LAUNCHER = (
+    "import sys; sys.path.insert(0, sys.argv[1]); "
+    "from pathlib import Path; from atlas.runner.bootstrap import main; "
+    "main(Path(sys.argv[2]), Path(sys.argv[3]))"
+)
 
 
 class UntrustedFixtureError(RuntimeError):
@@ -32,11 +45,16 @@ def normalized_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
-def fixture_key(project: Path, entry_point: str) -> dict:
-    return {
-        "entry_sha256": normalized_sha256(project / entry_point),
-        "manifest_sha256": normalized_sha256(project / "atlas_manifest.json"),
-    }
+def fixture_inventory(project: Path) -> list[dict]:
+    """Every file in the fixture directory, with its normalized hash. Any extra file changes it."""
+    return [
+        {
+            "path": path.relative_to(project).as_posix(),
+            "sha256": normalized_sha256(path),
+        }
+        for path in sorted(project.rglob("*"))
+        if path.is_file()
+    ]
 
 
 def load_allowlist() -> list[dict]:
@@ -44,12 +62,15 @@ def load_allowlist() -> list[dict]:
 
 
 def is_trusted(project: Path, entry_point: str) -> bool:
-    key = fixture_key(project, entry_point)
-    return any(
-        e["entry_sha256"] == key["entry_sha256"]
-        and e["manifest_sha256"] == key["manifest_sha256"]
-        for e in load_allowlist()
-    )
+    inventory = fixture_inventory(project)
+    if entry_point not in {f["path"] for f in inventory}:
+        return False
+    return any(entry["inventory"] == inventory for entry in load_allowlist())
+
+
+def trusted_atlas_parent() -> str:
+    """The directory containing the `atlas` package this (trusted) process imported."""
+    return str(Path(atlas.__file__).resolve().parent.parent)
 
 
 def run_trusted_fixture(project: Path, entry_point: str, out_dir: Path) -> dict:
@@ -62,16 +83,19 @@ def run_trusted_fixture(project: Path, entry_point: str, out_dir: Path) -> dict:
         for k, v in os.environ.items()
         if not any(m in k.upper() for m in _SECRET_MARKERS)
     }
+    command = [
+        sys.executable,
+        "-I",
+        "-c",
+        LAUNCHER,
+        trusted_atlas_parent(),
+        str(project.resolve()),
+        str(Path(out_dir).resolve()),
+    ]
     started = time.monotonic()
     try:
         proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "atlas.runner.bootstrap",
-                str(project.resolve()),
-                str(Path(out_dir).resolve()),
-            ],
+            command,
             check=False,
             cwd=project,
             env=env,
@@ -94,12 +118,15 @@ def run_trusted_fixture(project: Path, entry_point: str, out_dir: Path) -> dict:
 
 
 def build_allowlist(root: Path) -> dict:
-    entries = []
-    for manifest in sorted(root.glob("*/atlas_manifest.json")):
-        project = manifest.parent
-        entries.append({"fixture": project.name, **fixture_key(project, "evaluate.py")})
+    entries = [
+        {
+            "fixture": manifest.parent.name,
+            "inventory": fixture_inventory(manifest.parent),
+        }
+        for manifest in sorted(root.glob("*/atlas_manifest.json"))
+    ]
     return {
-        "description": "Reviewed trusted fixtures (SPEC §10). Content hashes, LF-normalized.",
+        "description": "Reviewed trusted fixtures (SPEC §10): complete file inventories, LF-normalized SHA-256.",
         "fixtures": entries,
     }
 

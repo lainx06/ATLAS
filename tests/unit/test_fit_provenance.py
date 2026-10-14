@@ -1,5 +1,7 @@
 """Bounded fit provenance: recorder events (candidate side) judged by trusted checks (SPEC §4.3, §5, F1)."""
 
+import copy
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from atlas import adapter
 from atlas.checks.fit_provenance import fit_assertions
 from atlas.contracts import EvidenceRef, Reason, Status
+from atlas.reports import sha256_file
 
 EVIDENCE = [EvidenceRef(artifact="provenance.jsonl", sha256="x")]
 FEATURES = ["f0", "f1", "f2", "f3"]
@@ -42,8 +45,21 @@ def _folds(table):
     return folds
 
 
-def _judge(session):
-    results = fit_assertions(session.events, session.splits, EVIDENCE)
+def _artifacts(session):
+    """Prediction artifacts actually written by the session, with their hashes."""
+    return {
+        f"predictions/{path.name}": sha256_file(path)
+        for path in sorted((session.out_dir / "predictions").glob("*.parquet"))
+    }
+
+
+def _judge(session, events=None):
+    results = fit_assertions(
+        session.events if events is None else events,
+        session.splits,
+        EVIDENCE,
+        artifacts=_artifacts(session),
+    )
     return results["fit.state_dependencies_within_fold_train"], results[
         "fit.coverage_complete"
     ]
@@ -265,6 +281,7 @@ def test_invalid_provenance_evidence_is_error():
         [{"fold": "f", "kind": "development_eval", "train_ids": [], "eval_ids": []}],
         EVIDENCE,
         evidence_valid=False,
+        artifacts={},
     )
 
     for result in results.values():
@@ -278,3 +295,55 @@ def test_take_rejects_duplicate_or_unknown_rows(tmp_path, bad_ids):
         X, _ = adapter.load_table()
         with pytest.raises(ValueError):
             adapter.take(X, bad_ids)
+
+
+def _clean_session(tmp_path):
+    table = _table()
+    with adapter.session(MANIFEST, table, tmp_path) as s:
+        X, y = adapter.load_table()
+        for fold, tr, ev in _folds(table):
+            adapter.declare_split(fold, tr, ev)
+            model = _pipeline().fit(adapter.take(X, tr), adapter.take(y, tr))
+            adapter.write_predictions(fold, ev, model.predict(adapter.take(X, ev)))
+    return s
+
+
+def test_prediction_bound_to_a_producer_in_another_fold_is_a_coverage_gap(tmp_path):
+    """Codex probe 'prediction_from_wrong_fold': producer copied into the global context."""
+    s = _clean_session(tmp_path)
+    events = copy.deepcopy(s.events)
+    pred = next(e for e in events if e["type"] == "predictions")
+    producer = next(e for e in events if e.get("output_token") == pred["pred_token"])
+    alternate = copy.deepcopy(producer)
+    alternate["fold"] = "global"
+    alternate["output_token"] = "review-global-prediction"
+    events.insert(events.index(pred), alternate)
+    pred["pred_token"] = alternate["output_token"]
+
+    _, cc = _judge(s, events)
+
+    assert cc.status is Status.NOT_ASSESSED
+    assert cc.reason is Reason.COVERAGE_GAP
+
+
+def test_prediction_pointing_at_another_folds_valid_predict_is_a_coverage_gap(tmp_path):
+    s = _clean_session(tmp_path)
+    events = copy.deepcopy(s.events)
+    preds = [e for e in events if e["type"] == "predictions"]
+    preds[1]["pred_token"] = preds[0]["pred_token"]  # fold1 claims fold0's prediction
+
+    _, cc = _judge(s, events)
+
+    assert cc.status is Status.NOT_ASSESSED
+    assert cc.reason is Reason.COVERAGE_GAP
+
+
+def test_prediction_event_must_match_the_written_artifact_hash(tmp_path):
+    s = _clean_session(tmp_path)
+    artifacts = _artifacts(s)
+    first = min(artifacts)
+    artifacts[first] = "0" * 64
+
+    results = fit_assertions(s.events, s.splits, EVIDENCE, artifacts=artifacts)
+
+    assert results["fit.coverage_complete"].reason is Reason.COVERAGE_GAP

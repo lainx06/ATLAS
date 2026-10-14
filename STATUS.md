@@ -2,8 +2,8 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 9: T-01 implemented and self-tested; **awaiting local Codex review** (not independently reviewed). T-02 not started.
-CHECKPOINT: base `35016bb`; head = local commit "Implement T-01 deterministic audit slice" (parent `35016bb`). Not pushed; no remote configured.
+CURRENT STEP: Start Here Step 9: Codex review 1 of T-01 found 7 issues; repair pass 1 is complete and self-tested. **Awaiting verification by the same Codex session**; T-01 is not accepted. T-02 not started.
+CHECKPOINT: repair base `216f3ff` (T-01 implementation); head = local commit "Repair T-01 after Codex review" (parent `216f3ff`). Not pushed; no remote configured.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -18,21 +18,22 @@ LAST UPDATED: 2026-10-14
 - Step 7 interview: the `grill-with-docs` wrapper was followed manually (it arrived as pasted text, not a slash invocation); its companions `grilling` and `domain-modeling` loaded natively. Decisions Q1–Q6 are in DECISIONS.md. Documents are drafts, verified only for formatting (`ruff format --check .` exit 0) and internal references; nothing in them is implemented.
 - Step 8: Gemini reviewed `handoffs/science-01.md` (preserved unchanged as the reviewed snapshot). The lead's dispositions are applied. Documentation and reference checks only; no tests exist.
 
-- **T-01 (self-tested, not independently reviewed):** deterministic audit of trusted synthetic fixtures (`benchmarks/t01/`).
-  - `uv run --locked pytest tests/unit tests/integration -q` → 83 passed (exit 0).
+- **T-01 after repair pass 1 (self-tested; awaiting Codex verification):** deterministic audit of trusted synthetic fixtures (`benchmarks/t01/`).
+  - `uv run --locked pytest tests/unit tests/integration -q` → 103 passed (exit 0): 83 previous plus 20 regression tests from Codex review 1.
   - `uv run --locked python scripts/mutation_check.py` → 3/3 mutations caught (exit 0). The log is in `runs/mutation_check.log` (git-ignored).
   - CLI evidence (git-ignored `runs/`): `uv run --locked python -m atlas.cli audit benchmarks/t01/<s> --mode audit --runs-dir runs` →
-    - s01 `VIOLATION_FOUND` (outcome.json sha256 `4fdc133f2ee69aff…`, provenance `479882ced75da766…`);
-    - s02 `NO_VIOLATION_FOUND` (`983182ab388e4266…`, `a09d8c656dfe5dd3…`);
-    - s07 `INCONCLUSIVE` (`86253ae739ae4423…`, `a09d8c656dfe5dd3…`).
-  - The runner capability is `trusted_pipeline_only`: allowlisted fixtures in a host subprocess, with no isolation.
+    - s01 `VIOLATION_FOUND` (outcome.json sha256 `42d1aed735c896c9…`, provenance `1db556338dca2e13…`; one origin, the global `SelectKBest` fit);
+    - s02 `NO_VIOLATION_FOUND` (`c7b8f40acc9ab0a2…`, `ad32a07fc4f5180c…`);
+    - s07 `INCONCLUSIVE` (`5b68a70e113d28be…`, `ad32a07fc4f5180c…`).
+  - The runner capability is `trusted_pipeline_only`: inventory-allowlisted fixtures run in an isolated-mode host subprocess (import-controlled, **not a sandbox**). `runtime.json` shows `isolated=1`, `safe_path=true`, and that neither the fixture directory nor the cwd is on `sys.path`.
+  - Codex review 1: findings, dispositions and tests are recorded once in TASKS.md (T-01 "REVIEW 1"). The reproductions are preserved at `runs/review-t01/`.
 
 ## What does not exist yet
 - Not implemented: T-02 assertions (windows, temporal separation, `future_time`, reported-metric comparison, metric recomputation and baselines); `load_holdout_features()`; isolated runner (Docker); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. These are materialized as NOT_ASSESSED `unimplemented_assertion` where policy requires them.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` holds only the Step 8 packet.)
 - No `.env` created and no API key requested or read.
-- No independent review of T-01 yet.
+- No completed independent verification of the T-01 repairs yet. T-01 is not accepted.
 - No Nebius call made. Docker is not on PATH (isolation not available; trusted fixtures only).
 
 ## Commands executed in setup
@@ -49,12 +50,12 @@ LAST UPDATED: 2026-10-14
 
 ## Blockers
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
-- Codex discovery of `.agents/skills`: **unverified**, pending the Codex setup step.
+- Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
 ## Next task
-1. **Local Codex review of T-01** (Start Here Step 9): install/sign in to the Codex extension, then use the review prompt in the T-01 handoff. Record whether `.agents/skills` loaded and which review skill was used.
-2. Claude repairs confirmed findings and reruns the affected checks. Do not start T-02 before the review disposition.
+1. **The same local Codex session verifies repair pass 1:** the delta `216f3ff..` (the repair commit), the regression tests and the reproductions.
+2. If verified, the lead records T-01 acceptance. Otherwise Claude repairs the confirmed findings; the same issue failing twice stops for diagnosis. Do not start T-02 before acceptance.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).

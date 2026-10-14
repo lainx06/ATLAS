@@ -10,6 +10,11 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def ids_sha256(ids) -> str:
+    """Order-sensitive hash of a row-ID list (adapter and trusted evaluator)."""
+    return hashlib.sha256("\n".join(map(str, ids)).encode("utf-8")).hexdigest()
+
+
 def write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

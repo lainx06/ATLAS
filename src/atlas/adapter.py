@@ -4,6 +4,7 @@ The adapter loads data as tracked objects, provides supported row selection (`ta
 declared splits and writes predictions. Scoring happens later in the trusted evaluator.
 """
 
+import hashlib
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -14,8 +15,9 @@ import pandas as pd
 import sklearn
 
 from atlas.recorder import Recorder
+from atlas.reports import ids_sha256
 
-ADAPTER_VERSION = "0.1"
+ADAPTER_VERSION = "0.2"
 _SESSION: "Session | None" = None
 
 
@@ -140,6 +142,18 @@ def declare_split(
             "training_cutoff": training_cutoff,
         }
     )
+    # An independent provenance record of the declaration, for reconciliation with splits.json.
+    s.events.append(
+        {
+            "type": "split",
+            "fold": fold,
+            "kind": kind,
+            "train_sha256": ids_sha256(train),
+            "eval_sha256": ids_sha256(evaluate),
+            "n_train": len(train),
+            "n_eval": len(evaluate),
+        }
+    )
     s.recorder.fold = fold
 
 
@@ -150,19 +164,21 @@ def write_predictions(fold: str, row_ids, y_pred, y_score=None) -> None:
     if len(ids) != len(y_pred):
         raise ValueError("write_predictions(): row_ids and y_pred lengths differ")
     info = s.recorder.resolve(y_pred)
+    artifact = f"predictions/{fold}.parquet"
+    path = s.out_dir / artifact
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame = pd.DataFrame({"row_id": ids, "y_pred": np.asarray(y_pred)})
+    if y_score is not None:
+        frame["y_score"] = np.asarray(y_score).tolist()
+    frame.to_parquet(path, index=False)
     s.events.append(
         {
             "type": "predictions",
             "fold": fold,
             "pred_token": info.token,
             "pred_status": info.status,
-            "rows_match": info.rows == tuple(ids),
-            "n_rows": len(ids),
+            "rows": ids,
+            "artifact": artifact,
+            "artifact_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         }
     )
-    pred_dir = s.out_dir / "predictions"
-    pred_dir.mkdir(parents=True, exist_ok=True)
-    frame = pd.DataFrame({"row_id": ids, "y_pred": np.asarray(y_pred)})
-    if y_score is not None:
-        frame["y_score"] = np.asarray(y_score).tolist()
-    frame.to_parquet(pred_dir / f"{fold}.parquet", index=False)

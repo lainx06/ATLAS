@@ -10,7 +10,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
-| T-01 | 9 | Implemented and self-tested (base `35016bb`); **awaiting local Codex review**, not independently reviewed | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-01 | 9 | Codex review 1 found 7 issues; repair pass 1 done (base `216f3ff`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
@@ -125,6 +125,48 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - `load_holdout_features()`, the T-02 assertions and `report.md` are not implemented.
     - Planned-later assertions are materialized as NOT_ASSESSED `unimplemented_assertion`.
     - Fixture settings are test fixtures, not benchmark measurements.
+
+- **REVIEW 1 (local Codex, 2026-10-14) and REPAIR PASS 1 (Claude Code, Opus 5.5 high):**
+  - **Review setup:** Codex discovered the `code-review-and-quality` review skill through its normal skill catalog (reported by the user). The full review text was not supplied to the builder. The findings below are as listed by the user; Codex's reproductions are preserved unchanged at `runs/review-t01/probe.py` (sha256 `c4811335…725f`) and `runs/review-t01/results.json` (sha256 `5fa603e4…ac0f`). The probe was not re-run, so its results were not overwritten.
+  - **Checkpoints:** repair base `216f3ff`; head = the local commit "Repair T-01 after Codex review" (parent `216f3ff`).
+  - **Findings and dispositions** (all accepted and repaired; each has a regression test that failed on `216f3ff`):
+    1. **Trusted-fixture import loophole.** An extra `atlas.py` in a fixture folder was still trusted and would have shadowed `atlas` (probe: `is_trusted: true`, `atlas_resolves_to: …allowlist_inspection_only\atlas.py`).
+       - *Repair:* the allowlist binds every fixture's complete file inventory, and the child runs in isolated mode (`-I`) with the parent's resolved `atlas` inserted explicitly. The child records `runtime.json`, which the evaluator verifies.
+       - *Tests:* `test_fixture_with_an_extra_file_is_not_trusted_and_does_not_run`, `test_fixture_child_imports_atlas_from_the_trusted_package_not_the_fixture`.
+       - No bypass was executed. The runner is not described as a sandbox.
+    2. **Undeclared or orphaned folds.** Dropping fold0 from `splits.json` still gave `NO_VIOLATION_FOUND`.
+       - *Repair:* provenance split events (with ID-list hashes) are reconciled with `splits.json`, prediction events and use events. Any orphaned, missing or mismatched fold is a coverage gap. SD gives NOT_ASSESSED `coverage_gap` for uses in undeclared folds.
+       - *Test:* `test_fold_removed_from_splits_but_present_elsewhere_prevents_complete_coverage` (now CC `coverage_gap`, PI ERROR, `INCONCLUSIVE`).
+       - *Documented limit:* consistency cannot prove the existence of a fold erased from every source; that needs an independent expected-fold contract.
+    3. **Null identifier values.** A NaN subject on a participating row still PASSed.
+       - *Repair:* overlap is judged over known identities; unknown values on participating rows give NOT_ASSESSED `missing_metadata`, for group, unit, observation and repeated-measures columns. An overlap among known identities stays FAIL.
+       - *Tests:* four in `tests/unit/test_split_integrity.py`.
+    4. **Predictions bound to an unrelated producer.** A prediction re-pointed at a `global`-fold producer still PASSed coverage.
+       - *Repair:* each fold needs exactly one prediction event bound to a `predict` use in the same fold, on the same rows, from a supported classifier state, with an artifact SHA-256 matching the verified index.
+       - *Tests:* three in `tests/unit/test_fit_provenance.py`.
+    5. **Unverified execution evidence.** A hash-mismatched `execution.json` still gave `NO_VIOLATION_FOUND`.
+       - *Repair:* `execution.json` and `runtime.json` must verify and pass strict schemas, and the runtime must show controlled imports. Otherwise PASS becomes ERROR (or NOT_ASSESSED `not_executed` for a verified non-completion), and valid FAILs stand.
+       - *Tests:* hash-mismatch, schema-invalid-but-rehashed, and FAIL-preservation (s01).
+    6. **Missing prediction artifacts.** These gave FAIL instead of ERROR.
+       - *Repair:* the expected inventory is the declared folds. A missing or invalid artifact, or one for an undeclared fold, is ERROR; a valid artifact with wrong IDs is FAIL, which survives ERRORs elsewhere.
+       - *Tests:* `test_missing_prediction_artifact_is_error_not_fail`, plus `tests/unit/test_metric_ids.py`. Two earlier unit expectations ("declared fold without predictions → FAIL") were replaced by this disposition, not weakened.
+    7. **Missing or unparseable manifest snapshot.** This crashed evaluation (`FileNotFoundError`).
+       - *Repair:* evaluation first clears earlier outputs. It reconstructs the required set only from the project manifest whose hash matches the recorded snapshot hash, noting that in the outcome reason. Otherwise it is `INCONCLUSIVE` with "required assertion set could not be reconstructed", an empty assertion list and no checks output.
+       - *Tests:* two (reconstruction; unreconstructable plus stale-outcome replacement).
+  - **Reporting improvement (accepted):** SD FAILs now list `origins` from recorded lineage: the fitted states whose own fit rows fall outside the fold's training set (instance/version, class, fit scope, contributing rows, label use, affected folds, rows outside per fold, affected uses). In s01 this is one origin: `SelectKBest` i2 v1, fit scope `global`, 160 rows, `labels_used=true`, four folds. Its eight downstream uses are listed under the one assertion. Test: `test_violation_report_names_the_originating_global_fit_once`.
+  - **Results actually run after the repairs:**
+    - `uv run --locked pytest tests/unit tests/integration -q` → **103 passed** (83 previous plus 20 regression tests).
+    - `scripts/mutation_check.py` → **3/3 caught** under the isolated launcher.
+    - CLI s01/s02/s07 → `VIOLATION_FOUND` / `NO_VIOLATION_FOUND` / `INCONCLUSIVE`, unchanged.
+    - `ruff check` → passed; `ruff format --check` → 58 files formatted.
+    - `sync_skills.py --check` → problems 0.
+    - Every finding was fixed in its first repair cycle.
+  - **Remaining limitations:**
+    - There is still no isolation: the runner is `trusted_pipeline_only`.
+    - The in-process recorder is not tamper-proof.
+    - There is no expected-fold contract.
+    - Inventory binding covers fixture files, not the installed environment.
+    - Evaluation is limited to T-01 scope.
 
 ### T-02 Independent metrics, conditional split rules, temporal checks
 - **OWNER:** Claude Code (writer); Codex reviews.

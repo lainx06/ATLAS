@@ -115,3 +115,27 @@ class RunOutcome(BaseModel):
     reason: str | None = None
     assertions: list[AssertionResult] = Field(default_factory=list)
     incomplete_coverage: list[str] = Field(default_factory=list)
+
+
+class ExecutionRecord(BaseModel):
+    """execution.json, written by the trusted runner after the fixture child exits."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    runner: str
+    capability: str
+    returncode: int | None
+    timed_out: bool
+    elapsed_s: float
+    stderr_tail: str
+
+
+class RuntimeRecord(BaseModel):
+    """runtime.json, written by the fixture child: where its imports resolved from."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    atlas_origin: str
+    isolated: int
+    safe_path: bool
+    project_dir_on_sys_path: bool
+    cwd_on_sys_path: bool
+    python: str

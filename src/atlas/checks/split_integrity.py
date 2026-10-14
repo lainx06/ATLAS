@@ -74,13 +74,14 @@ def split_assertions(
         evidence,
     )
     results["split.repeated_measures_rule"] = _repeated_measures(
-        manifest, table, results, evidence
+        manifest, table, splits, results, evidence
     )
     return results
 
 
 def _units(ids: Iterable[str], unit_of: pd.Series) -> set:
-    return {unit_of[r] for r in ids}
+    """Known identity values only; missing (null) values are excluded and counted separately."""
+    return {unit_of[r] for r in ids if not pd.isna(unit_of[r])}
 
 
 def _overlap_by(
@@ -92,6 +93,19 @@ def _overlap_by(
         shared = _units(s["train_ids"], unit_of) & _units(s["eval_ids"], unit_of)
         if shared:
             found[s["fold"]] = sorted(map(str, shared))
+    return found
+
+
+def _unknown_identity(
+    column: str, table: pd.DataFrame, splits: list[dict]
+) -> dict[str, int]:
+    """Participating rows whose identity value is missing, per fold."""
+    missing = table[column].isna()
+    found = {}
+    for s in splits:
+        n = int(sum(bool(missing[r]) for r in [*s["train_ids"], *s["eval_ids"]]))
+        if n:
+            found[s["fold"]] = n
     return found
 
 
@@ -131,11 +145,27 @@ def _unit_overlap(
             evidence=evidence,
         )
     overlap = _overlap_by(column, table, splits)  # compares unit values, never row IDs
+    unknown = _unknown_identity(column, table, splits)
+    observed = {
+        key: overlap,
+        "column": column,
+        "folds": len(splits),
+        "rows_with_unknown_identity": unknown,
+    }
+    if overlap:  # a violation among known identities stands
+        return AssertionResult(
+            assertion_id=aid, status=Status.FAIL, observed=observed, evidence=evidence
+        )
+    if unknown:
+        return AssertionResult(
+            assertion_id=aid,
+            status=Status.NOT_ASSESSED,
+            reason=Reason.MISSING_METADATA,
+            observed=observed,
+            evidence=evidence,
+        )
     return AssertionResult(
-        assertion_id=aid,
-        status=Status.FAIL if overlap else Status.PASS,
-        observed={key: overlap, "column": column, "folds": len(splits)},
-        evidence=evidence,
+        assertion_id=aid, status=Status.PASS, observed=observed, evidence=evidence
     )
 
 
@@ -178,6 +208,9 @@ def _shared_observation(
                 evidence=evidence,
             )
         shared.update(_overlap_by(obs_col, table, splits))
+        observed["rows_with_unknown_identity"] = _unknown_identity(
+            obs_col, table, splits
+        )
     documented = []
     for group in manifest.known_duplicates:
         members = set(group)
@@ -194,6 +227,14 @@ def _shared_observation(
     if shared or documented:
         return AssertionResult(
             assertion_id=aid, status=Status.FAIL, observed=observed, evidence=evidence
+        )
+    if obs_col is not None and observed["rows_with_unknown_identity"]:
+        return AssertionResult(
+            assertion_id=aid,
+            status=Status.NOT_ASSESSED,
+            reason=Reason.MISSING_METADATA,
+            observed=observed,
+            evidence=evidence,
         )
     if obs_col is not None:
         return AssertionResult(
@@ -224,6 +265,7 @@ def _shared_observation(
 def _repeated_measures(
     manifest: Manifest,
     table: pd.DataFrame,
+    splits: list[dict],
     results: dict[str, AssertionResult],
     evidence: list[EvidenceRef],
 ) -> AssertionResult:
@@ -235,7 +277,11 @@ def _repeated_measures(
         if dep.kind != "repeated_measures":
             continue
         col = dep.column
-        if col is None or col not in table.columns:
+        if (
+            col is None
+            or col not in table.columns
+            or _unknown_identity(col, table, splits)
+        ):
             per_unit.append((col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None))
         elif cols.unit_id is not None and col == cols.unit_id:
             follow = results["split.sampling_unit_disjoint"]

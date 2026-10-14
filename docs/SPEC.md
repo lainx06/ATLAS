@@ -80,8 +80,8 @@ In the last case, static suspicions may still be shown; they never change status
 | `load_holdout_features()` | Returns tracked final-holdout `X` only (no target), for evaluation runs. Holdout labels never enter the container (§8). |
 | `load_metadata()` | Returns the table's non-feature, non-target columns (e.g. group IDs) for building splits. **Untracked**: data from it has no ancestry, so fitting on it is a coverage gap. Added during T-01. |
 | `take(obj, row_ids)` | **Supported row selection.** Returns a tracked subset of a tracked frame/series. `row_ids` must be a subset of `obj`'s rows. Splitter output is turned into row IDs and passed through `take`. |
-| `declare_split(fold, train_ids, eval_ids, kind[, training_cutoff])` | Opens fold context `fold`. `kind` ∈ {development_eval, final_holdout}. `training_cutoff` is required for `future_time`. Validated: IDs exist, no duplicates within a list. |
-| `write_predictions(fold, row_ids, y_pred[, y_score])` | Writes predictions keyed by row ID. Validated against the declared `eval_ids`. `y_pred` must be a tracked output of a recorded prediction use in that fold; otherwise prediction ancestry is missing (a coverage gap). |
+| `declare_split(fold, train_ids, eval_ids, kind[, training_cutoff])` | Opens fold context `fold`. `kind` ∈ {development_eval, final_holdout}. `training_cutoff` is required for `future_time`. Validated: IDs exist, no duplicates within a list. Also records a provenance split event with hashes of both ID lists, for reconciliation with `splits.json`. |
+| `write_predictions(fold, row_ids, y_pred[, y_score])` | Writes `predictions/<fold>.parquet` keyed by row ID, then records a prediction event with the written row IDs, the artifact path and its SHA-256. `y_pred` must be a tracked output of a recorded prediction use in that fold; otherwise prediction ancestry is missing (a coverage gap). |
 
 ### 4.2 Supported operations (initial enumerated list; tested before being claimed)
 
@@ -140,15 +140,15 @@ Applicability comes from the confirmed claim and declared dependence, **never** 
 | --- | --- | --- | --- | --- |
 | `split.no_row_overlap` | R | R | R | No row ID is in both the train and eval partitions of a fold. |
 | `split.no_shared_source_observation` | R | R | R | Equal feature+target values identify **candidate** duplicates only. FAIL needs `observation_id` or `known_duplicates` evidence that a train row and an eval row are the same source observation. With identity declared, equal-valued rows with different IDs PASS (candidates reported). Without identity: no candidates → PASS, coverage "exact-value screen only"; unresolved candidates → NOT_ASSESSED `unresolved_duplicate_candidates`. |
-| `split.no_group_overlap` | — | R | — | No `group_id` value is in both partitions of a fold. |
+| `split.no_group_overlap` | — | R | — | No `group_id` value is in both partitions of a fold. Applies to `group_id`, `unit_id`, `observation_id` and repeated-measures units alike: overlap is judged over known values; a participating row with a missing (null) value gives NOT_ASSESSED `missing_metadata`, except that an overlap among known values remains FAIL. |
 | `split.sampling_unit_disjoint` | R† | R† | R† | No `unit_id` value crosses partitions. Missing `unit_id` → NOT_ASSESSED `missing_metadata`. |
 | `split.repeated_measures_rule` | R* (repeated_measures) | R* | R* | Assessed only through a supported rule. The unit equals the sampling unit → follows `sampling_unit_disjoint`. Under `unseen_group`, the unit is contained in groups (containment shown from the table) → follows `no_group_overlap`. Otherwise NOT_ASSESSED `no_supported_rule`. The dependency is recorded. |
 | `split.no_window_overlap` | R* (overlapping_windows) | R* | R* | Windows are `[start, end)` within `stream_id`. Any positive shared span between a train window and an eval window in the same stream → FAIL. Missing stream identity or bounds → NOT_ASSESSED `missing_metadata` (never guessed). PASS via disjoint groups is allowed only with documented containment evidence that streams cannot cross groups; that evidence and the dependency on `no_group_overlap` PASS are recorded. |
 | `split.temporal_separation` | R* (temporal_order) | R* | — | Verifies the declared `separation_rule` (a minimum gap between train and eval times, globally or per stream). It is not a test of statistical independence. No declared rule → NOT_ASSESSED `no_declared_rule`. |
 | `split.class_support` | D | D | D | Per-fold class counts and the splitter/estimator minimum requirements. Missing class support is reported, never turned into a split violation. |
 | `fit.state_dependencies_within_fold_train` | R | R | R | For every use event in fold *k* (transforms and predictions, on train or eval rows), the dependency rows of the used state version ⊆ train(*k*). Cross-fold reuse of an instance is allowed when this holds. Unknown ancestry → NOT_ASSESSED `unknown_ancestry`, never an invented FAIL. |
-| `fit.coverage_complete` | R | R | R | For every evaluated fold: (1) at least one observed supported classifier fit whose state produced the written predictions; (2) traceable prediction ancestry; (3) no coverage gap on the path (§4.3). Zero recorded fits → NOT_ASSESSED `zero_fit`. A classifier-fit count alone is insufficient. |
-| `metric.prediction_ids_match_eval_ids` | R | R | R | Predictions cover exactly the declared eval row IDs of each fold. |
+| `fit.coverage_complete` | R | R | R | For every declared fold: (1) exactly one written prediction, bound to its actual recorded producer — a `predict` use in the same fold, on the same rows, from an observed supported classifier state — with an artifact hash matching the verified index; (2) fully traced ancestry; (3) no coverage gap on the path (§4.3). Fold inventories in `splits.json`, provenance split events, prediction events and use events must agree; orphaned or missing folds are coverage gaps. Zero recorded fits → NOT_ASSESSED `zero_fit`. A classifier-fit count alone is insufficient. Limit: consistency cannot prove the existence of a fold erased from every source (that needs an independent expected-fold contract). |
+| `metric.prediction_ids_match_eval_ids` | R | R | R | Predictions cover exactly the declared eval row IDs of each fold. The expected artifact inventory is the declared folds, never the files that exist. A missing or invalid artifact for a declared fold, or one for an undeclared fold → ERROR; a valid artifact with wrong row IDs → FAIL (which survives ERRORs elsewhere). |
 | `metric.reported_matches_recomputed` | R* (reported_metrics) | R* | R* | §8 comparison rule. |
 | `metric.recomputed_primary`, `metric.baselines` | D | D | D | Balanced accuracy / macro-F1; dummy baseline (linear where appropriate). |
 | `temporal.training_labels_available_by_cutoff` | — | — | R | Every training row in fold *k* has `prediction_time` ≤ cutoff(*k*) and label availability ≤ cutoff(*k*). |
@@ -170,6 +170,8 @@ Notes:
 ## 6 Scheduling and run outcome derivation (Q2, F1, F5)
 
 **Scheduling.** The deterministic controller schedules the **full** required assertion set of the policy version for the original evaluation and for each executed candidate. Agent choices cannot remove assertions, and budget exhaustion cannot hide missing results.
+
+**Required set when the manifest snapshot is missing or invalid.** The required set is reconstructed only from trusted context: the project manifest whose SHA-256 equals the snapshot hash recorded in the run index (noted in the outcome reason). Otherwise the run is `INCONCLUSIVE` with reason "required assertion set could not be reconstructed" and no assertion list; the set is never invented and never defaults to a clean result. Every evaluation first removes earlier outputs (`outcome.json`, `report.json`, `checks/`), so a stale result cannot look current.
 
 **Materialization.** Every required assertion without a computed result is materialized as NOT_ASSESSED with a specific reason:
 - `unimplemented_assertion`;
@@ -203,7 +205,8 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 
 - **Run directory:** `runs/<run_id>/` (git-ignored). `run_id` derives from a hash of the project snapshot, the confirmed claim, the policy version and a timestamp.
 - **Artifacts:** `manifest.snapshot.json`, `claim.json`, `provenance.jsonl` (ancestry records, fitted-state versions, use events), `splits.json`, `predictions/<fold>.parquet`, `checks/<check_id>.json`, `outcome.json`, `agent_log.jsonl`, `report.json`, `report.md`. Each is hashed into `index.json`.
-  - T-01 writes `manifest.snapshot.json`, `execution.json`, `provenance.jsonl`, `splits.json`, `predictions/<fold>.parquet`, `checks/<check_id>.json`, `outcome.json`, `report.json` and `index.json`. `claim.json`, `agent_log.jsonl` and `report.md` are not yet produced.
+  - T-01 writes `manifest.snapshot.json`, `execution.json`, `runtime.json`, `provenance.jsonl`, `splits.json`, `predictions/<fold>.parquet`, `checks/<check_id>.json`, `outcome.json`, `report.json` and `index.json`. `claim.json`, `agent_log.jsonl` and `report.md` are not yet produced.
+  - Fitted-state violations report their **origins**: the fitted states on the recorded ancestry whose own fit rows fall outside the fold's training set (instance/version, class, fit scope, contributing rows, label use, affected folds and uses). Downstream mentions are listed under the one assertion, not counted as separate findings.
 - **Integrity:** a missing or hash-mismatched artifact makes dependent assertions ERROR. Assertions with independent evidence keep their valid results.
 - **Reproducibility:** the report records dependency versions (from `uv.lock`), the evaluator version, the policy version, the adapter version, the model ID and the seed list.
 - **Curation:** sanitized example reports are curated explicitly into the repo; raw runs are not committed.
@@ -256,7 +259,10 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 - mounts limited to the project snapshot (read-only), the adapter/recorder (read-only), scratch, and outputs;
 - the dependency image is built separately and pinned (`Dockerfile.runner`).
 
-**Fixture rule:** repo-authored, reviewed trusted fixtures, identified by a hash allowlist, may run in a host subprocess during development. Candidate or generated code never does. A temp directory, `shell=False`, a timeout or a reduced environment is not a sandbox.
+**Fixture rule:** repo-authored, reviewed trusted fixtures may run in a host subprocess during development. Candidate or generated code never does. A temp directory, `shell=False`, a timeout or a reduced environment is not a sandbox, and neither is the launcher below.
+- **Trust** is bound to the fixture's complete file inventory (every file, LF-normalized SHA-256) in `src/atlas/runner/trusted_fixtures.json`. Any extra or changed file is refused before execution.
+- **Import resolution is controlled:** the child starts in Python isolated mode (`-I`: safe path, no `PYTHON*` variables, no user site), so neither the fixture directory nor the cwd is on `sys.path`. The parent's resolved `atlas` package directory is inserted explicitly.
+- **Evidence:** the child records `runtime.json` (atlas origin, isolated/safe-path flags, path membership). The evaluator verifies and schema-validates `execution.json` and `runtime.json`. Without a verified, completed, import-controlled execution, no PASS is established (it becomes ERROR, or NOT_ASSESSED `not_executed` for a verified non-completion), while valid FAILs from independently verified artifacts stand.
 
 Any other runtime must pass the same contract tests before it replaces Docker. Isolation reduces risk and is not a claim that hostile code is safe; the public demo remains curated.
 

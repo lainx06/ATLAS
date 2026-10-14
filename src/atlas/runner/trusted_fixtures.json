@@ -1,75 +1,243 @@
 {
-  "description": "Reviewed trusted fixtures (SPEC \u00a710). Content hashes, LF-normalized.",
+  "description": "Reviewed trusted fixtures (SPEC \u00a710): complete file inventories, LF-normalized SHA-256.",
   "fixtures": [
     {
       "fixture": "s01_faulty",
-      "entry_sha256": "05092261058702ea1c3a73a0deb5417530a1930c7d54399e8fd8510eabc14bae",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "05092261058702ea1c3a73a0deb5417530a1930c7d54399e8fd8510eabc14bae"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s02_clean",
-      "entry_sha256": "ce4b8500e1d4cd4df71ad51017770b88d42040d3faf079941e17049dd160d3dd",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "ce4b8500e1d4cd4df71ad51017770b88d42040d3faf079941e17049dd160d3dd"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s03a_rebuilt_frame",
-      "entry_sha256": "68be090ebc94a55af8f9f96f62275e686e97c310e7183613d09f63da0e1ebda4",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "68be090ebc94a55af8f9f96f62275e686e97c310e7183613d09f63da0e1ebda4"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s03b_inplace_mutation",
-      "entry_sha256": "2a79bb795b17bf1e9c8f0878797688042847a1fcb1082b3de0bbf990e4964279",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "2a79bb795b17bf1e9c8f0878797688042847a1fcb1082b3de0bbf990e4964279"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s04_zero_fit",
-      "entry_sha256": "3628235d8681906e0501b58fdf73a7002c33fa8f939e58168979e1e52f1a6a68",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "3628235d8681906e0501b58fdf73a7002c33fa8f939e58168979e1e52f1a6a68"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s05a_contaminated_reuse",
-      "entry_sha256": "2d9c5c0084077b37e18c011b7f13d53b023b274952bef70872d427af4cf5fc78",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "2d9c5c0084077b37e18c011b7f13d53b023b274952bef70872d427af4cf5fc78"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s05b_benign_reuse",
-      "entry_sha256": "2039c08e9e1cccf9cd462c16750d38e0bf38717f1959492e9832e1eb50de309d",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "2039c08e9e1cccf9cd462c16750d38e0bf38717f1959492e9832e1eb50de309d"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s06_missing_metadata",
-      "entry_sha256": "9c0a0c2bbca67e17b8e9bee706a1f24e86c16922fafecfc33274beab60cf21f9",
-      "manifest_sha256": "afc7f88b999869172e7c20e8897bf330199a726df7eb614ab861e9e9bf7f2be5"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "afc7f88b999869172e7c20e8897bf330199a726df7eb614ab861e9e9bf7f2be5"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "9c0a0c2bbca67e17b8e9bee706a1f24e86c16922fafecfc33274beab60cf21f9"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s07_unimplemented_window",
-      "entry_sha256": "ab660ed6d1c664ad9b5d7c09d07a492ed8c50684d084d351bcdb1b5671963059",
-      "manifest_sha256": "c1b3de6f0825cd13c76c635430ec2435deb49d5885ef3a35694c6437146e622d"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c1b3de6f0825cd13c76c635430ec2435deb49d5885ef3a35694c6437146e622d"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "ab660ed6d1c664ad9b5d7c09d07a492ed8c50684d084d351bcdb1b5671963059"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "332d99704369c2eaddf604bbb557cd055cc8c46cd009a57583cda35c3b3c5f56"
+        }
+      ]
     },
     {
       "fixture": "s08a_combined_claim",
-      "entry_sha256": "48024f9093379361a7632a5891390bfd92ba1f534e4d5422286ede7c83066000",
-      "manifest_sha256": "6e762f080b5fed27925070f5a6d9f6d444170aef3b5f9d624d97ea1d94f504e7"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "6e762f080b5fed27925070f5a6d9f6d444170aef3b5f9d624d97ea1d94f504e7"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "48024f9093379361a7632a5891390bfd92ba1f534e4d5422286ede7c83066000"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s08b_no_adapter",
-      "entry_sha256": "439c1ad237e3d58b4e1a21f460a1cced657e8332c37b20f10371466dbf97ffac",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "439c1ad237e3d58b4e1a21f460a1cced657e8332c37b20f10371466dbf97ffac"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ]
     },
     {
       "fixture": "s10a_identical_values_with_ids",
-      "entry_sha256": "3a4b1effbdd23b0fb39563bcf9f295f99df7201a097ed91e729e131a7ef97f4a",
-      "manifest_sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "c8c7f322327721f8c18a1ce21802cb4f5fdf95e1d66dd4a252f6a09c8b88580b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "3a4b1effbdd23b0fb39563bcf9f295f99df7201a097ed91e729e131a7ef97f4a"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "1fc7a5f1f6d0894add452a95723abf2266d56e1ed5414e64ce55e301ee860b5f"
+        }
+      ]
     },
     {
       "fixture": "s10b_identical_values_no_ids",
-      "entry_sha256": "884a2d48a07b2ab9aef71de76e3291985b0747d82d64fa88037d432d92f63624",
-      "manifest_sha256": "33e0d1d0f0aad3ce45335eb487e641b23fa357ac52e69abd085514466a35e883"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "33e0d1d0f0aad3ce45335eb487e641b23fa357ac52e69abd085514466a35e883"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "884a2d48a07b2ab9aef71de76e3291985b0747d82d64fa88037d432d92f63624"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6c6a05e6a2dc69d3917ab8dccd69642bc97218097a2e291a4a1ebaaad60a0b2c"
+        }
+      ]
     },
     {
       "fixture": "s10c_known_duplicate",
-      "entry_sha256": "de3f0327b19c7b1242be8aae7628945d2aa25b274e1b41ad696455d492e6f477",
-      "manifest_sha256": "b2050386c8ef1dbc20f4c7f6aac4fa42c56886ab10e832f739ad590b8bdd10a4"
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "b2050386c8ef1dbc20f4c7f6aac4fa42c56886ab10e832f739ad590b8bdd10a4"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "de3f0327b19c7b1242be8aae7628945d2aa25b274e1b41ad696455d492e6f477"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "6c6a05e6a2dc69d3917ab8dccd69642bc97218097a2e291a4a1ebaaad60a0b2c"
+        }
+      ]
     }
   ]
 }

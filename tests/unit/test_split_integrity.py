@@ -233,3 +233,50 @@ def test_no_declared_folds_is_not_executed():
 
     assert results["split.no_row_overlap"].status is Status.NOT_ASSESSED
     assert results["split.no_row_overlap"].reason is Reason.NOT_EXECUTED
+
+
+def test_null_group_value_on_a_participating_row_is_not_assessed():
+    """Codex probe 'null_group_value': a missing value, not a missing column."""
+    table = _table()
+    table.loc["r4", "subject"] = float("nan")
+
+    results = _run(_manifest(), table, GROUPED)
+
+    for aid in ("split.no_group_overlap", "split.sampling_unit_disjoint"):
+        assert results[aid].status is Status.NOT_ASSESSED, aid
+        assert results[aid].reason is Reason.MISSING_METADATA, aid
+        assert results[aid].observed["rows_with_unknown_identity"] == {"f0": 1}, aid
+    assert results["split.repeated_measures_rule"].status is Status.NOT_ASSESSED
+
+
+def test_violation_among_known_identities_survives_a_null_value():
+    table = _table()
+    table.loc["r7", "subject"] = None
+
+    result = _run(_manifest(), table, MIXED)["split.no_group_overlap"]
+
+    assert result.status is Status.FAIL
+    assert result.observed["overlapping_groups"] == {"f0": ["A", "B"]}
+
+
+def test_null_observation_id_is_not_assessed():
+    table = _table()
+    table.loc["r5", "obs"] = None
+
+    so = _run(_manifest(), table, GROUPED)["split.no_shared_source_observation"]
+
+    assert so.status is Status.NOT_ASSESSED
+    assert so.reason is Reason.MISSING_METADATA
+
+
+def test_null_repeated_measures_unit_value_is_not_assessed():
+    m = _manifest(
+        claim={"dependence": [{"kind": "repeated_measures", "column": "session"}]}
+    )
+    table = _table()
+    table.loc["r1", "session"] = float("nan")
+
+    rm = _run(m, table, GROUPED)["split.repeated_measures_rule"]
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
