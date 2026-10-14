@@ -68,9 +68,18 @@ These are mentioned in the selected skills as "see also" pointers or optional br
 - setup-matt-pocock-skills skips its triage-label section when `triage` is absent.
 - to-spec requires the setup skill to have run (it tells the user to run `/setup-matt-pocock-skills`) and applies the `ready-for-agent` label.
 
-### Before running the Matt skills (Step 7, not done yet)
-- `/setup-matt-pocock-skills` by default writes an `## Agent skills` block into `CLAUDE.md` (it edits CLAUDE.md when it exists) and creates `docs/agents/*.md`. Per DECISIONS.md (2026-10-14), shared content goes in AGENTS.md and CLAUDE.md stays a pointer.
-- Tracker: local files. Durable specs go in `docs/` and the task index in `TASKS.md` (DECISIONS.md, 2026-10-14). Do not use the skill's default `.scratch/` layout as the canonical spec location, and do not use GitHub/GitLab (`to-spec` "publishes" to the tracker).
+### Matt skill configuration (complete; writes verified 2026-10-14)
+`/setup-matt-pocock-skills` was invoked by the user and run with the decisions in DECISIONS.md (2026-10-14):
+- Issue tracker = "other": local files. Specs go in `docs/`; `TASKS.md` holds the index and Section 24 task entries; `handoffs/` is for Section 19 transfers only. No `gh`/`glab`, no `.scratch/`. Written to `docs/agents/issue-tracker.md`.
+- Triage labels: section skipped (`triage` not installed); no `triage-labels.md`.
+- Domain docs: single-context; `GLOSSARY.md`/`docs/adr/` are created lazily. ADRs only for consequential architectural decisions, with a pointer in DECISIONS.md. Written to `docs/agents/domain.md`, adapted from the skill's `domain.md` template.
+- `## Agent skills` block appended to AGENTS.md (the skill's default target is CLAUDE.md; overridden by decision). CLAUDE.md got only a one-line pointer update.
+- Verified after writing:
+  - `sync_skills.py --check` problems 0 (upstream skill files unchanged).
+  - Existing paths referenced by the new text checked and present: `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, `docs/PRD.md`, `docs/SPEC.md`, `TASKS.md`, `DECISIONS.md`, `AGENTS.md`, `STATUS.md`, `docs/TOOLING.md`, `docs/handoff/ATLAS_Build_Playbook.md` (Sections 19 and 24), `.claude/skills/domain-modeling/ADR-FORMAT.md`.
+  - Planned paths, deliberately not created yet (absence expected): `GLOSSARY.md` and `docs/adr/` (created lazily by domain-modeling), `docs/specs/` (later feature specs), `handoffs/` (first Section 19 transfer).
+  - Paths that must not be created: `.scratch/` (not a spec location), `docs/agents/triage-labels.md` (`triage` not installed). Both absent.
+  - One `## Agent skills` block (AGENTS.md); AGENTS.md diff append-only; ruff check/format exit 0.
 
 ### Sync / verify script
 `scripts/sync_skills.py` reads every file with `git show <pinned sha>:<path>` (never the clone's working tree), writes only missing files, and refuses to write anything if an existing file differs or a managed skill folder contains a foreign file. `--check` verifies without writing.
@@ -91,7 +100,8 @@ Upstream scripts (`scripts/link-skills.sh`, `skills/engineering/wizard/template.
 | Claude Code native discovery: `code-review-and-quality`, `debugging-and-error-recovery`, `test-driven-development`, `grilling`, `domain-modeling` | **verified** (discovery, all 5) | First attempt failed: `Skill("code-review-and-quality")` returned `Unknown skill: code-review-and-quality` (this Claude Code 2.1.292 session started before `.claude/skills/` existed). Minutes later, with no further action, the session announced all 5 model-invocable skills as available. That was new evidence, so one retry was made. |
 | Native harmless loading check (`code-review-and-quality` + referenced checklist) | **verified** | Retry `Skill("code-review-and-quality")` printed "Launching skill" with base directory `.claude\skills\code-review-and-quality`. The skill's `../../references/security-checklist.md`, resolved from that base, opened (Threat Modeling and Pre-Commit Checks sections read). Verification-only output below; nothing reviewed, edited, or published. Native loading of the other 4 discovered skills was not exercised. |
 | Manual fallback (same check by explicit file path) | **verified** (also run before native discovery appeared) | Installed SKILL.md and checklist read by explicit path |
-| Claude `/setup-matt-pocock-skills`, `/grill-with-docs`, `/to-spec` | **installed; discovery unverified** (user-invoked only, so correctly absent from the model's skill list; confirm in the `/` menu; running them is Step 7) | Not run |
+| Claude `/setup-matt-pocock-skills` | **verified** (discovery and invocation) | 2026-10-14: the user invoked it from the `/` menu; Claude Code loaded it with base directory `.claude\skills\setup-matt-pocock-skills` and its process ran (see "Matt skill configuration" above) |
+| Claude `/grill-with-docs`, `/to-spec` | **installed; discovery unverified** (user-invoked only, so correctly absent from the model's skill list; confirm in the `/` menu; running them is Step 7) | Not run |
 | Codex discovery/invocation of `.agents/skills` | **unverified** (Codex not configured) | Copied files alone do not prove Codex loads them |
 | Ponytail, pstack, no-mistakes, whole Matt/Addy packs, Addy hooks/commands/agents | **deferred / not installed** | Playbook Sections 18 and 22 |
 
@@ -103,4 +113,4 @@ Upstream scripts (`scripts/link-skills.sh`, `skills/engineering/wizard/template.
 - (5) No hooks/packs/global changes → Security (the checklist's Threat Modeling item: third-party content is a trust boundary) and Architecture (no unnecessary dependencies).
 - Pre-Commit Checks from the checklist apply to the Step 6 commit: no secrets staged; `.gitignore` covers `.env`/`*.pem`/`*.key`; `.env.example` holds placeholders.
 
-**Still to confirm by the user:** the `/` menu shows `/setup-matt-pocock-skills`, `/grill-with-docs`, `/to-spec`.
+**Still to confirm by the user:** the `/` menu shows `/grill-with-docs` and `/to-spec`.

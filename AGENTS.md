@@ -35,3 +35,13 @@ ATLAS checks whether a small Python/scikit-learn tabular classification experime
 - Agents and candidate patches must not modify the trusted evaluator, holdout labels, pass criteria, or run policies to make a check pass.
 - Do not edit `docs/handoff/`. Do not install third-party skills/hooks outside playbook Section 22.
 - One writer at a time (see WRITER in STATUS.md). Reviewers do not edit implementation files.
+
+## Agent skills
+
+### Issue tracker
+
+Local files only; nothing is published. Durable specs live in `docs/`; `TASKS.md` holds the task index and concise structured task entries (playbook Section 24); `handoffs/` is only for Section 19 external/substantial transfers. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` and `docs/adr/`, both created lazily. Routine decisions go in `DECISIONS.md`; ADRs only for consequential architectural decisions, each with a dated pointer in `DECISIONS.md`. See `docs/agents/domain.md`.
