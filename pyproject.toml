@@ -1,0 +1,28 @@
+[project]
+name = "atlas"
+version = "0.1.0"
+description = "ATLAS: checks whether an ML experiment's evidence supports its deployment claim (LENS capability)."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.6",
+    "openai>=3.31.0",
+    "pandas>=3.0.6",
+    "pydantic>=2.14.1",
+    "python-dotenv>=1.2.4",
+    "scikit-learn>=1.9.1",
+    "streamlit>=1.66.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+# Ruff 0.17 also formats Markdown; keep the handoff documents byte-for-byte.
+extend-exclude = ["docs/handoff"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]

@@ -1,0 +1,46 @@
+# --- Credentials and private configuration (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.streamlit/secrets.toml
+.claude/settings.local.json
+
+# --- Virtual environments ---
+.venv/
+venv/
+
+# --- Python / tool caches ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Build outputs ---
+build/
+dist/
+*.egg-info/
+
+# --- Generated artifacts (curate sanitized examples explicitly, e.g. with a !negation) ---
+artifacts/
+runs/
+*.log
+test-results/
+playwright-report/
+
+# --- Raw/private data and held-out evaluation material ---
+data/raw/
+data/private/
+
+# --- Vendor source clones (skill sources fetched for inspection) ---
+.dev/
+
+# --- OS / editor noise ---
+Thumbs.db
+desktop.ini
+.DS_Store
