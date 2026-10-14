@@ -2,8 +2,8 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 6 complete, including Matt skill configuration (`/setup-matt-pocock-skills`). Step 7 not started. `/grill-with-docs` and `/to-spec` discovery unverified; Codex unverified (pending Codex setup).
-CHECKPOINT: "Configure local skill workflow" committed locally on `main` (parent `4b3cab6`). Not pushed; no remote configured.
+CURRENT STEP: Start Here Step 8 prepared, not started. The review packet `handoffs/science-01.md` is ready for Gemini. docs/PRD.md and docs/SPEC.md are **pending scientific review**; the design is **not accepted**. No implementation.
+CHECKPOINT: "Draft requirements and prepare scientific review" committed locally on `main` (parent `6c06d5e`). Not pushed; no remote configured.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -15,11 +15,13 @@ LAST UPDATED: 2026-10-14
 - Skills (Step 6): 8 skills + 3 Addy shared references copied from pinned commits (matt `49dd158d`, addy `aeac41d4`) into `.claude/` and `.agents/`. `uv run --locked python scripts/sync_skills.py --check` → "32 files x 2 destinations; problems: 0", exit 0. Copies identical across roots and to upstream; relative reference paths resolve. Details and statuses: docs/TOOLING.md.
 - Claude Code native discovery of the 5 model-invocable skills, and native loading of `code-review-and-quality` with its `../../references/security-checklist.md`: verified (the first attempt said `Unknown skill`; discovery caught up later in the same session, and one retry succeeded). No restart needed.
 - `/setup-matt-pocock-skills`: invoked successfully by the user from the `/` menu (discovery + invocation verified). Configuration written and verified: `docs/agents/issue-tracker.md` (local files: specs in `docs/`; index and Section 24 task entries in `TASKS.md`; `handoffs/` only for Section 19 transfers), `docs/agents/domain.md` (single-context; ADR policy), `## Agent skills` block appended to AGENTS.md. Upstream skill files unchanged (`sync_skills.py --check` problems 0); ruff exit 0. Details: docs/TOOLING.md "Matt skill configuration".
+- Step 7 interview: the `grill-with-docs` wrapper was followed manually (it arrived as pasted text, not a slash invocation); its companions `grilling` and `domain-modeling` loaded natively. Decisions Q1–Q6 are in DECISIONS.md. Documents are drafts, verified only for formatting (`ruff format --check .` exit 0) and internal references; nothing in them is implemented.
 
 ## What does not exist yet
 - **No tests.** `uv run --locked pytest -q` → "no tests ran", exit 5. Nothing has been tested.
 - No application code. `src/atlas/` holds only a package docstring. No `atlas` CLI entry point.
-- `docs/PRD.md`, `docs/SPEC.md`, and implementation task entries in `TASKS.md` are **pending Step 7**. Planned paths not created yet, by design: `GLOSSARY.md`, `docs/adr/` (lazy), `handoffs/` (first Section 19 transfer).
+- Everything in docs/PRD.md and docs/SPEC.md is **planned, not implemented**: checks, adapter/recorder, policy, evaluator, runner, agent, procedures, UI, benchmarks, hosting.
+- Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` now exists, holding only the Step 8 packet.)
 - No `.env` created and no API key requested or read.
 - No Nebius call made. Docker is not on PATH (isolation not available; trusted fixtures only).
 
@@ -34,13 +36,15 @@ LAST UPDATED: 2026-10-14
 8. Step 6: `/setup-matt-pocock-skills` (user-invoked) → wrote docs/agents/*, AGENTS.md block; verified with `sync_skills.py --check`, path checks, ruff. Earlier: `git clone` both skill repos into `.dev/skill-sources/{matt,addy}`, `git rev-parse HEAD`; `uv run --locked python scripts/sync_skills.py` (install) and `--check`; `diff`/`sha256sum` comparisons; ruff check/format.
 
 ## Blockers
-- `/grill-with-docs`, `/to-spec` discovery: **unverified** until the user checks the Claude Code `/` menu.
+- `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex discovery of `.agents/skills`: **unverified**, pending the Codex setup step.
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
 ## Next task
-1. User: confirm `/grill-with-docs` and `/to-spec` appear in the Claude Code `/` menu; record in docs/TOOLING.md.
-2. Start Here Step 7 (not started): `/grill-with-docs` requirements interview, then `/to-spec` → `docs/PRD.md`; contracts in `docs/SPEC.md`; first task entries in `TASKS.md`. See docs/agents/ and DECISIONS.md 2026-10-14.
+1. User: open Gemini (Argon High), attach `handoffs/science-01.md`, `docs/SPEC.md` and `GLOSSARY.md`, and paste the Start Here Step 8 prompt. Return Gemini's exact findings to the lead.
+2. The lead records an accepted/rejected/deferred disposition for each finding in DECISIONS.md. Claude then updates SPEC/PRD/TASKS (including T-01's scoped-versus-INCONCLUSIVE clean outcome) and clears the "pending scientific review" status only after that.
+3. Then T-01 (first deterministic slice), blocked on S-08.
 
 ## Unresolved questions
-- None. (Spec location, instruction placement, task-entry location (corrected after reconciling playbook Revision 4 vs 5), and ADR policy were decided 2026-10-14; see DECISIONS.md.)
+- Scientific questions for Step 8: the five in `handoffs/science-01.md` (mirroring docs/SPEC.md §14, including the T-01 outcome-policy question). SPEC §6 does not yet define handling of required-but-unimplemented assertions.
+- Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".
