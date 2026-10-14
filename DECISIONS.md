@@ -86,7 +86,63 @@ Process: `grill-with-docs` was followed manually. Its body is "Call the Skill to
 - Mechanism for the judge-access route or reserved capacity (e.g., separate credentialed URL or quota), and the restoration procedure when budgets run out.
 - Server-side cost-control implementation (per-session, per-route and daily caps) and how exhaustion is shown to users.
 
-### Step 8 scientific-review agenda (accumulating)
-- (from Q3) Exact instrumentation design and bypass tests for the in-process recorder; required before implementation is accepted.
-- Consolidated list with priorities: docs/SPEC.md §14 (five priority questions for `handoffs/science-01.md`, plus further items).
-- **ADR pointer (2026-10-14):** Q3's architecture is recorded as docs/adr/0001-project-owned-evaluation-with-in-container-recorder.md (proposed until Step 8).
+### Step 8 scientific-review agenda (closed 2026-10-14)
+- (from Q3) Exact instrumentation design and bypass tests for the in-process recorder. Resolved by F1 below.
+- The five packet questions in `handoffs/science-01.md` (the reviewed snapshot, preserved unchanged) are resolved by F1–F5 below. The remaining gated items, with owners, are in docs/SPEC.md §14.
+- **ADR pointer (2026-10-14):** Q3's architecture is recorded as docs/adr/0001-project-owned-evaluation-with-in-container-recorder.md, now accepted with the F1 narrowing.
+
+## 2026-10-14 — Step 8 scientific review dispositions
+Gemini reviewed `handoffs/science-01.md` (commit `698ffd8`; preserved unchanged as the reviewed snapshot). The lead supplied the dispositions below. Gemini's verbatim findings were not provided to the builder and are not stored in the repo. Applied to docs/SPEC.md (policy `policy-v1`, §4, §5, §6, §8, §12, §14, §17), docs/PRD.md, GLOSSARY.md, ADR 0001 and TASKS.md (T-01, T-02, T-08–T-11).
+
+- **F1, provenance — ACCEPTED, with a narrower contract.**
+  - **Identity vs ancestry:** a valid pandas index establishes row identity, not preprocessing ancestry. Index preservation alone never establishes `fit.coverage_complete`.
+  - **Bounded supported path:** adapter-loaded data → enumerated operations and supported row selection (`take`) → predictions. Along it the recorder records operation/instance identity, fitted-state versions, input/output lineage and the training rows contributing to each fitted state.
+  - **Coverage gaps:** unexplained mutation, reconstructed frames, unsupported operations and missing prediction ancestry are coverage gaps.
+  - **Fingerprints** detect unexpected changes; they don't prove arbitrary preprocessing was observed. The in-process recorder limitation stays explicit.
+  - **Where contamination is judged:** fitted-state dependencies are checked against the training partition of the fold where the state is **used** (transforms and predictions). Cross-fold instance reuse is a violation only when the reused state learned from rows outside that fold's training set. Unknown ancestry → NOT_ASSESSED, not an invented FAIL.
+  - **Zero fits:** zero recorded fits cannot give complete coverage. Every evaluated fold needs an observed supported classifier fit and a traceable prediction path; a fit count alone is insufficient.
+  - **Missing results:** missing required results are materialized as NOT_ASSESSED with a specific reason (including `unimplemented_assertion`, `not_executed`). Invalid evidence is ERROR, and valid independent FAILs are preserved.
+  - **Packet Q1(b), the T-01 outcome:** there is no scoped clean outcome. Unimplemented required assertions make a clean run INCONCLUSIVE.
+- **F2, factorial benchmark — ACCEPTED (comparison distinctions); REJECTED (forced effects).**
+  - The 2×2 uses one generated dataset and predeclared seeds. Within a split protocol, the global and fold-local runs use identical partitions and matched model settings.
+  - Across split protocols, differences are shown as protocol differences, with no causal score-subtraction claim.
+  - Planted violations are shown by overlap and fitted-state-dependency evidence. A score drop, changed selected features or changed predictions are not required; zero and reversed differences are reportable.
+  - Generator settings are fixed and recorded before measurement; Gemini's example numbers are not adopted as established. Robustness is descriptive in V1.
+- **F3, dependence and temporal semantics — PARTIALLY ACCEPTED.**
+  - **Sampling unit:** when a claim treats subjects or sessions as independent draws, the unit identifier is required and the unit must not cross partitions (`split.sampling_unit_disjoint`); a missing identifier → NOT_ASSESSED.
+  - **Repeated measures:** not automatically equated with unseen-group generalization. Without a supported assessment rule, the coverage gap is exposed (`split.repeated_measures_rule` → `no_supported_rule`).
+  - **Windows:** source-stream identity plus half-open intervals `[start, end)`. A positive shared span in the same stream is overlap; missing stream identity is never guessed.
+  - **REJECTED:** "non-interleaving implies independence". `split.temporal_separation` verifies a declared separation rule, not statistical independence, and an undefined rule stays NOT_ASSESSED with a milestone (T-02).
+  - **`future_time`:** consistent time units and a documented reference time; per-feature availability timestamps or offsets; training-label availability (horizon plus reporting delay); a per-fold training cutoff and a nonnegative declared gap. Required: training labels available by the cutoff, cutoff + gap no later than the first evaluation prediction, and features available when used. The counterexample (training prediction 100, label available 150, evaluation prediction 120) must not pass.
+  - **Variant B:** procedure reuse is rejected on claim mismatch; a temporal-feature violation is reported separately, only when its check establishes one.
+  - **REJECTED:** a blanket three-group minimum. Overlap checks can establish violations with fewer groups. Splitter/estimator minimum requirements and class support are reported (`split.class_support`, descriptive), never as fabricated split violations.
+- **F4, UCI HAR — ACCEPTED as a scoped example; shortcuts REVISED.**
+  - Claim `unseen_group` by subject. The official subject-based test partition is reserved from development and tuning; development uses grouped folds within the training subjects.
+  - Any deliberately flawed evaluation is described as ATLAS-authored.
+  - **Windows:** window overlap may PASS through disjoint groups only with documented source-containment evidence, recorded together with its dependency on the group-disjointness result. Claim type alone is insufficient; otherwise NOT_ASSESSED.
+  - **Provenance scope:** coverage begins at the supplied feature table.
+  - **Source:** the lead verified https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones (subject-based splitting, overlapping windows, CC BY 4.0; attribution required). Global fitting of upstream normalization has **not** been established.
+  - **Timestamps:** absent, so temporal assertions can't be established. The general missing-evidence rule is unchanged.
+- **F5, scoring and comparisons — ACCEPTED, with a revised metric comparison.**
+  - **Scheduling:** the deterministic controller schedules the full required set for the original evaluation and each executed candidate. Agent choices cannot remove assertions, and budget exhaustion cannot hide missing results.
+  - **Scoring:**
+    - findings are scored per case and canonical assertion ID, deduplicated, with fold-level evidence retained;
+    - expected violated assertions are defined before measurement;
+    - TP/FP/FN, coverage gaps and errors are reported;
+    - on clean cases, false-positive counts and the false-violation run rate;
+    - no manufactured precision/recall when a denominator is zero.
+  - **Transfer repetitions:** the procedure store is frozen and hashed before the three paired transfer repetitions; each uses the same immutable store with fresh run state, and no target-specific admissions happen between them. All scheduled trials, failures, budgets and creation costs are reported. The evidence is descriptive only.
+  - **REJECTED:** a tolerance inferred from JSON float decimals. Reported metrics are canonical numerics with a named definition, partition/fold and aggregation, compared with a fixed, versioned **absolute tolerance of 1e-6** (no relative tolerance). Nonfinite or out-of-range values are rejected, and display rounding is separate. This is an engineering comparison rule, not a scientific confidence threshold.
+- **L1 (lead), procedure admission:** every applicable required assertion must have a valid PASS (no FAIL, ERROR or NOT_ASSESSED) before `verified_for_recorded_scope`. No empty required set or incomplete coverage qualifies. Reuse success requires the same checks to pass after execution.
+- **L2 (lead), duplicate observations:** identical feature/target values identify candidate duplicates only. A violation needs source-observation identity (`observation_id`) or documented duplication evidence (`known_duplicates`); unresolved equal rows → NOT_ASSESSED `unresolved_duplicate_candidates`. `split.no_exact_duplicate_across_partitions` is replaced by `split.no_shared_source_observation`. A clean fixture with independently observed identical-valued rows must not receive a violation.
+- **T-01 definition:**
+  - **Scope:** trusted repo-authored synthetic fixtures; `unseen_group`; split/group integrity; bounded fit provenance; prediction-ID matching; evidence JSON; deterministic outcome derivation.
+  - **Excluded:** model calls, generated-code execution, hosted deployment, any Docker prerequisite.
+  - **Clean outcome:** the clean fixture reaches `NO_VIOLATION_FOUND` only when all its required assertions are implemented and pass. Truthful dependence declarations are never removed to get that outcome.
+  - **Expected statuses** are recorded per assertion in TASKS.md. All tests are planned, not run.
+- **Assertion-ID changes (`policy-v0` → `policy-v1`):**
+  - Renamed: `fit.rows_subset_of_fold_train` → `fit.state_dependencies_within_fold_train`; `split.no_exact_duplicate_across_partitions` → `split.no_shared_source_observation`; `split.no_overlapping_windows_across_partitions` → `split.no_window_overlap`; `split.temporal_dependence_respected` → `split.temporal_separation`.
+  - Replaced: `split.chronological_order`, `temporal.label_horizon_respected` and `temporal.features_available_at_prediction_time` → `temporal.training_labels_available_by_cutoff`, `temporal.cutoff_precedes_evaluation`, `temporal.features_available_when_used`.
+  - Added: `split.sampling_unit_disjoint`, `split.repeated_measures_rule`, `split.class_support` (descriptive).
+  - The five-check product scope is unchanged.
+

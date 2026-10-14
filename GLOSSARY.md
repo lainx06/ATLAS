@@ -62,7 +62,7 @@ A run-level outcome: the claim type or project falls outside V1's supported scop
 _Avoid_: unsupported check, N/A
 
 **NOT_ASSESSED**:
-A check-level status: the check applies to a supported claim, but the evidence needed to decide it is missing or uninstrumented.
+A check-level status: the check applies to a supported claim, but it could not be decided. It always carries a specific reason, such as an unimplemented assertion, missing metadata, or unknown ancestry.
 _Avoid_: skipped, unknown, pass-by-default
 
 ## Projects and evidence
@@ -72,18 +72,65 @@ A project that supplies a table, a manifest, and an evaluation script using the 
 _Avoid_: compatible repo, any sklearn project
 
 **Supported operation**:
-An estimator, transformer, or adapter operation on ATLAS's enumerated, tested list, for which row identity and fit inputs can be recorded.
+An estimator, transformer, or adapter operation on ATLAS's enumerated, tested list, for which identity, ancestry, and fitted-state dependencies can be recorded.
+
+**Supported path**:
+The bounded route from adapter-loaded data, through supported operations and supported row selection, to recorded predictions. Only this route can provide complete coverage.
+_Avoid_: pipeline (when the observed route is meant)
+
+**Row identity**:
+Which rows of the supplied table a piece of data corresponds to. A valid row index establishes row identity, not ancestry.
+_Avoid_: lineage (when only identity is meant)
+
+**Ancestry**:
+The recorded chain of supported operations and inputs that produced a piece of data. Data without recorded ancestry is untraced, even if its row identity is valid.
+_Avoid_: provenance (loosely), history
 
 **Lineage**:
-The verified correspondence between rows of the original table and the rows an operation received or produced.
+The verified correspondence between the rows an operation received and the rows it produced.
 _Avoid_: index, row order
 
-**Fit trace**:
-The record of which rows, and whether labels, were supplied to a supported fit operation.
-_Avoid_: log, provenance (when a single record is meant)
+**Fitted state**:
+What a supported operation learned in one fit. Each new fit creates a new version.
+_Avoid_: model (for transformers), weights
+
+**State dependency**:
+The set of training rows that contributed to a fitted state, directly or through fitted states upstream of its input.
+_Avoid_: fit rows (when upstream contributions are meant)
+
+**Use event**:
+One application of a fitted state (a transform or a prediction) within a fold. Contamination is judged where a state is used, not where it was fitted.
+
+**Coverage gap**:
+Any part of the evaluated path that ATLAS could not trace: unexplained mutation, reconstructed data, an unsupported operation, or missing prediction ancestry. It yields NOT_ASSESSED, never PASS.
+_Avoid_: minor gap, warning
 
 **Labels supplied / labels used**:
 Labels supplied were passed to a fit operation; labels used were demonstrably consumed by a known supervised component. Supplied does not imply used.
+
+**Source observation**:
+The real-world measurement a row records. Two rows share a source observation only when declared identity or documented duplication evidence says so.
+_Avoid_: duplicate row
+
+**Duplicate candidate**:
+A pair of rows with identical feature and target values. Equality alone does not establish a shared source observation.
+_Avoid_: duplicate, leaked row
+
+**Source stream**:
+The continuous recording that windows are cut from. Windows can overlap only within the same stream, and stream identity is never guessed.
+
+**Window interval**:
+A window's span as a half-open interval [start, end). Two windows overlap when they share a positive span in the same stream.
+
+**Containment evidence**:
+Documented or table-derived evidence that every instance of one unit (for example, a stream or a repeated-measures unit) lies within a single group.
+
+**Separation rule**:
+A declared minimum separation in time between training and evaluation data. Checking it verifies the rule, not statistical independence.
+_Avoid_: independence test
+
+**Class support**:
+The classes present in each fold's partitions. Missing class support is reported; it is not a split violation.
 
 **Static suspicion**:
 A pattern noticed by reading code without observing its execution. It never changes a check status or run outcome.
@@ -97,6 +144,27 @@ _Avoid_: test set (ambiguous)
 Data whose labels are held only by the trusted evaluator and never reach candidate code, mounts, or model prompts.
 _Avoid_: test set (ambiguous), validation set
 
+## Time (future_time)
+
+**Time basis**:
+The declared time unit and documented reference time that all temporal values in a project use.
+
+**Prediction time**:
+The moment a prediction for a row would be made in deployment.
+
+**Feature availability**:
+The moment a feature value becomes known, given as a timestamp or an offset from prediction time.
+
+**Label availability**:
+The moment a row's label becomes known, including its horizon and any reporting delay.
+
+**Training cutoff**:
+The latest moment whose information a fold's training may use. Training labels must be available by it.
+_Avoid_: split date (loosely)
+
+**Gap**:
+A declared, nonnegative interval between a fold's training cutoff and its earliest evaluation prediction.
+
 ## Revisions and memory
 
 **Candidate**:
@@ -108,11 +176,11 @@ The user's explicit consent to execute one exact candidate in isolation, bound t
 _Avoid_: confirmation, sign-off
 
 **Procedure**:
-A saved, validated evaluation workflow with machine-checked prerequisites, offered to the agent as optional guidance.
+A saved evaluation workflow, offered to the agent as optional guidance. It is verified for its recorded scope only when every applicable required assertion of the corrected evaluation has a valid PASS.
 _Avoid_: skill, memory (as a noun for one record), template
 
 **Reuse**:
-Applying a procedure after its prerequisites are re-checked and its assertions re-executed on the new project. A fresh repair attempt after a rejected reuse is not reuse.
+Applying a procedure after its prerequisites are re-checked and the full required set is re-executed on the new project with valid PASSes. A claim-type mismatch rejects reuse. A fresh repair attempt after a rejected reuse is not reuse.
 
 **Audit mode**:
 The deterministic, model-free mode that detects and reports but never repairs.
@@ -129,4 +197,16 @@ _Avoid_: final run, attempt
 
 **Retired case**:
 A held-out case whose specific findings guided fixes or prompt changes. It no longer supports an untouched-holdout claim.
+
+## Scoring
+
+**Canonical assertion ID**:
+The stable identifier of one assertion in the evaluation policy (for example, `split.no_group_overlap`), used as the unit for scoring findings.
+
+**Expected violated assertions**:
+The assertion IDs a labeled case is designed to violate, fixed before measurement.
+_Avoid_: answer (loosely), ground truth (for the whole case)
+
+**False-violation run rate**:
+The share of runs on clean cases whose outcome is VIOLATION_FOUND.
 

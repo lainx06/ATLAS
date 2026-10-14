@@ -2,8 +2,8 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 8 prepared, not started. The review packet `handoffs/science-01.md` is ready for Gemini. docs/PRD.md and docs/SPEC.md are **pending scientific review**; the design is **not accepted**. No implementation.
-CHECKPOINT: "Draft requirements and prepare scientific review" committed locally on `main` (parent `6c06d5e`). Not pushed; no remote configured.
+CURRENT STEP: Start Here Step 8 complete: scientific-review dispositions recorded (DECISIONS.md F1–F5, L1–L2) and applied to SPEC (`policy-v1`), PRD, GLOSSARY, ADR 0001 and TASKS. T-01 is defined and ready. Step 9 not started; no implementation.
+CHECKPOINT: "Resolve scientific review and prepare T-01" committed locally on `main` (parent `698ffd8`). Not pushed; no remote configured.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -16,12 +16,14 @@ LAST UPDATED: 2026-10-14
 - Claude Code native discovery of the 5 model-invocable skills, and native loading of `code-review-and-quality` with its `../../references/security-checklist.md`: verified (the first attempt said `Unknown skill`; discovery caught up later in the same session, and one retry succeeded). No restart needed.
 - `/setup-matt-pocock-skills`: invoked successfully by the user from the `/` menu (discovery + invocation verified). Configuration written and verified: `docs/agents/issue-tracker.md` (local files: specs in `docs/`; index and Section 24 task entries in `TASKS.md`; `handoffs/` only for Section 19 transfers), `docs/agents/domain.md` (single-context; ADR policy), `## Agent skills` block appended to AGENTS.md. Upstream skill files unchanged (`sync_skills.py --check` problems 0); ruff exit 0. Details: docs/TOOLING.md "Matt skill configuration".
 - Step 7 interview: the `grill-with-docs` wrapper was followed manually (it arrived as pasted text, not a slash invocation); its companions `grilling` and `domain-modeling` loaded natively. Decisions Q1–Q6 are in DECISIONS.md. Documents are drafts, verified only for formatting (`ruff format --check .` exit 0) and internal references; nothing in them is implemented.
+- Step 8: Gemini reviewed `handoffs/science-01.md` (preserved unchanged as the reviewed snapshot). The lead's dispositions are applied. Documentation and reference checks only; no tests exist.
 
 ## What does not exist yet
 - **No tests.** `uv run --locked pytest -q` → "no tests ran", exit 5. Nothing has been tested.
 - No application code. `src/atlas/` holds only a package docstring. No `atlas` CLI entry point.
 - Everything in docs/PRD.md and docs/SPEC.md is **planned, not implemented**: checks, adapter/recorder, policy, evaluator, runner, agent, procedures, UI, benchmarks, hosting.
-- Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` now exists, holding only the Step 8 packet.)
+- Planned paths not created yet, by design: `docs/specs/`, `benchmarks/`, `tests/`, `runs/`. (`handoffs/` holds only the Step 8 packet.)
+- T-01's acceptance scenarios and expected statuses (TASKS.md) are **planned tests**; none has run.
 - No `.env` created and no API key requested or read.
 - No Nebius call made. Docker is not on PATH (isolation not available; trusted fixtures only).
 
@@ -41,10 +43,9 @@ LAST UPDATED: 2026-10-14
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
 ## Next task
-1. User: open Gemini (Argon High), attach `handoffs/science-01.md`, `docs/SPEC.md` and `GLOSSARY.md`, and paste the Start Here Step 8 prompt. Return Gemini's exact findings to the lead.
-2. The lead records an accepted/rejected/deferred disposition for each finding in DECISIONS.md. Claude then updates SPEC/PRD/TASKS (including T-01's scoped-versus-INCONCLUSIVE clean outcome) and clears the "pending scientific review" status only after that.
-3. Then T-01 (first deterministic slice), blocked on S-08.
+1. **Start Here Step 9, T-01 implementation:** Claude Code, Opus 5.5 high (TASKS.md T-01: trusted synthetic fixtures, `unseen_group`, split/group integrity, bounded fit provenance, prediction IDs, evidence JSON, outcome derivation; scenarios 1–10c with expected assertion statuses; mutation checks m1–m3).
+2. Then a local Codex review of the T-01 diff and evidence (Start Here Step 9 prompt). Codex setup and its skill-discovery check happen at that point.
 
 ## Unresolved questions
-- Scientific questions for Step 8: the five in `handoffs/science-01.md` (mirroring docs/SPEC.md §14, including the T-01 outcome-policy question). SPEC §6 does not yet define handling of required-but-unimplemented assertions.
+- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".

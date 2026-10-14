@@ -8,10 +8,10 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | --- | --- | --- | --- |
 | S-05 | 5 | Done (`7a0f155`) | Git, uv/Python 3.11 env, locked deps, shared state files, import check |
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
-| S-07 | 7 | Done (uncommitted draft) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
-| S-08 | 8 | Next | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions |
-| T-01 | 9 | Proposed; blocked on S-08 | First deterministic slice: fixtures, split + fit-provenance checks, outcome derivation, evidence JSON |
-| T-02 | 11 | Proposed | Independent metrics, baselines, temporal checks, remaining policy-v0 assertions |
+| S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
+| S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
+| T-01 | 9 | Next (ready; not started) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | Proposed | Isolated runner and hash-bound candidate approval |
@@ -32,6 +32,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **MODEL / EFFORT:** Claude Opus 5.5 high (packet); Gemini 4 Argon High (review), selected in Gemini's own picker.
 - **READ FIRST:** `PROJECT_BRIEF.md`, `docs/PRD.md`, `docs/SPEC.md` (§5, §6, §14), `DECISIONS.md` (Q1–Q6).
 - **INPUT STATE:** S-07 committed; no implementation.
+- **RESULT (2026-10-14):** done. Dispositions F1–F5 (Gemini) and L1–L2 (lead) are recorded in DECISIONS.md and applied to SPEC/PRD/GLOSSARY/ADR 0001 and T-01. The packet is preserved unchanged as the reviewed snapshot.
 - **CHANGE:** create `handoffs/science-01.md` (brief, evaluation design, benchmark definitions, the five priority questions from SPEC §14). No secrets, labels or answer keys.
 - **ACCEPTANCE:** every Gemini finding has an accepted/rejected/deferred disposition in DECISIONS.md, and T-01 is updated to match. The first build task is unambiguous.
 - **RUN:** none (document task).
@@ -40,63 +41,92 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **RECOVERY:** if a finding needs a design change, update SPEC/PRD and DECISIONS.md before T-01 starts.
 
 ### T-01 First deterministic slice (Start Here Step 9)
-- **OWNER:** Claude Code (writer). Codex reviews.
-- **MODEL DECISION:** STAY on Opus High. Evaluator and provenance logic is core scientific code.
+- **OWNER:** Claude Code (writer). Local Codex reviews afterwards.
+- **MODEL DECISION:** STAY on Opus High. Provenance and outcome logic is core scientific code.
 - **MODEL / EFFORT:** Claude Opus 5.5, high (`/model`, `/effort` in Claude Code).
-- **READ FIRST:** `AGENTS.md`, `STATUS.md`, `docs/SPEC.md` §3–§8 and §10 (fixture rule), `GLOSSARY.md`, S-08 dispositions.
-- **INPUT STATE:** S-08 dispositions recorded, especially the recorder design and bypass tests (SPEC §14.1). No Docker required: only repo-authored trusted fixtures run, in a host subprocess, under the fixture hash allowlist. No candidate or generated code.
+- **READ FIRST:** `AGENTS.md`, `STATUS.md`, `docs/SPEC.md` §3–§7 and §10 (fixture rule), `GLOSSARY.md`, DECISIONS.md "Step 8 scientific review dispositions".
+- **INPUT STATE:** Step 8 dispositions recorded (F1–F5, L1–L2). Only trusted, repo-authored synthetic fixtures run, in a host subprocess under the fixture hash allowlist (SPEC §10). Excluded: model calls, generated or candidate code, hosted deployment, and any Docker prerequisite.
 - **CHANGE (owned paths):**
   - `src/atlas/contracts.py`, `src/atlas/adapter.py`, `src/atlas/recorder.py`, `src/atlas/checks/split_integrity.py`, `src/atlas/checks/fit_provenance.py`, `src/atlas/checks/metric_ids.py`, `src/atlas/policy.py`, `src/atlas/reports.py`, `src/atlas/runner/trusted.py`, `src/atlas/cli.py`;
-  - `benchmarks/sensor_generalization/` (seeded synthetic faulty fixture), `benchmarks/clean_control/`, `benchmarks/unsupported/`;
+  - `benchmarks/t01/` (fixture projects, each with its manifest and a README recording generator seed and settings);
   - `tests/unit/`, `tests/integration/`.
 
-  Scope:
-  - **Policy:** policy-v0 assertions for `unseen_group` only: `split.no_row_overlap`, `split.no_exact_duplicate_across_partitions`, `split.no_group_overlap`, `fit.rows_subset_of_fold_train`, `fit.coverage_complete`, `metric.prediction_ids_match_eval_ids`.
-  - **Recorder:** supported operations per SPEC §4.2, recorder per §4.3.
-  - **Outcomes and output:** run-outcome derivation per §6, and the evidence JSON per §7.
-  - **Limits:** no model calls, no UI, no temporal checks.
-- **ACCEPTANCE (observed by running):**
-  1. **Faulty fixture** (random-row split and global `SelectKBest(f_classif)` on all rows; claim `unseen_group`):
-     - `split.no_group_overlap` FAIL;
-     - `fit.rows_subset_of_fold_train` FAIL, with the trace showing `labels_used=true` for `SelectKBest`;
-     - run outcome `VIOLATION_FOUND`.
-  2. **Clean fixture** (`GroupKFold`, `Pipeline` fit per fold):
-     - all implemented assertions PASS with stated coverage;
-     - the run outcome follows the S-08 disposition on scoped versus full-policy outcomes (SPEC §14 item 1);
-     - any policy-required assertion not implemented in T-01 is shown, never omitted or reported as passed.
-  3. **Unsupported cases:**
-     - (a) An adapter project whose fit receives a NumPy array → unattributable fit → `fit.coverage_complete` NOT_ASSESSED → `INCONCLUSIVE`.
-     - (b) A combined unseen-group-plus-future-time claim → `NOT_SUPPORTED`.
-  4. **Negative tests:**
-     - a lineage break (reset index) never PASSes;
-     - a missing `group_id` under `unseen_group` gives NOT_ASSESSED, not not-applicable;
-     - an empty or unassessed required set never yields `NO_VIOLATION_FOUND`;
-     - a FAIL whose evidence hash is corrupted becomes ERROR → `INCONCLUSIVE`;
-     - `y` supplied to `StandardScaler` gives `labels_supplied=true`, `labels_used=false`;
-     - the S-08 bypass tests.
-  5. **Mutation check** (review skill): inverting the subset test or the group-overlap test makes at least one test fail.
+  **Scope:**
+  - Claim type `unseen_group` only.
+  - Policy `policy-v1` is loaded in full. These assertions are implemented: `split.no_row_overlap`, `split.no_shared_source_observation`, `split.no_group_overlap`, `split.sampling_unit_disjoint`, `split.repeated_measures_rule` (unit/group/containment rules only), `fit.state_dependencies_within_fold_train`, `fit.coverage_complete`, `metric.prediction_ids_match_eval_ids`.
+  - Also in scope: the bounded supported path and recorder (SPEC §4); scheduling and materialization of every other applicable required assertion as NOT_ASSESSED with a reason (SPEC §6); outcome derivation; evidence JSON (SPEC §7).
+- **Fixture declarations:** truthful, never trimmed to reach an outcome.
+  - Base fixtures: claim `unseen_group`; `group_id` = `unit_id` = subject; `sampling_unit` = subject; dependence `repeated_measures(subject_id)` and `repeated_measures(session_id)` (sessions nested in subjects); `observation_id` declared.
+  - The generator writes non-overlapping window rows, so `overlapping_windows` is not declared on base fixtures.
+  - For the base declarations, the full required set is exactly the eight implemented assertions. So a clean base fixture may reach `NO_VIOLATION_FOUND` only if all eight are implemented and pass.
+- **ACCEPTANCE:** expected assertion statuses per scenario. These are **planned tests**; nothing is passing until they run.
+
+  Columns: RO `no_row_overlap`, SO `no_shared_source_observation`, GO `no_group_overlap`, SU `sampling_unit_disjoint`, RM `repeated_measures_rule`, SD `state_dependencies_within_fold_train`, CC `coverage_complete`, PI `prediction_ids_match_eval_ids`. NA(reason) = NOT_ASSESSED with that reason.
+
+  | # | Scenario | RO | SO | GO | SU | RM | SD | CC | PI | Other | Outcome |
+  | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+  | 1 | Faulty: random-row split + global `SelectKBest(f_classif)` fit on all rows, used in every fold | PASS | PASS | FAIL | FAIL | FAIL (via GO) | FAIL (labels_used=true) | PASS | PASS | — | VIOLATION_FOUND |
+  | 2 | Clean: `GroupKFold`, `take`, `Pipeline` fit per fold, fully observed | PASS | PASS | PASS | PASS | PASS (via GO, session⊂subject containment) | PASS | PASS | PASS | — | NO_VIOLATION_FOUND |
+  | 3a | Unknown ancestry: like 2, but the training frame is rebuilt with the same valid index before fitting | PASS | PASS | PASS | PASS | PASS | NA(unknown_ancestry) | NA(coverage_gap) | PASS | — | INCONCLUSIVE |
+  | 3b | Unexplained mutation: like 2, but a tracked frame is modified in place | PASS | PASS | PASS | PASS | PASS | NA(unknown_ancestry) | NA(coverage_gap) | PASS | — | INCONCLUSIVE |
+  | 4 | Zero fit: predictions written without any observed supported classifier fit | PASS | PASS | PASS | PASS | PASS | NA(zero_fit) | NA(zero_fit) | PASS | — | INCONCLUSIVE |
+  | 5a | Contaminated reuse: a grouped split, but a selector fitted on fold 1's training rows (which include fold 2's eval subjects) is reused in fold 2 | PASS | PASS | PASS | PASS | PASS | FAIL (fold 2) | PASS | PASS | — | VIOLATION_FOUND |
+  | 5b | Benign reuse: one instance fitted only on subjects that are in every fold's training set, reused across folds | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | — | NO_VIOLATION_FOUND |
+  | 6 | Missing metadata: like 2, but the manifest omits `group_id` and `unit_id` | PASS | PASS | NA(missing_metadata) | NA(missing_metadata) | NA(missing_metadata) | PASS | PASS | PASS | — | INCONCLUSIVE |
+  | 7 | Unimplemented required assertion: like 2, plus a truthful `overlapping_windows` declaration with `stream_id` and bounds | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | `split.no_window_overlap` NA(unimplemented_assertion) | INCONCLUSIVE |
+  | 8a | Unsupported claim: combined unseen-group-plus-future-time | — | — | — | — | — | — | — | — | no checks judged | NOT_SUPPORTED |
+  | 8b | Entry point does not use the adapter | — | — | — | — | — | — | — | — | static suspicions only | NOT_SUPPORTED |
+  | 9a | Corrupted evidence plus an independent valid FAIL: scenario 1 with the provenance artifact's hash broken | PASS | PASS | FAIL | FAIL | FAIL | ERROR | ERROR | PASS | incomplete coverage displayed | VIOLATION_FOUND |
+  | 9b | Corrupted evidence alone: scenario 2 with the provenance artifact's hash broken | PASS | PASS | PASS | PASS | PASS | ERROR | ERROR | PASS | incomplete coverage displayed | INCONCLUSIVE |
+  | 10a | Identical-valued independent observations: like 2, with equal feature+target rows across partitions and distinct `observation_id` | PASS | PASS (candidates reported) | PASS | PASS | PASS | PASS | PASS | PASS | — | NO_VIOLATION_FOUND |
+  | 10b | As 10a, but no `observation_id` and no `known_duplicates` | PASS | NA(unresolved_duplicate_candidates) | PASS | PASS | PASS | PASS | PASS | PASS | — | INCONCLUSIVE |
+  | 10c | As 10b, plus `known_duplicates` documenting one cross-partition pair | PASS | FAIL | PASS | PASS | PASS | PASS | PASS | PASS | — | VIOLATION_FOUND |
+
+  Further acceptance points:
+  - Every assertion records which artifacts it depends on. A broken artifact makes exactly its dependent assertions ERROR (9a, 9b), and leaves independent valid results intact.
+  - Every run lists every applicable required assertion; none is omitted.
+  - NOT_ASSESSED always carries its reason, and no FAIL is invented from unknown ancestry.
+  - **Mutation check** (each mutation applied to a copy, then restored; each must make at least one scenario test fail):
+    - (m1) the dependency check uses the fold where a state was *fitted* instead of where it was *used*; caught by 5a;
+    - (m2) group overlap compares row IDs instead of group IDs; caught by 1;
+    - (m3) a valid index is accepted as ancestry; caught by 3a.
 - **RUN:**
   - *(existing)* `uv run --locked ruff check .`
   - *(existing)* `uv run --locked ruff format --check .`
-  - *(create)* `uv run --locked pytest tests/unit tests/integration -q` (must collect and pass)
-  - *(create)* `uv run --locked python -m atlas.cli audit benchmarks/sensor_generalization --mode audit` and the same for `benchmarks/clean_control` and `benchmarks/unsupported/*`
-- **EVIDENCE:** `runs/<run_id>/` outcome and check JSON for each fixture, with hashes recorded in STATUS.md; the pytest output; the mutation-check log.
-- **HANDOFF:** Codex review of the diff and evidence (Start Here Step 9 prompt). No browser packet.
-- **RECOVERY:** preserve the failing fixture and output. Two focused repair rounds, then diagnosis by Codex.
+  - *(create)* `uv run --locked pytest tests/unit tests/integration -q`. It must collect the scenario tests above and pass; exit 5 (no tests collected) is a failure.
+  - *(create)* `uv run --locked python -m atlas.cli audit benchmarks/t01/<scenario> --mode audit` for at least scenarios 1, 2 and 7.
+  - *(create)* a recorded mutation-check procedure (script or documented commands) producing a log for m1–m3.
+- **EVIDENCE:** `runs/<run_id>/` outcome and check JSON for scenarios 1, 2 and 7 (hashes recorded in STATUS.md); the pytest output; the mutation-check log; fixture generator settings in `benchmarks/t01/README.md`.
+- **HANDOFF:** a local Codex review of the diff and evidence (Start Here Step 9 prompt). No browser packet.
+- **RECOVERY:** preserve the failing fixture and output. Two focused repair rounds, then diagnosis by Codex. Never edit an expected status to make a test pass without recording the reason in DECISIONS.md.
 
-### T-02 Independent metrics, baselines, temporal checks
+### T-02 Independent metrics, conditional split rules, temporal checks
 - **OWNER:** Claude Code (writer); Codex reviews.
 - **MODEL DECISION:** STAY. Evaluator logic is core scientific code.
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex Extra high for the review if offered.
-- **READ FIRST:** SPEC §5, §6, §8; T-01 evidence; S-08 dispositions on temporal and `same_population` assertions.
-- **INPUT STATE:** T-01 accepted and committed.
-- **CHANGE:** `src/atlas/checks/{independent_metrics,temporal}.py`, `src/atlas/evaluator.py`, the remaining policy-v0 assertions for all three claim types (the R* rows stay NOT_ASSESSED until S-08 defines them), and fixtures for `future_time` and `same_population`.
-- **ACCEPTANCE:**
-  - recomputed balanced accuracy/macro-F1 match a hand-computed fixture;
-  - the dummy baseline is reported on identical partitions;
-  - a post-prediction feature yields `temporal.features_available_at_prediction_time` FAIL;
-  - `same_population` with declared overlapping windows but no window bounds gives NOT_ASSESSED;
-  - the evaluator runs outside the candidate process and reads its own label copy.
+- **READ FIRST:** SPEC §5, §6, §8; T-01 evidence; DECISIONS.md F3, F5.
+- **INPUT STATE:** T-01 accepted and committed. The lead's decision on any extra repeated-measures rule (SPEC §14) is recorded before acceptance.
+- **CHANGE:**
+  - `src/atlas/checks/{independent_metrics,temporal}.py`, `src/atlas/evaluator.py`;
+  - `split.no_window_overlap` (stream identity, half-open intervals, containment-evidence pass-through);
+  - `split.temporal_separation` (declared rule);
+  - `temporal.training_labels_available_by_cutoff`, `temporal.cutoff_precedes_evaluation`, `temporal.features_available_when_used`;
+  - `metric.reported_matches_recomputed` (canonical metrics; fixed absolute tolerance 1e-6, versioned; nonfinite/out-of-range rejected);
+  - descriptive recomputation, baselines and `split.class_support`;
+  - fixtures for `future_time` and `same_population`.
+- **ACCEPTANCE (planned tests):**
+  - **Metric recomputation:** recomputed balanced accuracy/macro-F1 match a hand-computed fixture; the dummy baseline is reported on identical partitions.
+  - **The `future_time` counterexample:** a training prediction at 100 with label availability 150 and an evaluation prediction at 120 never PASSes. Cutoff 120 → `training_labels_available_by_cutoff` FAIL; cutoff 150 → `cutoff_precedes_evaluation` FAIL; no cutoff → NOT_ASSESSED.
+  - **Feature availability:** a post-prediction feature → `features_available_when_used` FAIL.
+  - **Windows:**
+    - windows `[0,10)` and `[10,20)` in the same stream do not overlap;
+    - `[0,10)` and `[5,15)` do;
+    - a missing `stream_id` → NOT_ASSESSED `missing_metadata`;
+    - a pass via disjoint groups only with recorded containment evidence.
+  - **Temporal separation:** a `temporal_order` declaration without a `separation_rule` → NOT_ASSESSED `no_declared_rule`.
+  - **Reported metrics:** a reported metric off by 2e-6 → FAIL; off by 5e-7 → PASS; NaN → rejected.
+  - **Class support:** missing class support appears in `split.class_support`, never as a split FAIL.
+  - **Trusted evaluator:** runs outside the candidate process and reads its own label copy.
 - **RUN:** *(create)* targeted pytest modules; *(existing)* ruff check/format.
 - **EVIDENCE:** run JSON per fixture; test output.
 - **HANDOFF:** Codex review of the diff and evidence.
@@ -192,45 +222,47 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **OWNER:** Claude Code (writer); Codex reviews; Gemini reviews the evaluation claims.
 - **MODEL DECISION:** STAY on Opus High (memory semantics).
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex High; Gemini Argon High.
-- **READ FIRST:** SPEC §12; playbook §8, §9 (Example two).
+- **READ FIRST:** SPEC §12; playbook §8, §9 (Example two); DECISIONS.md L1.
 - **INPUT STATE:** T-02 accepted; T-05/T-06 for executed reuse.
 - **CHANGE:** `src/atlas/procedures/`, `benchmarks/procedure_transfer/` (Variants A and B).
-- **ACCEPTANCE:**
-  - admission refuses records with ERROR or NOT_ASSESSED required assertions;
-  - Variant A gives `reuse_succeeded`, with the assertions re-executed;
-  - Variant B gives `reuse_rejected`, naming the failed prerequisite;
-  - a fresh attempt after a rejection is recorded separately.
+- **ACCEPTANCE (planned tests):**
+  - **Admission:** refused unless every applicable required assertion has a valid PASS. Refused on an empty required set or incomplete coverage.
+  - **Variant A:** `reuse_succeeded` only when the full required set has valid PASSes after execution.
+  - **Variant B:** `reuse_rejected(claim_mismatch)` before execution. A temporal violation is reported only if its check establishes one.
+  - **After a rejection:** a fresh attempt is recorded separately.
 - **RUN:** *(create)* `uv run --locked python -m atlas.cli procedures check <id> benchmarks/procedure_transfer/variant_b`
 - **EVIDENCE:** run JSON per variant.
 - **HANDOFF:** Codex review; Gemini on claims.
 - **RECOVERY:** two focused repairs, then Codex diagnosis.
 
-### T-09 Real-data example and clean control
-- **OWNER:** Claude Code (writer); Gemini reviews the claims.
+### T-09 Real-data example (UCI HAR) and clean control
+- **OWNER:** Claude Code (writer); Gemini reviews the claims; lead reviews the containment evidence.
 - **MODEL DECISION:** STAY on Opus High (scientific protocol).
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Gemini Argon High.
-- **READ FIRST:** SPEC §14.4 disposition; playbook §9 "Real data and clean controls"; dataset license page (S14).
-- **INPUT STATE:** S-08 answer on UCI HAR; T-02 accepted.
-- **CHANGE:** `benchmarks/real_sensor/` (retrieval script and attribution; no committed raw data unless the license permits); robustness reporting.
-- **ACCEPTANCE:**
-  - license and attribution are recorded;
-  - subject IDs are preserved;
-  - no invented timestamps;
-  - the outcome and its limitations are reported as measured.
+- **READ FIRST:** SPEC §17 "UCI HAR example"; DECISIONS.md F4; the dataset page (https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones).
+- **INPUT STATE:** T-02 accepted.
+- **CHANGE:** `benchmarks/real_sensor/` (retrieval script and CC BY 4.0 attribution; no committed raw data unless the license terms are met and attribution is included); a containment-evidence note; robustness reporting.
+- **ACCEPTANCE (planned):**
+  - **Claim and partitions:** claim `unseen_group` by subject. The official test partition is never used for development or tuning; development uses grouped folds within the training subjects.
+  - **Flawed variant:** any flawed variant is labeled ATLAS-authored.
+  - **Window overlap:** `split.no_window_overlap` PASSes only via recorded containment evidence; otherwise NOT_ASSESSED.
+  - **Temporal assertions:** none claimed.
+  - **Upstream preprocessing:** the report states that provenance begins at the supplied feature table, and that global fitting of upstream normalization is not established.
 - **RUN:** *(create)* the retrieval and audit commands.
-- **EVIDENCE:** run JSON; the limitations section.
+- **EVIDENCE:** run JSON; the limitations section; the attribution text.
 - **HANDOFF:** Gemini review of the claims.
 - **RECOVERY:** if the dataset is unsuitable, document why and pick the next licensed candidate with the lead.
 
 ### T-10 Held-out cases and campaign protocol (Q6)
-- **OWNER:** Codex (separate session, outside this repo) authors and validates the cases. Claude writes only the predeclared campaign protocol and never receives case contents, answer keys or case-specific feedback.
+- **OWNER:** Codex (separate session, outside this repo) authors and validates the cases and their expected violated assertion IDs. Claude writes only the predeclared campaign protocol and never receives case contents, answer keys or case-specific feedback.
 - **MODEL DECISION:** SWITCH for case authoring (Codex, separate session). Claude stays Opus High for the protocol text.
 - **MODEL / EFFORT:** Codex High (authoring); Claude Opus 5.5 high (protocol).
-- **READ FIRST:** DECISIONS.md Q6; SPEC §8; playbook §9.
+- **READ FIRST:** DECISIONS.md Q6, F5; SPEC §8, §17.
 - **INPUT STATE:** adapter and policy versions frozen enough to state in the freeze record (after T-02).
-- **CHANGE (this repo):** `docs/EVALUATION.md` campaign protocol: model and settings, budgets, repetitions, infrastructure-failure handling, reporting of all results.
+- **CHANGE (this repo):** `docs/EVALUATION.md` campaign protocol: model and settings, budgets, repetitions, infrastructure-failure handling, scoring (SPEC §17), and reporting of all results.
 - **ACCEPTANCE:**
-  - the hashes, contract/evaluator versions and freeze date are recorded in DECISIONS.md before any use;
+  - the hashes, contract/evaluator/policy versions and freeze date are recorded in DECISIONS.md before any use;
+  - expected violated assertion IDs are fixed before measurement;
   - the protocol is committed before results are revealed.
 - **RUN:** none in this repo until the campaign.
 - **EVIDENCE:** freeze record.
@@ -241,14 +273,15 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **OWNER:** Claude Code (writer); Gemini reviews the claims.
 - **MODEL DECISION:** STAY on Opus High (evaluation design).
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Gemini Argon High.
-- **READ FIRST:** DECISIONS.md Q4; PRD "Benchmarks"; playbook §9 "Measuring agent value".
-- **INPUT STATE:** T-06 and T-08 accepted; prices verified (T-04/T-03).
+- **READ FIRST:** DECISIONS.md Q4, F5; SPEC §17; playbook §9 "Measuring agent value".
+- **INPUT STATE:** T-06 and T-08 accepted; prices verified (T-04/T-03); expected violated assertions defined.
 - **CHANGE:** `evaluation/` harness for `audit` / `agent` / `agent+memory`, with matched inputs, policy, tools, model settings and budgets, randomized order and recorded cache state.
 - **ACCEPTANCE:**
-  - three paired repetitions on Variant A;
-  - detection quality reported across all modes, and repair success and token use across the agent modes;
-  - procedure-creation cost reported separately;
-  - results reported as descriptive.
+  - the procedure store is frozen and its hash recorded before the first repetition;
+  - three paired repetitions on Variant A, each with fresh run state and no admissions in between;
+  - TP/FP/FN per canonical assertion ID, coverage gaps and errors reported; precision/recall undefined when a denominator is zero;
+  - repair success and token use reported across the agent modes, and procedure-creation cost separately;
+  - all scheduled trials reported; results described as descriptive.
 - **RUN:** *(create)* `uv run --locked python -m atlas.cli evaluate --suite comparison`
 - **EVIDENCE:** results table plus raw logs.
 - **HANDOFF:** Gemini review of the claims.
