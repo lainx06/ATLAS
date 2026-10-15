@@ -3,10 +3,10 @@
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
 CURRENT STEP: Start Here Step 10.
-- **T-04 (Nebius):** the placeholder `.env` is ready and git-ignored. **Credits have not arrived**: the hackathon credit form is submitted and the Builder Program application is pending, so no paid API calls are made.
+- **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **All four T-04 acceptance criteria are demonstrated; awaiting user acceptance** (TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
 - **T-05 prerequisites:** Docker prerequisites checked read-only (see "Docker prerequisites"). Docker and WSL 2 are not installed; nothing was installed or changed.
 - T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `main` tracks `origin/main` at `35dbb63` (verified: `git ls-remote origin refs/heads/main` equals local HEAD; remote refs are only `HEAD` and `refs/heads/main`). This STATUS update is a local commit on top of `35dbb63` and is not pushed.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, and the T-04 commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -39,9 +39,9 @@ LAST UPDATED: 2026-10-14
 - Not implemented: T-02 assertions (windows, temporal separation, `future_time`, reported-metric comparison, metric recomputation and baselines); `load_holdout_features()`; isolated runner (Docker); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. These are materialized as NOT_ASSESSED `unimplemented_assertion` where policy requires them.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` holds only the Step 8 packet.)
-- No `.env` created and no API key requested or read.
+- Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. No production model client, schemas or agent loop (T-06); diagnosis, tool-use and repair quality untested.
 - No completed independent verification of the T-01 repairs yet. T-01 is not accepted.
-- No Nebius call made. Docker is not on PATH (isolation not available; trusted fixtures only).
+- Docker is not on PATH (isolation not available; trusted fixtures only).
 
 ## Commands executed in setup
 1. `git init -b main`
@@ -56,7 +56,7 @@ LAST UPDATED: 2026-10-14
 9. T-01: TDD cycles with `uv run --locked pytest tests/unit/<file> -q` (RED then GREEN per module); `uv run --locked python benchmarks/t01/generate.py`; `uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01`; full suite; `scripts/mutation_check.py`; CLI audits of s01/s02/s07; ruff check/format; `sync_skills.py --check`.
 
 ## Blockers
-- **Nebius credits (external, 2026-10-14):** not yet received. The hackathon credit form is submitted; the Builder Program application is pending. **No paid API calls** until credits are confirmed. T-04 also waits for the user to enter `NEBIUS_API_KEY` in the local `.env`.
+- **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** WSL 2 and Docker are not installed (read-only check 2026-10-14). The first action is user-run `wsl --install`, which needs administrator rights and a restart.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
@@ -64,10 +64,26 @@ LAST UPDATED: 2026-10-14
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
 ## Nebius configuration (Step 10 preparation, 2026-10-14)
-- **Contract:** `.env.example` and SPEC §11. The key goes in variable `NEBIUS_API_KEY`, in the git-ignored file `.env` at the repository root (loaded with `python-dotenv`). Base URL `NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/`. `ATLAS_MODEL_PRIMARY` stays a placeholder until an authenticated `GET /models` verifies an NVIDIA model ID. `ATLAS_MODEL_MODE=fixture` until live access is verified.
+- **Contract:** `.env.example` and SPEC §11. The key goes in variable `NEBIUS_API_KEY`, in the git-ignored file `.env` at the repository root (loaded with `python-dotenv`). Base URL `NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/`. `ATLAS_MODEL_PRIMARY=nvidia/nemotron-3-super-120b-a12b` in the local `.env` (verified by `GET /models`; set 2026-10-14 by a one-line in-place edit that left the key and the other 3 settings unchanged, checked by value/hash comparison without printing). `ATLAS_MODEL_MODE=fixture` until the T-06 client exists.
 - **`.env`:** created from `.env.example` (byte-identical: placeholders only). `git check-ignore -v .env` → `.gitignore:2:.env`; it is not tracked and does not appear in `git status`. Its contents are never printed by the builder.
 - **Key source (official docs, checked 2026-10-14):** a Nebius **Token Factory** API key, from https://tokenfactory.nebius.com/project/api-keys ("Create API key" → name → "Create"; shown once). Sent as `Authorization: Bearer <key>` to the base URL above. This is not a Nebius AI Cloud IAM service-account key.
-- **Not done:** no API call, no model selection, no Docker.
+- **Done since:** model list, model selection and two smoke calls (below). No Docker.
+
+## Nebius smoke (prepared 2026-10-14; two calls run 2026-10-15 UTC)
+- **Key:** `NEBIUS_API_KEY` present in `.env`, not the placeholder, no stray whitespace/quotes (checked with `dotenv_values`; value not printed).
+- **`GET /models?verbose=true`** (free; HTTP 200, request ID `c96ab955d91408a5fd680317da6e5d0e`): 25 models; NVIDIA: `nvidia/nemotron-3-super-120b-a12b`, `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, `nvidia/Nemotron-3_5-Lightning`, `nvidia/Nemotron-3-Ultra-550b-a55b`. Archived as `runs/nebius_smoke/models-verbose-20261014.json` (git-ignored; checked free of the key).
+- **Initial model (decided; DECISIONS.md):** `nvidia/nemotron-3-super-120b-a12b`: $0.30 / $0.90 per 1M input / output tokens, $0 per request, context 262,144, 200k TPM / 300 RPM, features `tools`, `reasoning`.
+- **No NVIDIA model lists `json_mode` or `structured_outputs`** in `supported_features` (other models do). T-04's "structured-output call" and SPEC §11 need prompt-instructed JSON + Pydantic validation (or tools); decided: prompt-requested JSON + strict Pydantic validation (DECISIONS.md "Initial model and response approach").
+- **Output limit:** the Nebius API reference documents `max_completion_tokens` as "an upper bound for the number of tokens that can be generated for a completion, including visible output tokens and reasoning tokens"; its `max_tokens` text does not say. The script sends only `max_completion_tokens=1024`.
+- **Bound:** 512-token prompt ceiling × $0.30/M + 1,024 × $0.90/M = **$0.001075** (limit $0.01). It relies on the server honoring the documented cap; the script verifies `usage` afterwards.
+- **Script:** `uv run --locked python scripts/nebius_smoke.py [--test text|json]` = dry run (free price re-check, prints request and bound; ran, exit 0). `--execute` sends one `POST /chat/completions` (`max_retries=0`, 60 s timeout, `n=1`, no stream, no tools, no loop) and saves sanitized evidence to `runs/nebius_smoke/`.
+- **Text result** (`--execute`, run once, exit 0; evidence `runs/nebius_smoke/call-20261015T023151Z.json`, git-ignored): HTTP 200, request ID `21e9f6c61d8e720ca44abebf1ea374ea`, 0.703 s, 0 retries. Model `nvidia/nemotron-3-super-120b-a12b`, finish `stop`, content `"\n\nATLAS smoke OK"` (the exact text after two leading newlines). Usage: prompt 32, completion 47 (of which reasoning 39), total 79. Cost from listed prices: **$0.0000519**. Within caps (32 ≤ 512, 47 ≤ 1,024). Reasoning tokens are counted inside `completion_tokens`, so they are billed at the output rate and fall under `max_completion_tokens`.
+- **JSON-validation result** (`--execute --test json`, run once, exit 0; evidence `runs/nebius_smoke/json-20261015T023413Z.json`, git-ignored):
+  - Request: the prompt asks for exactly `{"project":"ATLAS","status":"ok"}` with no Markdown. No `response_format` and no tools are sent; the other caps are the same as the text test (bound $0.001075; prices re-checked live first).
+  - Validation: strict Pydantic `SmokeReply` (`project: Literal["ATLAS"]`, `status: Literal["ok"]`, `extra="forbid"`, `strict=True`) over the whole content after stripping surrounding whitespace only; no extraction from prose, no repair. Checked offline first against 12 good/bad replies (fences, prose, extra field, wrong case, missing field, truncated, array, empty, `None`): all classified as intended.
+  - Response: HTTP 200, request ID `e09ff0092fd1ad16e93c4412490a4247`, 0.687 s, 0 retries; model `nvidia/nemotron-3-super-120b-a12b`; finish `stop`; content `"\n\n{\"project\":\"ATLAS\",\"status\":\"ok\"}"`. **Validation passed.**
+  - Usage: prompt 47, completion 52 (of which reasoning 38), total 99. Cost from listed prices **$0.0000609**. Within caps.
+  - **Classification: application-validated output, not provider-enforced structured output.** Nothing on the provider side constrained the format; one passing call does not show the model always complies.
 
 ## Docker prerequisites (read-only check, 2026-10-14; nothing installed or changed)
 | Item | Observed | How observed |
@@ -103,11 +119,8 @@ LAST UPDATED: 2026-10-14
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **User (private, local):** in VS Code, open `.env` at the repository root and replace `replace_with_local_secret` on the line `NEBIUS_API_KEY=replace_with_local_secret` with a Token Factory API key.
-   - Create the key at https://tokenfactory.nebius.com/project/api-keys; it is shown only once.
-   - Never paste the key into chat, commit it, or put it in any other file.
-2. **Then T-04 (separate go-ahead, after credits are confirmed):** create `scripts/nebius_smoke.py`, list models with an authenticated `GET /models`, make one capped structured-output call, and save sanitized evidence. The key is never printed. `ATLAS_MODEL_PRIMARY` is set only from a verified model ID.
-3. **Docker/isolation (T-05), user action first:** run `wsl --install` in an administrator PowerShell, then restart. Afterwards: verify WSL 2 (read-only), then choose and install the container runtime. The runner is not implemented. T-02 is not started.
+1. **User:** accept T-04 (or request changes). No further Nebius calls are planned before T-06.
+2. **Docker/isolation (T-05), user action first:** run `wsl --install` in an administrator PowerShell, then restart. Afterwards: verify WSL 2 (read-only), then choose and install the container runtime. The runner is not implemented. T-02 is not started.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).

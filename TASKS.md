@@ -13,7 +13,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
-| T-04 | 10 | Preparation done (placeholder `.env`, git-ignored). **Blocked: Nebius credits not yet received** (form submitted; Builder Program pending); no paid calls | Nebius access: model list, capped structured-output smoke call |
+| T-04 | 10 | Credits available, key set. **Acceptance criteria met** (2026-10-14; see entry); awaiting user acceptance. Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | Prerequisites checked (read-only): Docker and WSL 2 absent; first action `wsl --install` (user, admin, restart). Runner not started | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | Proposed | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
@@ -349,6 +349,14 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - one capped structured-output call succeeds and its response is validated;
   - sanitized evidence is saved;
   - the key is never echoed or committed.
+- **RESULT (2026-10-14; calls at 2026-10-15 UTC):** all four criteria demonstrated; awaiting user acceptance. Evidence is local and git-ignored, in `runs/nebius_smoke/`.
+  - [x] `GET /models?verbose=true` (free) listed 25 models, four NVIDIA: `nvidia/nemotron-3-super-120b-a12b`, `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, `nvidia/Nemotron-3_5-Lightning`, `nvidia/Nemotron-3-Ultra-550b-a55b` (`models-verbose-20261014.json`).
+  - [x] One capped JSON call succeeded, and its whole reply passed a strict Pydantic schema (`json-20261015T023413Z.json`). **Qualification:** the JSON was prompt-requested and **application-validated**. It was not provider-enforced structured output, because no NVIDIA model on Nebius advertises it (DECISIONS.md "Initial model and response approach"). A separate text connectivity call also succeeded (`call-20261015T023151Z.json`).
+  - [x] Sanitized evidence saved: the model list and both call records. Each was checked to be free of the key before it was written.
+  - [x] The key was never echoed: it was checked only as booleans and hashes. Committed: no (`.env` is ignored and untracked); the staged files and full history were scanned for the key value before the T-04 commit.
+  - Handoff done: model ID and response approach recorded in DECISIONS.md; `ATLAS_MODEL_PRIMARY` set in the local `.env`; STATUS.md updated.
+  - **Outside T-04 (not done, by design):** `ATLAS_MODEL_MODE` stays `fixture` until the T-06 client exists. Diagnosis, tool use and repair quality are untested. The validation path has no unit test (it lives in the script; T-06 owns the production client and schemas).
+- **RUN (as built):** `uv run --locked python scripts/nebius_smoke.py [--test text|json]` (dry run: free price re-check, no inference); `--execute` sends exactly one capped request.
 - **RUN:** *(create)* `uv run --locked python scripts/nebius_smoke.py`
 - **EVIDENCE:** sanitized model list and call record.
 - **HANDOFF:** STATUS.md update; record the chosen model ID in DECISIONS.md.
