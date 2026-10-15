@@ -10,7 +10,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
-| T-01 | 9 | Codex review 1 found 7 issues; repair pass 1 done (base `216f3ff`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-01 | 9 | Codex review 1 (7 findings) → repair pass 1 → Codex verification (5 remaining blockers) → repair pass 2 done (base `57506b1`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
@@ -160,13 +160,52 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - CLI s01/s02/s07 → `VIOLATION_FOUND` / `NO_VIOLATION_FOUND` / `INCONCLUSIVE`, unchanged.
     - `ruff check` → passed; `ruff format --check` → 58 files formatted.
     - `sync_skills.py --check` → problems 0.
-    - Every finding was fixed in its first repair cycle.
+    - Every finding was fixed in its first repair cycle. *Superseded by verification below: findings 3, 6 and 7 were only partly fixed, and this mutation run carried a hidden, unrelated runtime-origin failure.*
   - **Remaining limitations:**
     - There is still no isolation: the runner is `trusted_pipeline_only`.
     - The in-process recorder is not tamper-proof.
     - There is no expected-fold contract.
     - Inventory binding covers fixture files, not the installed environment.
     - Evaluation is limited to T-01 scope.
+- **CODEX VERIFICATION OF REPAIR PASS 1, and REPAIR PASS 2 (Claude Code, Opus 5.5 high):**
+  - **Evidence (preserved unchanged):**
+    - `runs/review-t01-repair/probe.py` (sha256 `f0ddf8e8…337a`) and `results.json` (`f7e673b8…1950`);
+    - `remaining_risks.py` (`fa310a91…f512`) and `remaining_results.json` (`02935f89…720c`).
+  - **Checkpoints:** repair base `57506b1`; head = the local commit "Repair remaining T-01 review blockers" (parent `57506b1`).
+  - **Blockers, traced causes and dispositions** (all accepted; each regression failed on `57506b1` and passes now):
+    1. **Invalid orphan artifact invented a violation.**
+       - *Cause:* `audit._compute` put unexpected prediction paths into the verified fold map keyed by file stem, with an `[]` sentinel. `predictions/orphan/fold0.parquet` overwrote fold0's verified rows, so a FAIL was produced. Repair pass 1 conflated path identity with fold identity and tested only a non-colliding stem.
+       - *Repair:* the expected inventory is fixed as `predictions/<fold>.parquet` per declared fold. Unexpected paths are a separate list passed to the check and never read as rows. Events naming another artifact are inventory issues. Coverage also requires the conventional path.
+       - *Same mechanism, sibling branch:* provenance could remap a fold to another fold's file; that is now an ERROR and a coverage gap.
+       - *Tests:* `test_invalid_orphan_artifact_with_a_colliding_stem_is_an_evidence_error`, `test_provenance_cannot_remap_a_fold_to_another_folds_artifact`, plus two unit tests.
+    2. **Null repeated-measures IDs suppressed a proven violation.**
+       - *Cause:* repair pass 1 made unknown identity a precondition in `_repeated_measures`, returning NOT_ASSESSED before the rule ran. It also tested only group disjointness.
+       - *Repair:* the rule is judged over known values first; unknown counts are disclosed per unit; NOT_ASSESSED is given only when no violation is established.
+       - *Tests:* three on the repeated-measures assertion itself (direct unit, nested unit with a known group violation, and nested unit without one).
+    3. **Recovery outputs had stale hashes.**
+       - *Cause:* the unrecoverable-manifest early return wrote new outputs but kept the old `index.outputs`, including deleted check entries, because there were two finalization paths.
+       - *Repair:* `_clear_outputs` also removes the index entries, and one `_finalize` (used by both paths) indexes exactly the files it wrote.
+       - *Tests:* normal and unrecoverable-path integrity tests check that every indexed output exists, its hash is current, and every output is indexed.
+    4. **A missing snapshot silently gave a clean result.**
+       - *Cause:* the hash-matching fallback was treated as equivalent to the snapshot, which was my deliberate choice in repair pass 1, encoded in its test.
+       - *Repair:* the fallback still reconstructs the required set, but every would-be PASS becomes ERROR (`evidence_invalid`). The outcome is `INCONCLUSIVE` unless an independently valid FAIL exists. No automatic restoration.
+       - *Tests:* the corrected clean test (`test_missing_snapshot_reconstructs_the_required_set_without_crashing` now expects `INCONCLUSIVE`), `test_missing_snapshot_with_matching_fallback_keeps_errors_and_is_inconclusive`, `test_missing_snapshot_keeps_independent_valid_fails`.
+    5. **Runtime validation ignored `safe_path`.**
+       - *Cause:* omission.
+       - *Repair:* `safe_path=true` is required.
+       - *Same mechanism:* the execution record's `runner` and `capability` values are now checked too.
+       - *Tests:* `test_rehashed_runtime_record_with_safe_path_false_is_rejected` and `test_rehashed_execution_record_claiming_another_capability_is_rejected`. These are validator tests on rehashed records; no import bypass was executed.
+  - **Also done:**
+    - The adapter comment now calls candidate-produced split events "corroborating", not independent.
+    - **The runtime-origin test hardcoded `src/atlas`.** At base it failed against an unmutated temporary copy (reproduced: origin `…\Temp\atlas-unmutated-…\atlas` ≠ `src\atlas`), so every mutation run had an unrelated failure. It now requires the child's origin to equal the explicitly selected trusted root, which must also equal the package the test process imported (the temporary copy during mutation runs).
+    - `scripts/mutation_check.py` now first runs an unmutated temporary copy, which must pass in full. Each mutation must trigger its intended test with no runtime-origin failure.
+  - **Results actually run after repair pass 2:**
+    - `uv run --locked pytest tests/unit tests/integration -q` → **115 passed**.
+    - `scripts/mutation_check.py` → baseline copy ALL PASS; m1, m2 and m3 each CAUGHT with no unrelated runtime-origin failures ("mutations caught cleanly: 3/3"). m2's nine failures all depend on group overlap.
+    - CLI → s01 `VIOLATION_FOUND`, s02 `NO_VIOLATION_FOUND`, s07 `INCONCLUSIVE`.
+    - Output integrity (every indexed output exists with a current hash; no unindexed outputs) → consistent for the three CLI runs and two recovery paths (hash-matching fallback → `INCONCLUSIVE`; unrecoverable manifest → `INCONCLUSIVE`, 2 indexed outputs).
+    - `ruff check` / `ruff format --check` → clean; `sync_skills.py --check` → problems 0.
+  - **Remaining limitations:** no isolation (`trusted_pipeline_only`); the in-process recorder is not tamper-proof; there is no independent expected-fold contract; the inventory binds fixture files, not the installed environment; T-01 scope only.
 
 ### T-02 Independent metrics, conditional split rules, temporal checks
 - **OWNER:** Claude Code (writer); Codex reviews.

@@ -311,6 +311,8 @@ def _fold_gaps(
     if len(preds) > 1:
         return ["more than one prediction event for this fold"]
     pred = preds[0]
+    if pred.get("artifact") != f"predictions/{fold}.parquet":
+        return ["prediction event names an artifact other than this fold's own"]
     if pred["pred_status"] != "tracked":
         return [f"missing prediction ancestry ({pred['pred_status']})"]
     if pred.get("artifact") not in artifacts or artifacts[pred["artifact"]] != pred.get(

@@ -280,3 +280,41 @@ def test_null_repeated_measures_unit_value_is_not_assessed():
 
     assert rm.status is Status.NOT_ASSESSED
     assert rm.reason is Reason.MISSING_METADATA
+
+
+def test_repeated_measures_rule_keeps_a_known_violation_despite_a_null_unit_value():
+    """Codex probe 'known_overlap_plus_null': the repeated-measures assertion itself."""
+    table = _table()
+    table.loc["r7", "subject"] = float("nan")
+
+    rm = _run(_manifest(), table, MIXED)["split.repeated_measures_rule"]
+
+    assert rm.status is Status.FAIL
+    assert rm.observed["units"][0]["rows_with_unknown_identity"] == {"f0": 1}
+    assert "split.sampling_unit_disjoint" in rm.depends_on
+
+
+def test_nested_unit_with_a_null_value_follows_a_known_group_violation():
+    m = _manifest(
+        claim={"dependence": [{"kind": "repeated_measures", "column": "session"}]}
+    )
+    table = _table()
+    table.loc["r1", "session"] = None
+
+    rm = _run(m, table, MIXED)["split.repeated_measures_rule"]
+
+    assert rm.status is Status.FAIL
+    assert rm.observed["units"][0]["rows_with_unknown_identity"] == {"f0": 1}
+
+
+def test_nested_unit_with_a_null_value_and_no_known_violation_is_not_assessed():
+    m = _manifest(
+        claim={"dependence": [{"kind": "repeated_measures", "column": "session"}]}
+    )
+    table = _table()
+    table.loc["r1", "session"] = None
+
+    rm = _run(m, table, GROUPED)["split.repeated_measures_rule"]
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA

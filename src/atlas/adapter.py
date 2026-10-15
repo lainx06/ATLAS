@@ -142,7 +142,8 @@ def declare_split(
             "training_cutoff": training_cutoff,
         }
     )
-    # An independent provenance record of the declaration, for reconciliation with splits.json.
+    # A corroborating provenance record of the declaration (candidate-produced, so not
+    # independent), reconciled with splits.json by the trusted evaluator.
     s.events.append(
         {
             "type": "split",

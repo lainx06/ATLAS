@@ -61,11 +61,24 @@ def test_valid_wrong_ids_fail_survives_a_missing_artifact_elsewhere():
     assert result.observed["missing_or_invalid_artifacts"] == ["f1"]
 
 
-def test_artifact_for_an_undeclared_fold_is_error():
-    result = _check({"f0": ["r2", "r3"], "f1": ["r0", "r1"], "f9": ["r0"]})
+def test_unexpected_artifact_path_is_error_and_never_fold_data():
+    result = _check(
+        {"f0": ["r2", "r3"], "f1": ["r0", "r1"]},
+        unexpected_artifacts=["predictions/orphan/f0.parquet"],
+    )
 
     assert result.status is Status.ERROR
-    assert result.observed["artifacts_for_undeclared_folds"] == ["f9"]
+    assert result.observed["unexpected_artifacts"] == ["predictions/orphan/f0.parquet"]
+    assert result.observed["mismatches"] == {}
+
+
+def test_inventory_issue_is_error_not_a_scientific_violation():
+    result = _check(
+        {"f0": ["r2", "r3"], "f1": ["r0", "r1"]},
+        inventory_issues=["prediction event for fold f1 names another artifact"],
+    )
+
+    assert result.status is Status.ERROR
 
 
 def test_invalid_split_evidence_is_error():

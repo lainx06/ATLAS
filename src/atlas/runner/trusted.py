@@ -26,6 +26,7 @@ import atlas
 
 ALLOWLIST_PATH = Path(__file__).with_name("trusted_fixtures.json")
 CAPABILITY = "trusted_pipeline_only"
+RUNNER_NAME = "trusted_fixture_host_subprocess"
 TIMEOUT_S = 30
 _SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD")
 # Runs as `python -I -c LAUNCHER <atlas_parent> <project> <out_dir>`.
@@ -108,7 +109,7 @@ def run_trusted_fixture(project: Path, entry_point: str, out_dir: Path) -> dict:
     except subprocess.TimeoutExpired as exc:
         returncode, stderr, timed_out = None, str(exc.stderr or ""), True
     return {
-        "runner": "trusted_fixture_host_subprocess",
+        "runner": RUNNER_NAME,
         "capability": CAPABILITY,
         "returncode": returncode,
         "timed_out": timed_out,

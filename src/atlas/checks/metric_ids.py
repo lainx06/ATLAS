@@ -16,8 +16,13 @@ def prediction_id_assertions(
     artifacts: dict[str, list[str] | None],
     evidence: list[EvidenceRef],
     evidence_valid: bool = True,
+    *,
+    unexpected_artifacts: list[str] = (),
+    inventory_issues: list[str] = (),
 ) -> dict[str, AssertionResult]:
-    """`artifacts`: fold -> row IDs from a verified artifact, or None if present but invalid."""
+    """`artifacts`: declared fold -> row IDs from a verified artifact, or None if present but
+    invalid. `unexpected_artifacts`: prediction paths outside the expected inventory; they are
+    evidence errors and are never treated as fold data."""
     if not evidence_valid:
         return {
             AID: AssertionResult(
@@ -55,13 +60,16 @@ def prediction_id_assertions(
             problems["unexpected_rows"] = sorted(set(rows) - expected)[:10]
         if problems:
             mismatches[s["fold"]] = problems
-    undeclared = sorted(set(artifacts) - set(declared))
+    not_declared = sorted(set(artifacts) - set(declared))
     observed = {
         "missing_or_invalid_artifacts": missing_or_invalid,
-        "artifacts_for_undeclared_folds": undeclared,
+        "unexpected_artifacts": sorted(unexpected_artifacts),
+        "inventory_issues": list(inventory_issues),
         "mismatches": mismatches,
         "folds": len(splits),
     }
+    if not_declared:
+        observed["artifacts_keyed_to_undeclared_folds"] = not_declared
     # Evidence-backed by valid artifacts; survives missing artifacts elsewhere.
     if mismatches:
         return {
@@ -72,7 +80,7 @@ def prediction_id_assertions(
                 evidence=evidence,
             )
         }
-    if missing_or_invalid or undeclared:
+    if missing_or_invalid or unexpected_artifacts or inventory_issues or not_declared:
         return {
             AID: AssertionResult(
                 assertion_id=AID,

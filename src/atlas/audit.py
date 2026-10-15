@@ -37,6 +37,8 @@ from atlas.policy import (
 )
 from atlas.reports import sha256_file, verified, versions, write_json
 from atlas.runner.trusted import (
+    CAPABILITY,
+    RUNNER_NAME,
     UntrustedFixtureError,
     run_trusted_fixture,
     trusted_atlas_parent,
@@ -132,13 +134,40 @@ def execute(project: Path, runs_root: Path) -> Path:
 
 
 OUTPUT_FILES = ("outcome.json", "report.json")
+SNAPSHOT_PROBLEM = "manifest snapshot missing or invalid"
 
 
-def _clear_outputs(run_dir: Path) -> None:
-    """Remove outputs of any earlier evaluation so nothing stale can look current."""
+def _clear_outputs(run_dir: Path, index: dict | None) -> None:
+    """Remove outputs of any earlier evaluation, and their index entries, before evaluating."""
     for name in OUTPUT_FILES:
         (run_dir / name).unlink(missing_ok=True)
     shutil.rmtree(run_dir / "checks", ignore_errors=True)
+    if index is not None and "outputs" in index:
+        index.pop("outputs")
+        write_json(run_dir / "index.json", index)
+
+
+def _finalize(
+    run_dir: Path, index: dict | None, outcome: RunOutcome, report: dict
+) -> None:
+    """The one finalization path: write outputs, then index exactly what was written."""
+    written = ["outcome.json", "report.json"]
+    by_check: dict[str, list] = {}
+    for a in outcome.assertions:
+        check = CHECK_OF_PREFIX.get(a.assertion_id.split(".", 1)[0], "other")
+        by_check.setdefault(check, []).append(a.model_dump(mode="json"))
+    for check, assertions in by_check.items():
+        write_json(
+            run_dir / "checks" / f"{check}.json",
+            {"check_id": check, "assertions": assertions},
+        )
+        written.append(f"checks/{check}.json")
+    write_json(run_dir / "outcome.json", outcome.model_dump(mode="json"))
+    write_json(run_dir / "report.json", report)
+    if index is not None:
+        index = {k: v for k, v in index.items() if k != "outputs"}
+        index["outputs"] = {name: sha256_file(run_dir / name) for name in written}
+        write_json(run_dir / "index.json", index)
 
 
 def _load_index(run_dir: Path) -> dict | None:
@@ -152,7 +181,11 @@ def _load_index(run_dir: Path) -> dict | None:
 def _trusted_manifest(
     project: Path, run_dir: Path, index: dict | None
 ) -> tuple[Manifest | None, str | None]:
-    """The manifest the run executed under, from verified evidence only; never invented."""
+    """(manifest, snapshot problem). Built from verified evidence only; never invented.
+
+    A hash-matching project manifest may reconstruct the required set, but the missing or
+    invalid snapshot remains a reported problem (it is not silently cleared).
+    """
     if index is None:
         return None, "run index missing or unparseable"
     snap_path, recorded, snap_ok = verified(run_dir, index, "manifest.snapshot.json")
@@ -174,19 +207,16 @@ def _trusted_manifest(
                 project_manifest.read_text(encoding="utf-8")
             )
         except ValueError:
-            return None, "manifest snapshot invalid and project manifest unparseable"
+            return None, f"{SNAPSHOT_PROBLEM} and project manifest unparseable"
         return manifest, (
-            "manifest snapshot missing or invalid; required set reconstructed from the "
-            "project manifest matching the recorded snapshot hash"
+            f"{SNAPSHOT_PROBLEM}; required set reconstructed from the project manifest "
+            "matching the recorded snapshot hash"
         )
-    return (
-        None,
-        "manifest snapshot missing or invalid and no hash-matching trusted manifest",
-    )
+    return None, f"{SNAPSHOT_PROBLEM} and no hash-matching trusted manifest"
 
 
 def _execution_trust(run_dir: Path, index: dict) -> tuple[dict | None, str | None]:
-    """(execution record, problem). Both execution.json and runtime.json must verify and validate."""
+    """(execution record, problem). Both records must verify, validate, and be semantically valid."""
     exec_path, _, exec_ok = verified(run_dir, index, "execution.json")
     if not exec_ok:
         return None, "execution record missing or hash-mismatched"
@@ -196,6 +226,11 @@ def _execution_trust(run_dir: Path, index: dict) -> tuple[dict | None, str | Non
         )
     except ValueError:
         return None, "execution record fails schema validation"
+    if record.runner != RUNNER_NAME or record.capability != CAPABILITY:
+        return (
+            record.model_dump(),
+            "execution record claims an unexpected runner or capability",
+        )
     if record.timed_out or record.returncode != 0:
         return record.model_dump(), "fixture execution did not complete"
     rt_path, _, rt_ok = verified(run_dir, index, "runtime.json")
@@ -208,6 +243,7 @@ def _execution_trust(run_dir: Path, index: dict) -> tuple[dict | None, str | Non
     trusted_pkg = Path(trusted_atlas_parent()) / "atlas"
     if (
         runtime.isolated != 1
+        or not runtime.safe_path
         or runtime.project_dir_on_sys_path
         or runtime.cwd_on_sys_path
         or Path(runtime.atlas_origin).parent != trusted_pkg
@@ -221,16 +257,20 @@ def _execution_trust(run_dir: Path, index: dict) -> tuple[dict | None, str | Non
 
 def _degrade_unconfirmed(
     computed: dict[str, AssertionResult], problem: str, completed: bool
-):
-    """Without a trusted, completed execution no PASS is established; valid FAILs stand."""
+) -> None:
+    """Without confirmed evidence no PASS is established; valid FAILs stand.
+
+    `completed=True` means verified non-completion (NOT_ASSESSED not_executed); otherwise the
+    evidence itself is missing or invalid (ERROR evidence_invalid).
+    """
     for aid, result in computed.items():
         if result.status is Status.PASS:
             computed[aid] = result.model_copy(
                 update={
-                    "status": Status.ERROR if not completed else Status.NOT_ASSESSED,
-                    "reason": Reason.EVIDENCE_INVALID
-                    if not completed
-                    else Reason.NOT_EXECUTED,
+                    "status": Status.NOT_ASSESSED if completed else Status.ERROR,
+                    "reason": Reason.NOT_EXECUTED
+                    if completed
+                    else Reason.EVIDENCE_INVALID,
                     "evidence_valid": completed,
                     "limitations": [*result.limitations, problem],
                 }
@@ -241,32 +281,25 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
     """Trusted evaluation of an executed run; always materializes the full required set."""
     project = Path(project).resolve()
     run_dir = Path(run_dir)
-    _clear_outputs(run_dir)
     index = _load_index(run_dir)
-    manifest, note = _trusted_manifest(project, run_dir, index)
+    _clear_outputs(run_dir, index)
+    manifest, snapshot_problem = _trusted_manifest(project, run_dir, index)
     if manifest is None:
         outcome = RunOutcome(
             outcome=Outcome.INCONCLUSIVE,
             policy_version=POLICY_VERSION,
-            reason=f"required assertion set could not be reconstructed: {note}",
+            reason=f"required assertion set could not be reconstructed: {snapshot_problem}",
             incomplete_coverage=["required_assertion_set"],
         )
-        write_json(run_dir / "outcome.json", outcome.model_dump(mode="json"))
-        write_json(
-            run_dir / "report.json",
-            {
-                "project": project.name,
-                "outcome": outcome.model_dump(mode="json"),
-                "versions": versions(),
-            },
-        )
+        _finalize(run_dir, index, outcome, _report(project, None, None, outcome))
         return outcome
 
     required = required_assertions(manifest)
     execution, problem = _execution_trust(run_dir, index)
     computed = _compute(project, run_dir, index, manifest)
+    if snapshot_problem is not None:
+        _degrade_unconfirmed(computed, snapshot_problem, completed=False)
     if problem is not None:
-        # "did not complete" is verified evidence of non-completion: NOT_ASSESSED(not_executed).
         _degrade_unconfirmed(
             computed, problem, completed=problem == "fixture execution did not complete"
         )
@@ -274,11 +307,11 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
     outcome = RunOutcome(
         outcome=derive_outcome(results),
         policy_version=POLICY_VERSION,
-        reason="; ".join(p for p in (note, problem) if p) or None,
+        reason="; ".join(p for p in (snapshot_problem, problem) if p) or None,
         assertions=results,
         incomplete_coverage=incomplete_coverage(results),
     )
-    _write_outputs(project, run_dir, index, manifest, execution, outcome)
+    _finalize(run_dir, index, outcome, _report(project, manifest, execution, outcome))
     return outcome
 
 
@@ -308,11 +341,16 @@ def _compute(
     prov_path, prov_hash, prov_ok = verified(run_dir, index, "provenance.jsonl")
     events = _read_events(prov_path) if prov_ok else []
 
-    # Expected prediction inventory: one artifact per declared fold (never inferred from files).
+    # Expected prediction inventory: exactly predictions/<fold>.parquet per declared fold.
+    # Never inferred from files that exist, and never remapped by candidate-produced events.
     expected = {s["fold"]: f"predictions/{s['fold']}.parquet" for s in splits}
-    for e in events:
-        if e["type"] == "predictions" and e["fold"] in expected and e.get("artifact"):
-            expected[e["fold"]] = e["artifact"]
+    inventory_issues = [
+        f"prediction event for fold {e['fold']} names {e.get('artifact')!r}, not {expected[e['fold']]!r}"
+        for e in events
+        if e["type"] == "predictions"
+        and e["fold"] in expected
+        and e.get("artifact") != expected[e["fold"]]
+    ]
     pred_refs, by_fold, verified_artifacts = [], {}, {}
     for fold, name in expected.items():
         path, recorded, ok = verified(run_dir, index, name)
@@ -322,12 +360,15 @@ def _compute(
             by_fold[fold] = [str(r) for r in pd.read_parquet(path)["row_id"]]
         elif recorded is not None:
             by_fold[fold] = None  # present in the inventory but invalid
-    for name in index["artifacts"]:
-        if name.startswith("predictions/") and name not in expected.values():
-            by_fold[Path(name).stem] = []  # artifact for an undeclared fold
-            pred_refs.append(
-                EvidenceRef(artifact=name, sha256=index["artifacts"][name])
-            )
+    # Unexpected paths stay separate from verified fold data; they are never read as rows.
+    unexpected = sorted(
+        name
+        for name in index["artifacts"]
+        if name.startswith("predictions/") and name not in set(expected.values())
+    )
+    pred_refs += [
+        EvidenceRef(artifact=n, sha256=index["artifacts"][n]) for n in unexpected
+    ]
 
     computed: dict[str, AssertionResult] = {}
     table = read_table(project, manifest) if table_ok else None
@@ -350,47 +391,32 @@ def _compute(
         )
     )
     computed.update(
-        prediction_id_assertions(splits, by_fold, [splits_ref, *pred_refs], splits_ok)
+        prediction_id_assertions(
+            splits,
+            by_fold,
+            [splits_ref, *pred_refs],
+            splits_ok,
+            unexpected_artifacts=unexpected,
+            inventory_issues=inventory_issues,
+        )
     )
     return computed
 
 
-def _write_outputs(
-    project, run_dir, index, manifest, execution, outcome: RunOutcome
-) -> None:
-    by_check: dict[str, list] = {}
-    for a in outcome.assertions:
-        check = CHECK_OF_PREFIX.get(a.assertion_id.split(".", 1)[0], "other")
-        by_check.setdefault(check, []).append(a.model_dump(mode="json"))
-    for check, assertions in by_check.items():
-        write_json(
-            run_dir / "checks" / f"{check}.json",
-            {"check_id": check, "assertions": assertions},
-        )
-    write_json(run_dir / "outcome.json", outcome.model_dump(mode="json"))
-    write_json(
-        run_dir / "report.json",
-        {
-            "project": project.name,
-            "claim": manifest.claim.model_dump(mode="json"),
-            "outcome": outcome.outcome,
-            "incomplete_coverage": outcome.incomplete_coverage,
-            "policy_version": POLICY_VERSION,
-            "adapter_version": ADAPTER_VERSION,
-            "execution": execution,
-            "versions": versions(),
-            "limitations": [
-                "T-01 audit mode: trusted repo-authored fixtures only; no isolation (trusted_pipeline_only).",
-                "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
-                "Provenance begins at the supplied feature table.",
-            ],
-        },
-    )
-    outputs = {}
-    for name in (
-        "outcome.json",
-        "report.json",
-        *(f"checks/{c}.json" for c in by_check),
-    ):
-        outputs[name] = sha256_file(run_dir / name)
-    write_json(run_dir / "index.json", {**index, "outputs": outputs})
+def _report(project, manifest, execution, outcome: RunOutcome) -> dict:
+    return {
+        "project": project.name,
+        "claim": manifest.claim.model_dump(mode="json") if manifest else None,
+        "outcome": outcome.outcome,
+        "reason": outcome.reason,
+        "incomplete_coverage": outcome.incomplete_coverage,
+        "policy_version": POLICY_VERSION,
+        "adapter_version": ADAPTER_VERSION,
+        "execution": execution,
+        "versions": versions(),
+        "limitations": [
+            "T-01 audit mode: trusted repo-authored fixtures only; no isolation (trusted_pipeline_only).",
+            "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
+            "Provenance begins at the supplied feature table.",
+        ],
+    }

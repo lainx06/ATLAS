@@ -45,22 +45,30 @@ MUTATIONS = [
 ]
 
 
+# A failure here under a mutation would be unrelated to the mutation (the origin test must
+# accept the intended temporary package root).
+UNRELATED = (
+    "test_fixture_child_imports_atlas_from_the_trusted_package_not_the_fixture",
+)
+
+
 def run(mutation: dict) -> bool:
     with tempfile.TemporaryDirectory(prefix=f"atlas-{mutation['id']}-") as tmp:
         pkg = Path(tmp) / "atlas"
         shutil.copytree(
             ROOT / "src" / "atlas", pkg, ignore=shutil.ignore_patterns("__pycache__")
         )
-        target = pkg / mutation["file"]
-        source = target.read_text(encoding="utf-8")
-        if source.count(mutation["old"]) != 1:
-            print(
-                f"{mutation['id']}: mutation target not found exactly once; check is invalid"
+        if mutation["old"] is not None:
+            target = pkg / mutation["file"]
+            source = target.read_text(encoding="utf-8")
+            if source.count(mutation["old"]) != 1:
+                print(
+                    f"{mutation['id']}: mutation target not found exactly once; check is invalid"
+                )
+                return False
+            target.write_text(
+                source.replace(mutation["old"], mutation["new"]), encoding="utf-8"
             )
-            return False
-        target.write_text(
-            source.replace(mutation["old"], mutation["new"]), encoding="utf-8"
-        )
         env = {
             **os.environ,
             "PYTHONPATH": tmp + os.pathsep + os.environ.get("PYTHONPATH", ""),
@@ -92,21 +100,39 @@ def run(mutation: dict) -> bool:
             text=True,
         )
     failed = re.findall(r"^FAILED (\S+)", proc.stdout, flags=re.MULTILINE)
-    caught = proc.returncode != 0 and any(mutation["must_fail"] in f for f in failed)
+    unrelated = [f for f in failed if any(u in f for u in UNRELATED)]
     print(f"{mutation['id']}: {mutation['what']}")
     print(f"  mutated package imported from: {where}")
     print(f"  pytest exit {proc.returncode}; {len(failed)} failing test(s)")
     for f in failed:
         print(f"    FAILED {f}")
+    if mutation["old"] is None:
+        ok = proc.returncode == 0 and not failed
+        print(
+            f"  unmutated temporary copy: {'ALL PASS' if ok else 'FAILURES (baseline invalid)'}"
+        )
+        return ok
+    caught = proc.returncode != 0 and any(mutation["must_fail"] in f for f in failed)
     print(
-        f"  expected failing scenario: {mutation['must_fail']} -> {'CAUGHT' if caught else 'NOT CAUGHT'}"
+        f"  expected failing test: {mutation['must_fail']} -> {'CAUGHT' if caught else 'NOT CAUGHT'}"
     )
-    return caught
+    print(f"  unrelated runtime-origin failures: {unrelated or 'none'}")
+    return caught and not unrelated
+
+
+BASELINE = {
+    "id": "baseline",
+    "what": "unmutated temporary copy (must pass the full suite)",
+    "old": None,
+}
 
 
 def main() -> int:
+    if not run(BASELINE):
+        print("baseline failed: mutation results would be meaningless")
+        return 1
     results = [run(m) for m in MUTATIONS]
-    print(f"mutations caught: {sum(results)}/{len(results)}")
+    print(f"mutations caught cleanly: {sum(results)}/{len(results)}")
     return 0 if all(results) else 1
 
 

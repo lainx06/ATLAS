@@ -269,44 +269,76 @@ def _repeated_measures(
     results: dict[str, AssertionResult],
     evidence: list[EvidenceRef],
 ) -> AssertionResult:
-    """Assess each declared repeated-measures unit only through a supported rule (F3)."""
+    """Assess each declared repeated-measures unit only through a supported rule (F3).
+
+    The rule is judged over known values first. Unknown (null) unit values on participating rows
+    are disclosed per unit and give NOT_ASSESSED only when no violation is already established
+    among known identities.
+    """
     aid = "split.repeated_measures_rule"
     cols = manifest.columns
-    per_unit = []
+    per_unit = []  # (column, status, reason, followed assertion, unknown rows per fold)
     for dep in manifest.claim.dependence:
         if dep.kind != "repeated_measures":
             continue
         col = dep.column
-        if (
-            col is None
-            or col not in table.columns
-            or _unknown_identity(col, table, splits)
-        ):
-            per_unit.append((col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None))
-        elif cols.unit_id is not None and col == cols.unit_id:
+        if col is None or col not in table.columns:
+            per_unit.append(
+                (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None, {})
+            )
+            continue
+        unknown = _unknown_identity(col, table, splits)
+        if cols.unit_id is not None and col == cols.unit_id:
+            # The sampling-unit assertion judges this same column, nulls included.
             follow = results["split.sampling_unit_disjoint"]
             per_unit.append(
-                (col, follow.status, follow.reason, "split.sampling_unit_disjoint")
+                (
+                    col,
+                    follow.status,
+                    follow.reason,
+                    "split.sampling_unit_disjoint",
+                    unknown,
+                )
             )
         elif manifest.claim.type == "unseen_group":
             group = cols.group_id
             if group is None or group not in table.columns:
                 per_unit.append(
-                    (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None)
+                    (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None, unknown)
                 )
-            elif (
-                table.groupby(col)[group].nunique().max() == 1
-            ):  # containment shown from the table
-                follow = results["split.no_group_overlap"]
+                continue
+            known = table.dropna(subset=[col])
+            if known.groupby(col)[group].nunique().max() > 1:
                 per_unit.append(
-                    (col, follow.status, follow.reason, "split.no_group_overlap")
+                    (col, Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE, None, unknown)
+                )
+                continue
+            # Containment among known units is shown from the table: follow group disjointness.
+            follow = results["split.no_group_overlap"]
+            if follow.status is Status.FAIL or not unknown:
+                per_unit.append(
+                    (
+                        col,
+                        follow.status,
+                        follow.reason,
+                        "split.no_group_overlap",
+                        unknown,
+                    )
                 )
             else:
                 per_unit.append(
-                    (col, Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE, None)
+                    (
+                        col,
+                        Status.NOT_ASSESSED,
+                        Reason.MISSING_METADATA,
+                        "split.no_group_overlap",
+                        unknown,
+                    )
                 )
         else:
-            per_unit.append((col, Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE, None))
+            per_unit.append(
+                (col, Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE, None, unknown)
+            )
 
     if not per_unit:
         return AssertionResult(
@@ -321,8 +353,11 @@ def _repeated_measures(
         status=worst[1],
         reason=worst[2] if worst[1] is Status.NOT_ASSESSED else None,
         observed={
-            "units": [{"column": c, "status": s, "rule": d} for c, s, _, d in per_unit]
+            "units": [
+                {"column": c, "status": st, "rule": d, "rows_with_unknown_identity": u}
+                for c, st, _, d, u in per_unit
+            ]
         },
         evidence=evidence,
-        depends_on=sorted({d for *_, d in per_unit if d}),
+        depends_on=sorted({d for _, _, _, d, _ in per_unit if d}),
     )

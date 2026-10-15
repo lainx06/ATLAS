@@ -9,13 +9,17 @@ from pathlib import Path
 
 import pytest
 
+import atlas
 from atlas.audit import audit, evaluate, execute
 from atlas.contracts import Outcome, Reason, Status
 from atlas.reports import sha256_file, write_json
-from atlas.runner.trusted import UntrustedFixtureError, is_trusted
+from atlas.runner.trusted import (
+    UntrustedFixtureError,
+    is_trusted,
+    trusted_atlas_parent,
+)
 
 FIXTURES = Path(__file__).resolve().parents[2] / "benchmarks" / "t01"
-SRC_ATLAS = Path(__file__).resolve().parents[2] / "src" / "atlas"
 CLEAN = FIXTURES / "s02_clean"
 FAULTY = FIXTURES / "s01_faulty"
 
@@ -48,7 +52,12 @@ def test_fixture_child_imports_atlas_from_the_trusted_package_not_the_fixture(tm
     run_dir = execute(CLEAN, tmp_path)
 
     runtime = json.loads((run_dir / "runtime.json").read_text(encoding="utf-8"))
-    assert Path(runtime["atlas_origin"]).resolve().parent == SRC_ATLAS.resolve()
+    # The trusted root is the package THIS (trusted) process imported: src/atlas normally, the
+    # intended temporary copy during the mutation check. It must also be the root the runner
+    # selected explicitly, and the child must have imported exactly that package.
+    selected = (Path(trusted_atlas_parent()) / "atlas").resolve()
+    assert selected == Path(atlas.__file__).resolve().parent
+    assert Path(runtime["atlas_origin"]).resolve().parent == selected
     assert runtime["isolated"] == 1
     assert runtime["safe_path"] is True
     assert runtime["project_dir_on_sys_path"] is False
@@ -136,16 +145,17 @@ def test_missing_prediction_artifact_is_error_not_fail(tmp_path):
 # --- Finding 7: missing or unparseable manifest snapshot ------------------------------------------
 
 
-def test_missing_snapshot_uses_the_hash_matching_project_manifest_without_crashing(
-    tmp_path,
-):
+def test_missing_snapshot_reconstructs_the_required_set_without_crashing(tmp_path):
+    """Finding 7 (crash). The outcome expectation was corrected by repair round 2 (blocker 4):
+    a missing snapshot stays an evidence error, so the result is not clean."""
     run_dir = execute(CLEAN, tmp_path)
     (run_dir / "manifest.snapshot.json").unlink()
 
     result = evaluate(CLEAN, run_dir)
 
-    assert result.outcome is Outcome.NO_VIOLATION_FOUND
+    assert result.outcome is Outcome.INCONCLUSIVE
     assert "reconstructed" in (result.reason or "")
+    assert len(result.assertions) == 8
 
 
 def test_unreconstructable_required_set_is_reported_and_replaces_a_stale_clean_outcome(
