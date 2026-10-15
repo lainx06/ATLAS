@@ -330,7 +330,10 @@ def run_all(connect: Callable) -> list[dict]:
         {
             "name": "first connection and setup",
             "ok": True,
-            "detail": f"{connected:.2f}s to connect",
+            "detail": (
+                f"{connected:.2f}s to open the first connection "
+                "(name lookup, TLS, login and any compute start combined)"
+            ),
         },
         scenario_single_cap_race(connect),
         scenario_multi_cap_rollback(connect),

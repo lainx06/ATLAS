@@ -1,12 +1,15 @@
 """ATLAS hosting probe, stage D: canary plus budget-store feasibility (synthetic units only).
 
 Checks, reported separately. No provider key, no model request, no ATLAS code.
-  1. Build/import and 2. secret canary, as in stage A.
-  3. Optional budget-store probe: runs only after a button press and only if a DATABASE_URL secret
-     exists. It uses scratch tables and synthetic integer units. It never prints the URL.
+  1. Build/import and 2. secret canary, as in stage A. Both are public.
+  3. Budget-store probe. The app is public, so this step is protected: it can run only when a
+     DATABASE_URL secret AND a PROBE_ACCESS_CODE secret exist and the visitor has typed the
+     matching code. Without all three, no database connection is opened. It uses scratch tables
+     and synthetic integer units, and never prints the URL or the code.
 """
 
 import hashlib
+import hmac
 import platform
 import sys
 import time
@@ -33,6 +36,11 @@ def canary_report() -> dict:
         "present": True,
         "sha256_prefix": hashlib.sha256(value.encode()).hexdigest()[:8],
     }
+
+
+def code_matches(given: str, expected: str) -> bool:
+    """Constant-time comparison; an empty entry never matches."""
+    return bool(given) and hmac.compare_digest(given.encode(), expected.encode())
 
 
 def run_budget_probe(url: str) -> list[dict]:
@@ -74,7 +82,16 @@ st.write(canary_report())
 
 st.subheader("3. Budget-store probe (scratch tables, synthetic units)")
 database_url = secret("DATABASE_URL")
+access_code = secret("PROBE_ACCESS_CODE")
 if database_url is None:
     st.write("No DATABASE_URL secret configured: skipped.")
-elif st.button("Run budget probe"):
-    st.write(run_budget_probe(database_url))
+elif access_code is None:
+    st.write("Disabled: no PROBE_ACCESS_CODE secret is configured.")  # fail closed
+else:
+    typed = st.text_input("Probe access code", type="password")
+    if not typed:
+        st.write("Enter the probe access code to enable the test.")
+    elif not code_matches(typed, access_code):
+        st.write("Not authorized.")
+    elif st.button("Run budget probe"):  # reached only after a successful authorization
+        st.write(run_budget_probe(database_url))

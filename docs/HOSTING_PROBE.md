@@ -179,11 +179,22 @@ Selection of Neon Free is **provisional**: it holds only if a hosted connection 
 
 | Path (under `C:\Users\Lain\source\atlas\hosting_probe\stage_d\`) | Purpose |
 | --- | --- |
-| `app.py` | The stage A page (build, canary) plus a section that runs the scenarios only after a button press, and only if a `DATABASE_URL` secret exists. Shows result names, pass/fail and counts. It never prints the URL; a connection failure shows only the error type |
+| `app.py` | The stage A page (build, canary) plus a **protected** section. The deployed app is public, so a signed-out visitor could otherwise press the button. The scenarios can run only when both a `DATABASE_URL` and a `PROBE_ACCESS_CODE` secret exist **and** the visitor has typed the matching code (constant-time comparison, empty input never matches); the button does not exist before that. With no code configured the section is disabled (fails closed). Shows result names, pass/fail and counts. It never prints the URL or the code; a connection failure shows only the error type |
 | `budget_probe.py` | The database operations and scenarios. Imports no driver; takes a psycopg connection |
 | `requirements.txt` | `streamlit` and `psycopg[binary]` (the one extra dependency) |
 
 `hosting_probe/check_publication.py stage_d` confirms exactly these three files, no connection string, credential or project-document wording, no provider reference, and that the only network-related import is `psycopg`.
+
+### Neon project (owner-reported, 2026-10-15)
+
+The owner created the project **`atlas-budget-probe`** on the Neon **Free** plan: **AWS US East 2 (Ohio)**, **PostgreSQL 18**, Postgres only. The optional agent/CLI setup was skipped. **No connection string has been shared**; the project is kept (lead decision). Nothing has connected to it.
+
+| Version | What has been run |
+| --- | --- |
+| PostgreSQL 17.11 (local container) | The five scenarios, 3 of 3 runs (below) |
+| PostgreSQL 18 (Neon) | **Nothing yet: verification pending** |
+
+Hosted test inputs (all entered by the owner as Secrets on the existing probe app, never in chat, Git or screenshots): `DATABASE_URL` (the **direct**, non-pooled Neon string), `PROBE_ACCESS_CODE` (a long random value, generated like the canary but longer) and the existing `CANARY`. A deployed app is public, so the code gate is required before any database step is enabled.
 
 ### Database operations (proposed; scratch tables `probe_cap`, `probe_reservation`)
 
@@ -206,7 +217,7 @@ Constraints in the schema (`reserved >= 0`, `spent >= 0`, `reserved + spent <= c
 4. **Duplicate request IDs** reserve once and settle once, including when two attempts are simultaneous.
 5. **Uncertain dispatched cost** survives a new connection (standing for a restart or timeout recovery): release is refused, another request is blocked by the retained units, and a later settle with the actual usage frees the difference.
 
-It also reports the time of the first connection (cold-connection latency, which is the number the first run most needs).
+It also reports the time to open the first connection. That is one **combined connection/startup measurement** (name lookup, TLS, login and any compute start); it cannot separate those parts and is **not** a measure of how well the hosting regions match.
 
 ### What the probe demonstrates, and what it does not
 
@@ -214,7 +225,7 @@ It also reports the time of the first connection (cold-connection latency, which
 | --- | --- |
 | The Community Cloud host can reach the Neon database (outbound TLS Postgres, port 5432) | to be **observed** |
 | The conditional-update design admits only one of two competing requests, rolls back a refused multi-cap reservation, and handles duplicates, lock order and dispatched retention on **Neon's actual Postgres** | to be **observed** |
-| Cold-connection latency from the host | to be **observed** |
+| One combined first-connection/startup time from the host (not a region comparison) | to be **observed** |
 
 | Not shown, and required for production (not built during T-03) | |
 | --- | --- |
@@ -225,9 +236,9 @@ It also reports the time of the first connection (cold-connection latency, which
 | Integration with the agent loop, the Nebius usage record, and a security review of the whole budget path | review required before T-06 relies on it |
 | A statement that the SQL is correct beyond the five scenarios; concurrency is probed, not proven | limitation |
 
-### Local PostgreSQL results (2026-10-15)
+### Local PostgreSQL 17.11 results (2026-10-15)
 
-**These are results on a disposable local PostgreSQL. They do not establish Neon connectivity, Neon's durability guarantees, cold-connection latency, or concurrency behavior on the hosted service.**
+**These are results on a disposable local PostgreSQL 17.11. They do not establish Neon connectivity, Neon's durability guarantees, cold-connection latency, or concurrency behavior on the hosted service. The owner's Neon project runs PostgreSQL 18, so verification on Neon 18 is pending; behavior of these statements on 18 is expected but has not been observed.**
 
 | Item | Value |
 | --- | --- |
