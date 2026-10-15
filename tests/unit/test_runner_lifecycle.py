@@ -233,6 +233,87 @@ def test_chained_pax_archive_is_a_recorded_collection_failure(monkeypatch, tmp_p
     assert not (tmp_path / "run" / "out").exists()
 
 
+def _ustar(name: str, data: bytes, kind=tarfile.REGTYPE, size=None) -> bytes:
+    info = tarfile.TarInfo(name)
+    info.type, info.size = kind, len(data) if size is None else size
+    padding = b"\0" * (-len(data) % tarfile.BLOCKSIZE)
+    return info.tobuf(format=tarfile.USTAR_FORMAT) + data + padding
+
+
+def _frame_for(archive: bytes) -> bytes:
+    head = {
+        "version": 1,
+        "archive_bytes": len(archive),
+        "archive_sha256": hashlib.sha256(archive).hexdigest(),
+        "child_returncode": 0,
+    }
+    return dr.FRAME_MAGIC + json.dumps(head).encode() + b"\n" + archive
+
+
+def _padded_pax() -> bytes:
+    """Declares `10 path=x\\n`; tarfile also reads `9 size=0\\n` from the padding."""
+    info = tarfile.TarInfo("pax")
+    info.type, info.size = tarfile.XHDTYPE, 10
+    block = b"10 path=x\n9 size=0\n".ljust(tarfile.BLOCKSIZE, b"\0")
+    return info.tobuf(format=tarfile.USTAR_FORMAT) + block
+
+
+def _hidden_chain_archive() -> bytes:
+    chain = _ustar("pax", b"10 path=x\n", tarfile.XHDTYPE) * 600 + _ustar(
+        "nested.txt", b"x"
+    )
+    return _padded_pax() + _ustar("envelope.txt", chain) + b"\0" * 1024
+
+
+@pytest.mark.parametrize(
+    "archive",
+    [
+        _padded_pax() + _ustar("file.txt", b"x") + b"\0" * 1024,
+        _hidden_chain_archive(),
+    ],
+    ids=["hidden_size_zero", "hidden_header_chain"],
+)
+def test_pax_padding_archive_is_a_recorded_collection_failure(
+    monkeypatch, tmp_path, archive
+):
+    """Codex's reproductions (44c5a84): the size-zero case completed with an empty file; the
+    hidden chain reached tarfile and failed only through its RecursionError."""
+    opens = []
+    real_open = tarfile.open
+    monkeypatch.setattr(
+        tarfile, "open", lambda *a, **k: opens.append(a) or real_open(*a, **k)
+    )
+    rec, saved, calls = fake_run(monkeypatch, tmp_path, _frame_for(archive))
+    assert rec["status"] == saved["status"] == "collection_failed"
+    assert saved["collection"]["problem"] == "malformed_archive"
+    assert "padding" in saved["collection"]["detail"]
+    assert opens == []
+    assert not (tmp_path / "run" / "out").exists()
+    assert saved["cleanup"]["status"] == "confirmed_absent"
+    assert ["rm", "--force", saved["container_name"]] in calls
+
+
+def test_utf16_header_is_a_recorded_collection_failure(monkeypatch, tmp_path):
+    """Codex's reproduction (44c5a84): a 20-deep UTF-16 header completed the run."""
+    archive = b"\0" * 1024
+    rest = json.dumps(
+        {
+            "version": 1,
+            "archive_bytes": len(archive),
+            "archive_sha256": hashlib.sha256(archive).hexdigest(),
+            "child_returncode": 0,
+        }
+    )
+    text = '{"\\"":' + "[" * 20 + "0" + "]" * 20 + "," + rest[1:]
+    stdout = dr.FRAME_MAGIC + text.encode("utf-16-le") + b"\n" + archive
+    rec, saved, calls = fake_run(monkeypatch, tmp_path, stdout)
+    assert rec["status"] == saved["status"] == "collection_failed"
+    assert saved["collection"]["problem"] == "malformed_header"
+    assert not (tmp_path / "run" / "out").exists()
+    assert saved["cleanup"]["status"] == "confirmed_absent"
+    assert ["rm", "--force", saved["container_name"]] in calls
+
+
 def test_unexpected_collection_error_is_recorded(monkeypatch, tmp_path):
     def broken(*args, **kwargs):
         raise RuntimeError("injected parser defect")

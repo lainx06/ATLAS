@@ -21,10 +21,14 @@ output, collection failure), and removal counts only when a successful Docker li
 longer shows the container; an unreachable daemon or failing CLI leaves it unconfirmed, and
 a run whose removal is unconfirmed never reports `completed`.
 
-Before any parser sees untrusted output, its structure is bounded: the header's JSON nesting
-depth is capped, and the archive's raw tar headers are walked first (checksums, at most one
-PAX header per member, no size override, no global or GNU extension headers, nothing after
-the end marker), so chained extension headers cannot recurse inside `tarfile`.
+Before any parser sees untrusted output, its structure is bounded, and each check reads the
+same representation as the parser after it. The header is decoded once as strict UTF-8 (no
+BOM, no NUL), and both the nesting-depth cap and `json.loads` read that text. The archive's
+raw tar headers are walked first (checksums and every numeric field, at most one PAX header
+per member whose records are only a UTF-8 `path` and whose padding is zero, no global or GNU
+extension headers, nothing after the end marker); `tarfile` is then stepped one member at a
+time and must report exactly the pre-checked layout, so it never starts reading at a header
+the walk did not accept and chained extension headers cannot recurse inside it.
 
 Containers reduce execution risk; they do not make hostile code safe (SPEC §10) and do not
 prove provenance integrity or scientific correctness (SPEC §9.9).
@@ -33,6 +37,7 @@ Build the image:  uv run --locked python -m atlas.runner.docker build
 Probe capability: uv run --locked python -m atlas.runner.docker probe
 """
 
+import codecs
 import hashlib
 import io
 import json
@@ -49,6 +54,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import atlas
 from atlas.candidates import (
@@ -479,13 +485,13 @@ def parse_frame(data: bytes, limits: Limits) -> tuple[dict, bytes]:
     newline = data.find(b"\n", start, start + MAX_HEADER_BYTES + 1)
     if newline < 0:
         raise CollectionError("malformed_header", "no header terminator within the cap")
-    raw = data[start:newline]
-    if _json_depth_exceeds(raw, MAX_HEADER_DEPTH):
+    text = _header_text(data[start:newline])
+    if _json_depth_exceeds(text, MAX_HEADER_DEPTH):
         raise CollectionError(
             "malformed_header", f"nested deeper than {MAX_HEADER_DEPTH}"
         )
     try:
-        header = json.loads(raw)
+        header = json.loads(text)
     except (ValueError, RecursionError) as exc:
         raise CollectionError("malformed_header", "not JSON") from exc
     if (
@@ -505,19 +511,40 @@ def parse_frame(data: bytes, limits: Limits) -> tuple[dict, bytes]:
     return header, archive
 
 
-_JSON_TOKENS = re.compile(rb'"(?:[^"\\]|\\.)*"|[\[\]{}]')
+_HEADER_BOMS = (codecs.BOM_UTF8, codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
 
 
-def _json_depth_exceeds(raw: bytes, max_depth: int) -> bool:
-    """Bracket nesting outside JSON strings, without recursion (checked before json.loads)."""
+def _header_text(raw: bytes) -> str:
+    """The header as strict UTF-8 text, the one representation that both the depth check and
+    the JSON parser read. (`json.loads` on bytes would itself detect UTF-16 and UTF-32, so a
+    check of the bytes and the parse could see different strings and brackets.)"""
+    # UTF-16 and UTF-32 text always holds a NUL byte, with or without a BOM.
+    if raw.startswith(_HEADER_BOMS) or b"\0" in raw:
+        raise CollectionError(
+            "malformed_header", "unsupported encoding (UTF-8 without BOM required)"
+        )
+    try:
+        return raw.decode("utf-8", "strict")
+    except UnicodeDecodeError as exc:
+        raise CollectionError("malformed_header", "not UTF-8") from exc
+
+
+_JSON_TOKENS = re.compile(r'"(?:[^"\\]|\\.)*"|[\[\]{}]')
+
+
+def _json_depth_exceeds(text: str, max_depth: int) -> bool:
+    """Bracket nesting outside JSON strings, without recursion (checked before json.loads).
+
+    On any prefix that `json.loads` accepts, the strings and brackets found here are the ones
+    it finds, so it cannot nest deeper than this count before it fails or returns."""
     depth = 0
-    for token in _JSON_TOKENS.finditer(raw):
+    for token in _JSON_TOKENS.finditer(text):
         t = token.group()
-        if t in (b"[", b"{"):
+        if t in ("[", "{"):
             depth += 1
             if depth > max_depth:
                 return True
-        elif t in (b"]", b"}"):
+        elif t in ("]", "}"):
             depth -= 1
     return False
 
@@ -529,7 +556,29 @@ _EXTENSION_TYPES = {
     tarfile.GNUTYPE_LONGLINK: "GNU long link",
     tarfile.GNUTYPE_SPARSE: "GNU sparse file",
 }
-_FORBIDDEN_PAX_KEYS = (b"size", b"GNU.sparse")
+_PAX_KEYS = ("path",)  # all the supervisor writes (for a non-ASCII or long name)
+_PAX_LENGTH = re.compile(rb"([0-9]{1,20}) ")  # tarfile's record-length prefix
+# mode, uid, gid, size, mtime, devmajor, devminor: tarfile parses each, and an invalid one
+# after the first header silently ends its member list.
+_NUMBER_FIELDS = (
+    (100, 108),
+    (108, 116),
+    (116, 124),
+    (124, 136),
+    (136, 148),
+    (329, 337),
+    (337, 345),
+)
+
+
+class TarEntry(NamedTuple):
+    """One member as the pre-check reads it, in the terms `tarfile` reports."""
+
+    offset: int  # its first header: the PAX header when there is one
+    data_offset: int
+    size: int
+    pax: dict  # the decoded PAX records that apply to it
+    next_offset: int  # where the next header starts
 
 
 def _tar_number(field: bytes) -> int:
@@ -541,80 +590,111 @@ def _tar_number(field: bytes) -> int:
     return int(text or b"0", 8)
 
 
-def _check_pax_records(data: bytes) -> None:
-    """Every record is `<len> <key>=<value>\\n` and none overrides the member size."""
+def _pax_records(data: bytes) -> dict[str, str]:
+    """Parse a PAX payload with `tarfile`'s record rules (`<len> <key>=<value>\\n`) and accept
+    only UTF-8 records with an allowed key, each at most once."""
+    records: dict[str, str] = {}
     pos = 0
     while pos < len(data):
-        space = data.find(b" ", pos, pos + 12)
-        digits = data[pos:space] if space > pos else b""
-        if not digits.isdigit():
+        match = _PAX_LENGTH.match(data, pos)
+        if not match:
             raise CollectionError("malformed_archive", "invalid PAX record length")
-        end = pos + int(digits)
-        record = data[space + 1 : end]
-        if end > len(data) or not record.endswith(b"\n") or b"=" not in record:
+        end = pos + int(match.group(1))
+        if end - pos < 5 or end > len(data) or data[end - 1] != 0x0A:
             raise CollectionError("malformed_archive", "invalid PAX record")
-        if record.split(b"=", 1)[0].startswith(_FORBIDDEN_PAX_KEYS):
-            raise CollectionError("malformed_archive", "PAX record overrides size")
+        key, equals, value = data[match.end() : end - 1].partition(b"=")
+        if not key or not equals:
+            raise CollectionError("malformed_archive", "invalid PAX record")
+        try:
+            key_text, value_text = key.decode("utf-8"), value.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise CollectionError("malformed_archive", "PAX record not UTF-8") from exc
+        if key_text not in _PAX_KEYS:
+            raise CollectionError(
+                "malformed_archive", f"unexpected PAX record {key_text[:40]!r}"
+            )
+        if key_text in records:
+            raise CollectionError("malformed_archive", "repeated PAX record")
+        records[key_text] = value_text
         pos = end
+    return records
 
 
-def _check_tar_structure(archive: bytes, limits: Limits) -> None:
-    """Walk the raw tar headers before `tarfile` parses them: the layout the supervisor writes
-    (ustar members, each preceded by at most one PAX header) and nothing else.
+def _check_tar_structure(archive: bytes, limits: Limits) -> list[TarEntry]:
+    """Walk the raw tar headers before `tarfile` parses them, accepting only the layout the
+    supervisor writes (ustar members, each preceded by at most one PAX header), and return
+    that layout for `_validated_members` to hold `tarfile` to.
 
     `tarfile` recurses once per consecutive extension header, so chained headers could exhaust
-    the stack; here each header costs one loop iteration, and member count is capped.
+    the stack; here each header costs one loop iteration, and member count is capped. Every
+    byte `tarfile` would interpret is checked here, including a PAX header's padding: `tarfile`
+    parses the whole padded block, so records hidden after the declared size would otherwise
+    reach it unchecked.
     """
     bs = tarfile.BLOCKSIZE
     if len(archive) % bs:
         raise CollectionError("malformed_archive", "not a whole number of blocks")
-    offset, pax_pending, members = 0, False, 0
+    offset, layout = 0, []
+    pax: tuple[int, dict] | None = None  # (header offset, records) awaiting its member
     while True:
         block = archive[offset : offset + bs]
         if len(block) < bs:
             raise CollectionError("malformed_archive", "no end-of-archive marker")
         if not block.strip(b"\0"):
-            if pax_pending:
+            if pax is not None:
                 raise CollectionError(
                     "malformed_archive", "PAX header without a member"
                 )
             if archive[offset:].strip(b"\0"):
                 raise CollectionError("malformed_archive", "data after end of archive")
-            return
+            return layout
         stored = _tar_number(block[148:156])
         rest = block[:148] + block[156:]
         if stored != 256 + sum(rest) and stored != 256 + sum(
             b - 256 if b > 127 else b for b in rest
         ):  # tarfile accepts the unsigned or the signed sum
             raise CollectionError("malformed_archive", "header checksum mismatch")
+        for start, end in _NUMBER_FIELDS:
+            _tar_number(block[start:end])
         kind, size = block[156:157], _tar_number(block[124:136])
         data_start = offset + bs
-        offset = data_start + -(-size // bs) * bs
-        if offset > len(archive):
+        padded_end = data_start + -(-size // bs) * bs
+        if padded_end > len(archive):
             raise CollectionError("malformed_archive", "entry extends past the archive")
         if kind in _EXTENSION_TYPES:
             raise CollectionError("malformed_archive", _EXTENSION_TYPES[kind])
         if kind == tarfile.XHDTYPE:
-            if pax_pending:
+            if pax is not None:
                 raise CollectionError("malformed_archive", "consecutive PAX headers")
             if size > MAX_PAX_BYTES:
                 raise CollectionError("malformed_archive", "PAX header too large")
-            _check_pax_records(archive[data_start : data_start + size])
-            pax_pending = True
+            if archive[data_start + size : padded_end].strip(b"\0"):
+                raise CollectionError("malformed_archive", "non-zero PAX padding")
+            pax = (offset, _pax_records(archive[data_start : data_start + size]))
+            offset = padded_end
             continue
-        pax_pending = False
-        members += 1
-        if members > limits.max_output_files:
+        # As in tarfile: data blocks follow only regular files and unknown types; a v7
+        # directory (AREGTYPE named with a trailing slash, not after a PAX header) has none.
+        v7_dir = kind == tarfile.AREGTYPE and pax is None
+        v7_dir = v7_dir and block[:100].split(b"\0", 1)[0].endswith(b"/")
+        has_data = not v7_dir and (
+            kind in tarfile.REGULAR_TYPES or kind not in tarfile.SUPPORTED_TYPES
+        )
+        next_offset = padded_end if has_data else data_start
+        first, records = pax if pax is not None else (offset, {})
+        layout.append(TarEntry(first, data_start, size, records, next_offset))
+        pax, offset = None, next_offset
+        if len(layout) > limits.max_output_files:
             raise CollectionError("file_count_exceeded")
 
 
 def extract_archive(archive: bytes, dest: Path, limits: Limits) -> list[dict]:
     """Check the raw structure, validate every entry, then write regular files only into the
     new `dest`. Malformed input of any kind raises CollectionError."""
-    _check_tar_structure(archive, limits)
+    layout = _check_tar_structure(archive, limits)
     try:
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
-            members = _validated_members(tar, limits)
+            members = _validated_members(tar, limits, layout)
             return _write_members(tar, members, Path(dest))
     except CollectionError:
         raise
@@ -624,12 +704,35 @@ def extract_archive(archive: bytes, dest: Path, limits: Limits) -> list[dict]:
         ) from exc
 
 
-def _validated_members(tar: tarfile.TarFile, limits: Limits) -> list:
+def _agrees(tar: tarfile.TarFile, member, expected: TarEntry) -> None:
+    """`tarfile` must have read this member where and as the pre-check did. It is stepped one
+    member at a time, so it only ever starts reading at a header the pre-check accepted, and
+    any disagreement is refused before it reads further."""
+    seen = None
+    if member is not None:
+        seen = TarEntry(
+            member.offset,
+            member.offset_data,
+            member.size,
+            member.pax_headers,
+            tar.offset,
+        )
+    if seen != expected:
+        raise CollectionError(
+            "malformed_archive", "tarfile disagrees with the header pre-check"
+        )
+
+
+def _validated_members(
+    tar: tarfile.TarFile, limits: Limits, layout: list[TarEntry]
+) -> list:
     members = []
     seen: set[str] = set()
     implied_dirs: set[str] = set()
     total = 0
-    for member in tar:
+    for expected in layout:
+        member = tar.next()
+        _agrees(tar, member, expected)
         if len(members) >= limits.max_output_files:
             raise CollectionError("file_count_exceeded")
         if not member.isreg():
@@ -651,6 +754,10 @@ def _validated_members(tar: tarfile.TarFile, limits: Limits) -> list:
         if total > limits.output_bytes:
             raise CollectionError("expanded_bytes_exceeded")
         members.append((name, member))
+    if tar.next() is not None:  # reads only the end marker the pre-check found
+        raise CollectionError(
+            "malformed_archive", "tarfile found more members than the pre-check"
+        )
     return members
 
 

@@ -6,12 +6,14 @@ The archives here are built by the test, standing in for a malicious or broken s
 import hashlib
 import io
 import json
+import random
 import subprocess
 import sys
 import tarfile
 
 import pytest
 
+from atlas.runner import docker as dr
 from atlas.runner.docker import (
     FRAME_MAGIC,
     CollectionError,
@@ -224,6 +226,298 @@ def test_existing_destination_is_not_overwritten(tmp_path):
     (tmp_path / "out").mkdir()
     with pytest.raises(FileExistsError):
         extract_archive(tar_bytes([("a", b"1")]), tmp_path / "out", SMALL)
+
+
+# --- one interpretation for checks and parsing (Codex verification of repair 1, 44c5a84) ----
+
+
+@pytest.fixture
+def json_loads_calls(monkeypatch):
+    """Counts json.loads calls: a refused header must be refused before the parser runs."""
+    calls, real = [], json.loads
+
+    def spy(*args, **kwargs):
+        calls.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(json, "loads", spy)
+    return calls
+
+
+def _header_text(extra: str) -> str:
+    """A valid frame header (for an empty archive) with `extra` as its first member."""
+    rest = json.dumps(
+        {
+            "version": 1,
+            "archive_bytes": 0,
+            "archive_sha256": hashlib.sha256().hexdigest(),
+        }
+    )
+    return "{" + extra + "," + rest[1:]
+
+
+def _nest(depth: int) -> str:
+    return "[" * depth + "0" + "]" * depth
+
+
+@pytest.mark.parametrize("depth", [20, 2000])
+@pytest.mark.parametrize("encoding", ["utf-16-le", "utf-16-be", "utf-16", "utf-32"])
+def test_non_utf8_header_is_refused_before_parsing(json_loads_calls, encoding, depth):
+    """Codex's reproduction: the escaped quote made the byte scan lose string boundaries in
+    UTF-16, while json.loads(bytes) auto-detected UTF-16 and parsed the nesting."""
+    raw = _header_text('"\\"":' + _nest(depth)).encode(encoding)
+    with pytest.raises(CollectionError) as exc:
+        parse_frame(FRAME_MAGIC + raw + b"\n", SMALL)
+    assert exc.value.code == "malformed_header"
+    assert json_loads_calls == []
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"\xef\xbb\xbf" + _header_text('"a":1').encode(),
+        _header_text('"a":"\xff"').encode("latin-1"),
+        _header_text('"a":1').encode().replace(b'"a"', b'"\0"'),
+    ],
+    ids=["utf8_bom", "invalid_utf8", "nul_byte"],
+)
+def test_header_must_be_plain_utf8(json_loads_calls, raw):
+    with pytest.raises(CollectionError) as exc:
+        parse_frame(FRAME_MAGIC + raw + b"\n", SMALL)
+    assert exc.value.code == "malformed_header"
+    assert json_loads_calls == []
+
+
+@pytest.mark.parametrize(
+    "key",
+    ['"\\""', '"\\\\"', '"a\\"[{"', '"\\u0022"', '"é\\"ü"'],
+    ids=[
+        "escaped_quote",
+        "escaped_backslash",
+        "brackets_after_quote",
+        "unicode_escape",
+        "utf8",
+    ],
+)
+def test_escaped_strings_cannot_hide_nesting(json_loads_calls, key):
+    raw = _header_text(key + ":" + _nest(20)).encode("utf-8")
+    with pytest.raises(CollectionError) as exc:
+        parse_frame(FRAME_MAGIC + raw + b"\n", SMALL)
+    assert exc.value.code == "malformed_header"
+    assert json_loads_calls == []
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        '"\\"[[[[[[[[[[\\\\":"]]]]]]]]]]{{{{{{{{{"',
+        '"é":"ü \\u00e9 \\ud83d\\ude00 [[[[[[[[[["',
+        '"a\\\\":"\\"\\\\\\"\\/\\b\\f\\n\\r\\t"',
+        '"deep":' + _nest(7),
+    ],
+    ids=["brackets_in_strings", "non_ascii", "every_escape", "depth_at_the_limit"],
+)
+def test_valid_utf8_headers_with_escapes_are_accepted(extra):
+    header, _ = parse_frame(FRAME_MAGIC + _header_text(extra).encode() + b"\n", SMALL)
+    assert header["version"] == 1
+
+
+def _max_depth(value) -> int:
+    depth, stack = 0, [(value, 1)]
+    while stack:
+        item, level = stack.pop()
+        if isinstance(item, (list, dict)):
+            depth = max(depth, level)
+            children = item.values() if isinstance(item, dict) else item
+            stack.extend((child, level + 1) for child in children)
+    return depth
+
+
+def test_header_depth_check_agrees_with_the_parsed_value():
+    """Not just the sample bytes: for generated headers full of quotes, backslashes and
+    brackets inside strings, the header is accepted exactly when its real depth is <= 8."""
+    rng = random.Random(20261015)
+    alphabet = '"\\[]{}:,é\u2028 ab/u'
+
+    def text():
+        return "".join(rng.choice(alphabet) for _ in range(rng.randrange(8)))
+
+    def value(depth):
+        if depth == 0:
+            return rng.choice([0, text(), None])
+        if rng.random() < 0.5:
+            return [value(depth - 1)]
+        return {text(): value(depth - 1)}
+
+    for _ in range(400):
+        nested = value(rng.randrange(12))
+        head = {
+            "version": 1,
+            "archive_bytes": 0,
+            "archive_sha256": hashlib.sha256().hexdigest(),
+            text(): nested,
+        }
+        raw = json.dumps(head, ensure_ascii=rng.random() < 0.5).encode("utf-8")
+        expected = _max_depth(head)
+        try:
+            parse_frame(FRAME_MAGIC + raw + b"\n", SMALL)
+            accepted = True
+        except CollectionError as exc:
+            assert exc.code == "malformed_header"
+            accepted = False
+        assert accepted == (expected <= dr.MAX_HEADER_DEPTH), raw
+
+
+@pytest.fixture
+def tarfile_opens(monkeypatch):
+    """Counts tarfile.open calls: a refused archive must be refused before tarfile reads it."""
+    calls, real = [], tarfile.open
+
+    def spy(*args, **kwargs):
+        calls.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(tarfile, "open", spy)
+    return calls
+
+
+def _pax_with_padding(declared: bytes, hidden: bytes) -> bytes:
+    """A PAX header declaring `declared`, with `hidden` in the padding that tarfile reads."""
+    info = tarfile.TarInfo("pax")
+    info.type, info.size = tarfile.XHDTYPE, len(declared)
+    block = (declared + hidden).ljust(tarfile.BLOCKSIZE, b"\0")
+    return info.tobuf(format=tarfile.USTAR_FORMAT) + block
+
+
+def _hidden_chain() -> bytes:
+    """Codex's reproduction: `size=0` in the padding makes tarfile parse the envelope's data,
+    600 chained PAX headers, as headers."""
+    chain = _pax_record(b"10 path=x\n") * 600 + _member("nested.txt", b"x")
+    return (
+        _pax_with_padding(b"10 path=x\n", b"9 size=0\n")
+        + _member("envelope.txt", chain)
+        + END
+    )
+
+
+@pytest.mark.parametrize(
+    "archive",
+    [
+        _pax_with_padding(b"10 path=x\n", b"9 size=0\n")
+        + _member("file.txt", b"x")
+        + END,
+        _hidden_chain(),
+        _pax_with_padding(b"10 path=x\n", b"18 path=../escape\n")
+        + _member("a.txt", b"x")
+        + END,
+        _pax_with_padding(b"10 path=x\n", b"\x01") + _member("a.txt", b"x") + END,
+    ],
+    ids=["hidden_size_zero", "hidden_header_chain", "hidden_path", "nonzero_byte"],
+)
+def test_nonzero_pax_padding_is_refused_before_tarfile(
+    tmp_path, tarfile_opens, archive
+):
+    assert len(archive) <= Limits().max_archive_bytes
+    with pytest.raises(CollectionError) as exc:
+        extract_archive(archive, tmp_path / "out", Limits())
+    assert exc.value.code == "malformed_archive"
+    assert tarfile_opens == []
+    assert not (tmp_path / "out").exists()
+
+
+def _pax(*records: bytes) -> bytes:
+    return _pax_record(b"".join(records))
+
+
+def _record(key: bytes, value: bytes) -> bytes:
+    """One PAX record; its length field counts the whole record, itself included."""
+    body = b" " + key + b"=" + value + b"\n"
+    length = len(body)
+    while len(body) + len(str(length)) != length:
+        length = len(body) + len(str(length))
+    return str(length).encode() + body
+
+
+@pytest.mark.parametrize(
+    "pax",
+    [
+        _pax(_record(b"mtime", b"1.5")),
+        _pax(_record(b"hdrcharset", b"BINARY"), _record(b"path", b"x")),
+        _pax(_record(b"uname", b"root")),
+        _pax(_record(b"path", b"a"), _record(b"path", b"b")),
+        _pax(_record(b"path", b"\xff")),
+        _pax(b"6 =ab\n"),
+        _pax(_record(b"path", b"x") + b"\0" * 4),
+    ],
+    ids=[
+        "mtime",
+        "hdrcharset",
+        "uname",
+        "duplicate_path",
+        "non_utf8_path",
+        "empty_key",
+        "nul_after_records",
+    ],
+)
+def test_pax_records_other_than_one_utf8_path_are_refused(tmp_path, tarfile_opens, pax):
+    with pytest.raises(CollectionError) as exc:
+        extract_archive(pax + _member("a.txt", b"x") + END, tmp_path / "out", SMALL)
+    assert exc.value.code == "malformed_archive"
+    assert tarfile_opens == []
+    assert not (tmp_path / "out").exists()
+
+
+def _with_field(member: bytes, start: int, end: int, value: bytes) -> bytes:
+    """Overwrite one header field and recompute the checksum, as a hostile writer could."""
+    block = bytearray(member[: tarfile.BLOCKSIZE])
+    block[start:end] = value.ljust(end - start, b"\0")
+    block[148:156] = b" " * 8
+    block[148:156] = b"%06o\0 " % sum(block)
+    return bytes(block) + member[tarfile.BLOCKSIZE :]
+
+
+def test_member_tarfile_would_silently_drop_is_refused(tmp_path, tarfile_opens):
+    """tarfile treats an invalid number in a later header as the end of the archive and
+    returns fewer members; the pre-check must not count members tarfile never yields."""
+    bad = _with_field(_member("b.txt", b"y"), 136, 148, b"not-octal")
+    archive = _member("a.txt", b"x") + bad + END
+    with pytest.raises(CollectionError) as exc:
+        extract_archive(archive, tmp_path / "out", SMALL)
+    assert exc.value.code == "malformed_archive"
+    assert tarfile_opens == []
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        lambda layout: [layout[0]._replace(size=layout[0].size + 1), *layout[1:]],
+        lambda layout: [layout[0]._replace(next_offset=layout[0].next_offset + 512)],
+        lambda layout: [layout[0]._replace(pax={"path": "other.txt"}), *layout[1:]],
+        lambda layout: layout[:1],
+        lambda layout: [*layout, layout[-1]],
+    ],
+    ids=["size", "next_offset", "pax", "tarfile_has_more", "tarfile_has_fewer"],
+)
+def test_tarfile_must_agree_with_the_prechecked_layout(tmp_path, monkeypatch, tamper):
+    """The safety net behind the pre-check: tarfile is stepped one member at a time, and any
+    difference from the pre-checked layout is refused before tarfile reads further."""
+    archive = tar_bytes([("résumé.txt", b"1"), ("b.txt", b"2")])
+    real = dr._check_tar_structure
+    monkeypatch.setattr(dr, "_check_tar_structure", lambda *a: tamper(list(real(*a))))
+    with pytest.raises(CollectionError) as exc:
+        extract_archive(archive, tmp_path / "out", SMALL)
+    assert exc.value.code == "malformed_archive"
+    assert not (tmp_path / "out").exists()
+
+
+def test_prechecked_layout_matches_tarfile_for_supervisor_archives(tmp_path):
+    names = ["a.txt", "résumé.txt", "d/" + "n" * 150 + ".txt", "e.bin"]
+    archive = tar_bytes([(n, n.encode() * 3) for n in names])
+    layout = dr._check_tar_structure(archive, Limits())
+    assert [e.pax for e in layout] == [{}, {"path": names[1]}, {"path": names[2]}, {}]
+    files = extract_archive(archive, tmp_path / "out", Limits())
+    assert [f["path"] for f in files] == names
 
 
 # --- bounded IO ------------------------------------------------------------------------------

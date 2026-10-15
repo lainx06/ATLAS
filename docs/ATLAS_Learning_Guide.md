@@ -1,12 +1,12 @@
 # Understanding ATLAS, end to end
 
-Personal learning guide for Adnan · 15 October 2026 · last checked against commit `2e58280`
+Personal learning guide for Adnan · 15 October 2026 · last checked against T-05 repair pass 2 (the commit after `44c5a84`)
 
 ## How to use this guide
 
 This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
 
-**Evidence boundary:** last checked against the local repository at commit `2e58280` (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+**Evidence boundary:** last checked against the local repository at T-05 repair pass 2, the commit after `44c5a84` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
 
 **Status words used here** (they are deliberately different):
 
@@ -38,7 +38,7 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | Requirements and evaluation policy | Recorded; policy-v1.2 | Explicit rules and supported scope |
 | T-01 deterministic audit | Accepted at `f5aa4dc`, after Codex's independent verification (165 tests passed) | Specified behavior on trusted synthetic fixtures and review cases |
 | T-04 model connection | Accepted within its smoke-test scope | Real NVIDIA text response and strict application-validated JSON response |
-| T-05 restricted runner | Implemented (self-tested). Codex review 1 of `f494c95` found three P2 defects; repair commit `2e58280` addresses them and passes the builder's tests. **Independent verification and acceptance are still pending** | Contract tests passed on this host (28/28 with Docker required); the repair has not yet been checked by Codex |
+| T-05 restricted runner | Implemented; **not accepted**. Codex review 1 of `f494c95` found three P2 defects. Codex then verified repair `2e58280`: the cleanup and snapshot-limit fixes are independently verified; two parser defects remained. Repair pass 2 (the commit after `44c5a84`) addresses them and passes the builder's tests; **it awaits independent verification** | Contract tests passed on this host (28/28 with Docker required) |
 | Candidate re-evaluation integration | Planned for T-06 | Not demonstrated by T-05 |
 | Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
 | Remaining checks (T-02), memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
@@ -184,20 +184,26 @@ Generated Python can do more than train a model. It can read files, open connect
 | Explicit environment | Host secrets are not inherited into candidate execution |
 | Non-root, dropped capabilities, Docker's default seccomp profile | Reduce available operating-system privileges |
 | Memory, CPU and process limits | Bound resource use |
-| External deadline and confirmed cleanup | Prevent an execution from running indefinitely or leaving a container behind |
+| External deadline, removal and confirmation | Stop a run that takes too long, try to remove its container, and report honestly whether removal was confirmed |
 | Bounded output collection | Treat returned files as untrusted input to the host |
 | No host fallback | Missing isolation means no candidate execution |
 
 These restrictions are implemented in T-05 and passed its contract tests on this Windows/Docker Desktop host; T-05 is not yet accepted. In code they are command-line flags built by `docker_run_args` in `src/atlas/runner/docker.py`, for example:
 
 ```python
-"--network", "none",        # no network interfaces except loopback
-"--read-only",              # root filesystem cannot be written
-"--cap-drop", "ALL",        # no Linux capabilities
-"--pids-limit", str(limits.pids),
+args = [
+    ...
+    "--network", "none",  # no network interfaces except loopback
+    "--read-only",  # root filesystem cannot be written
+    "--cap-drop", "ALL",  # no Linux capabilities
+    "--pids-limit", str(limits.pids),
+    ...
+]  # fmt: skip
 ```
 
-Each flag is one string in a Python list that is passed to the Docker CLI. Exercise: which contract test would fail if `"--network", "none"` were deleted? (Hint: search `tests/integration/test_runner_contract.py` for "network".)
+Each flag is one string in a Python list that is passed to the Docker CLI. (`# fmt: skip` tells the formatter to keep each flag next to its value, as the real code does.) Exercise: which contract test would fail if `"--network", "none"` were deleted? (Hint: search `tests/integration/test_runner_contract.py` for "network".)
+
+Cleanup has a limit too. The runner can ask Docker to remove a container, then ask Docker whether it is gone. If the Docker API is unreachable or fails, neither answer is available, so the runner records cleanup as `unknown` and reports the run as `cleanup_failed`; it never reports success. That is fail-closed reporting: it does not, and cannot, guarantee that the container was physically removed.
 
 Docker is a risk-reduction boundary, not a claim that all hostile code is safe. It also cannot make candidate-produced scientific evidence true.
 
@@ -207,7 +213,12 @@ The trusted fixture runner is an explicit separate path for reviewed, allowliste
 
 ## 8. Learn debugging from the three T-05 review findings
 
-Codex review 1 (of `f494c95`) found three P2 defects. Repair commit `2e58280` addresses all three. Each fix has regression tests that failed at `f494c95` and pass now; the builder's unit tests (219 passed, 1 skipped) and Docker contract tests (28/28) pass. **That is self-tested, not independently verified:** Codex has not yet checked the repair, and T-05 is not accepted. Details: `TASKS.md`, T-05 "REVIEW 1 … REPAIR PASS 1".
+Codex review 1 (of `f494c95`) found three P2 defects, and repair commit `2e58280` addressed them. Codex then checked that repair (at `44c5a84`):
+
+- **A and B are independently verified as fixed.**
+- **C was only partly fixed.** Codex found two inputs that still got past the structural limits. Repair pass 2 (the commit after `44c5a84`) addresses them. Its new regression tests failed before the repair and pass after it, but **it awaits independent verification.**
+
+T-05 is not accepted. Details: `TASKS.md`, T-05 "REVIEW 1 … REPAIR PASS 1" and "CODEX VERIFICATION OF REPAIR PASS 1 … REPAIR PASS 2".
 
 ### A. Unknown cleanup is not successful cleanup
 
@@ -219,11 +230,13 @@ The repair in `src/atlas/runner/docker.py` makes the three values explicit. `_co
 
 ```python
 if proc.returncode != 0:
-    return None, f"listing failed: {_cli_error(proc)}"   # unknown, NOT absent
+    return None, f"listing failed: {_cli_error(proc)}"  # unknown, NOT absent
 return name in proc.stdout.decode("utf-8", "replace").split(), None
 ```
 
 `_remove_container` turns that into `cleanup` = `confirmed_absent`, `still_present` or `unknown`, and `_finish` refuses to report a plain outcome when removal is unconfirmed: the run's status becomes `cleanup_failed`, and the outcome it replaced is kept in `execution_status`. Note the Python detail `record.get("container_removed") is False`: it is true only for the value `False`, not for a missing key (`None`).
+
+This makes the *report* honest; it does not make removal certain. When the Docker API fails, nobody on the host can confirm the container is gone, so the runner reports `unknown` and fails closed rather than guessing.
 
 Regression test to read: `test_daemon_failure_does_not_confirm_removal` in `tests/unit/test_runner_lifecycle.py`. It runs offline with a fake Docker CLI.
 
@@ -244,7 +257,7 @@ The repair in `src/atlas/candidates.py` validates the path, opens the file once,
 
 ```python
 with _open_permitted(root, rel, max_bytes) as f:
-    data = f.read(max_bytes + 1)          # never more than the cap plus one byte
+    data = f.read(max_bytes + 1)  # never more than the cap plus one byte
 if len(data) > max_bytes:
     raise SnapshotError(f"{rel} exceeds {max_bytes} bytes")
 ```
@@ -258,19 +271,45 @@ A byte limit does not necessarily constrain parser nesting. Deep JSON and chaine
 The repair checks structure with loops before handing input to a recursive parser. `_json_depth_exceeds` counts brackets outside strings, one token at a time, and refuses a header nested deeper than 8 levels before `json.loads` runs:
 
 ```python
-for token in _JSON_TOKENS.finditer(raw):
+for token in _JSON_TOKENS.finditer(text):
     t = token.group()
-    if t in (b"[", b"{"):
+    if t in ("[", "{"):
         depth += 1
         if depth > max_depth:
             return True
-    elif t in (b"]", b"}"):
+    elif t in ("]", "}"):
         depth -= 1
 ```
 
-A loop uses constant stack space however deep the input is; a recursive parser uses one stack frame per level. (C++ connection: the same reason a deep recursive function can overflow the call stack.) `_check_tar_structure` similarly walks the raw tar headers in a loop and allows at most one PAX extension header per file. Any failure during collection is now saved as `collection_failed`, and any other unexpected error as `runner_error`, after cleanup has run. Regression tests to read: `test_deeply_nested_header_is_a_collection_error` (`tests/unit/test_runner_collection.py`) and `test_nested_header_is_a_recorded_collection_failure` (`tests/unit/test_runner_lifecycle.py`).
+A loop uses constant stack space however deep the input is; a recursive parser uses one stack frame per level. (C++ connection: the same reason a deep recursive function can overflow the call stack.) `_check_tar_structure` similarly walks the raw tar headers in a loop and allows at most one PAX extension header per file. Any failure during collection is saved as `collection_failed`, and any other unexpected error as `runner_error`, after cleanup has run. Regression tests to read: `test_deeply_nested_header_is_a_collection_error` (`tests/unit/test_runner_collection.py`) and `test_nested_header_is_a_recorded_collection_failure` (`tests/unit/test_runner_lifecycle.py`).
 
-Known limitations of the repair are listed in `TASKS.md`; for example, the same-file check does not detect a directory swapped partway along the path.
+**What the first repair got wrong.** The checks above were real, but they could be bypassed, because each check read the input differently from the parser after it (section D). As of repair pass 2, still awaiting independent verification, the structural limits are:
+
+- **Header:** decoded once as strict UTF-8 (no byte-order mark, no NUL bytes). The depth limit (8) and `json.loads` both read that same text.
+- **Archive:** only the layout the supervisor writes. That means ordinary files, each preceded by at most one PAX extension header holding only a UTF-8 `path` record, with zero bytes in that header's padding. It also means valid checksums and numeric fields, and nothing after the end marker.
+- **Cross-check:** `tarfile` is then stepped one member at a time and must report exactly the layout the pre-check read. It therefore never starts reading at a header the pre-check did not accept.
+
+Neither limit is a byte-count limit: both bound how the input is *interpreted*. Regression tests to read: `test_non_utf8_header_is_refused_before_parsing` and `test_nonzero_pax_padding_is_refused_before_tarfile` (`tests/unit/test_runner_collection.py`).
+
+Known limitations of the repairs are listed in `TASKS.md`; for example, the same-file check does not detect a directory swapped partway along the path.
+
+### D. Check and parse the same representation
+
+Both remaining parser bugs had one cause: the safety check and the parser looked at different versions of the same input.
+
+Text is stored as bytes, and the same characters have different bytes in different encodings:
+
+```python
+raw = '{"a": [[1]]}'.encode("utf-16-le")
+print(raw[:6])  # b'{\x00"\x00a\x00'  -- a zero byte after every ASCII character
+json.loads(raw)  # works: given bytes, json detects UTF-16 by itself
+```
+
+The old depth check scanned `raw` as if it were one byte per character. Inside UTF-16, an escaped quote (`\"`) fooled its idea of where strings start and end, so it skipped brackets that `json.loads`, decoding UTF-16, really saw. A 20-deep header passed a limit of 8. The fix decodes once, `text = raw.decode("utf-8")`, and gives the same `text` to both the check and the parser.
+
+The archive bug had the same shape. A PAX header declares how many bytes of records it has, and the old check read exactly that many. `tarfile` reads the whole 512-byte block, including the padding after the declared records. A record hidden in the padding, such as `size=0`, was invisible to the check but obeyed by `tarfile`. The fix requires the padding to be zero and then cross-checks `tarfile`'s result against the pre-check.
+
+The rule to remember: **validate the exact object you will use.** If you check one representation and then convert or re-read the input, you have checked something else. C++ connection: it is like checking `s.size()` on one `std::string` and then passing a different buffer to the function that uses it.
 
 These were bounded reproductions. The review did not demonstrate a container escape. Distinguishing a demonstrated defect from a hypothetical larger exploit is part of sound engineering.
 

@@ -4,15 +4,26 @@ WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
 CURRENT STEP: Start Here Step 10.
 - **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **T-04 accepted by the user within its documented smoke-test scope** (2026-10-14; TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
-- **T-05:** **Codex review 1 (of `f494c95`) found three P2 defects; repair pass 1 is done and self-tested; awaiting Codex verification; not accepted.**
-  - The defects: cleanup reported removal on Docker/API failure; snapshot limits were applied after whole-file reads and AST parsing; nested JSON/PAX input escaped as `RecursionError` with a null saved status.
-  - Causes, repairs, tests and results: TASKS.md T-05 "REVIEW 1 … REPAIR PASS 1". The 25 new regression tests failed at `f494c95` and pass now.
-  - After the repair: unit 219 passed, 1 skipped; contract suite 28/28 with Docker required, every live removal confirmed by a Docker listing.
-  - The review evidence at `runs/review-t05/session-f494c95-20261015/` is preserved unchanged.
+- **T-05:** **Codex verified repair pass 1 at `44c5a84`: the cleanup and snapshot-limit fixes are verified; two parser P2 findings remained. Repair pass 2 is done and self-tested; awaiting Codex verification; not accepted.**
+  - Review 1 (of `f494c95`) found three defects: cleanup reported removal on Docker/API failure; snapshot limits were applied after whole-file reads and AST parsing; nested JSON/PAX input escaped as `RecursionError` with a null saved status. Repair pass 1 (`2e58280`): TASKS.md T-05 "REVIEW 1 … REPAIR PASS 1".
+  - Remaining at `44c5a84`: `tarfile` parsed records hidden in PAX padding that the pre-check never read, and `json.loads(bytes)` decoded UTF-16 that the depth check had scanned as ASCII. In both, the check and the parser read different representations.
+  - Repair pass 2: zero PAX padding, `tarfile`-rule PAX records limited to one UTF-8 `path`, every numeric field checked, and `tarfile` stepped against the pre-checked layout. The header is strict UTF-8 text read by both the depth check and `json.loads`. Details: TASKS.md T-05 "CODEX VERIFICATION OF REPAIR PASS 1 … REPAIR PASS 2".
+  - After repair pass 2:
+    - 31 new regressions failed at `44c5a84` and pass now;
+    - unit 261 passed, 1 skipped;
+    - contract suite 28/28 with Docker required, with all 13 container runs' removal confirmed;
+    - differential fuzz (4 seeds) found 0 problems.
+  - Both review directories (`runs/review-t05/session-f494c95-20261015/`, `runs/review-t05/repair1-44c5a84/`) are preserved unchanged.
   - The runner does not re-evaluate candidates; that is T-06.
 - T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
-- **Learning guide (documentation only, 2026-10-15):** `docs/ATLAS_Learning_Guide.md` is the canonical guide, now tracked and checked against `2e58280` (T-05 repair self-tested; verification and acceptance pending). AGENTS.md "Learning guide" sets its maintenance rule. An identical untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), and the learning-guide documentation commit containing this update). Nothing is pushed.
+- **Learning guide:** `docs/ATLAS_Learning_Guide.md` is the canonical guide (tracked since `44c5a84`; maintenance rule in AGENTS.md "Learning guide"). Repair pass 2 corrected it:
+  - the structural limits as they now are, labelled as awaiting independent verification;
+  - Docker API failure gives `unknown` cleanup and fail-closed reporting, without guaranteeing removal;
+  - a beginner section on checking and parsing the same representation;
+  - ruff-clean code excerpts.
+
+  The untracked copy at the repository root is the user's and is left alone.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), and the T-05 repair pass 2 commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-15
 
 ## What works (verified by running)
@@ -46,7 +57,7 @@ LAST UPDATED: 2026-10-15
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` holds only the Step 8 packet.)
 - Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. No production model client, schemas or agent loop (T-06); diagnosis, tool-use and repair quality untested.
-- The Docker runner's repair pass 1 is self-tested only: Codex has not verified it, and T-05 is not accepted. `audit.py` still accepts only trusted-runner records, so audits remain `trusted_pipeline_only`. No user-facing candidate approval step exists yet.
+- The Docker runner's repair pass 2 is self-tested only: Codex has not verified it, and T-05 is not accepted. `audit.py` still accepts only trusted-runner records, so audits remain `trusted_pipeline_only`. No user-facing candidate approval step exists yet.
 
 ## Commands executed in setup
 1. `git init -b main`
@@ -67,10 +78,17 @@ LAST UPDATED: 2026-10-15
     - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` (28 passed);
     - scratch copies of Codex's probes;
     - ruff.
+12. T-05 repair pass 2 (2026-10-15):
+    - the new regression tests, first against `44c5a84` (31 failed) and then after the repair;
+    - `uv run --locked pytest tests/unit -q` (261 passed, 1 skipped);
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` (28 passed);
+    - copies of Codex's `parser_disagreement.py` and `lifecycle_matrix.py`;
+    - the differential parser fuzz, 4 seeds (0 problems);
+    - ruff.
 
 ## Blockers
 - **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
-- **Docker isolation (T-05):** none for implementation. Acceptance waits for Codex's verification of repair pass 1.
+- **Docker isolation (T-05):** none for implementation. Acceptance waits for Codex's verification of repair pass 2.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
@@ -97,7 +115,7 @@ LAST UPDATED: 2026-10-15
   - Usage: prompt 47, completion 52 (of which reasoning 38), total 99. Cost from listed prices **$0.0000609**. Within caps.
   - **Classification: application-validated output, not provider-enforced structured output.** Nothing on the provider side constrained the format; one passing call does not show the model always complies.
 
-## Docker installation (complete; the restricted runner (T-05) was reviewed once by Codex and repaired; not accepted)
+## Docker installation (complete; the restricted runner (T-05) was reviewed and re-verified by Codex and repaired twice; not accepted)
 **Reported by the user** (observed earlier; not re-run by the builder):
 - WSL 3.0.3.0, default version 2.
 - Docker Desktop 4.95.0, Engine 29.8.2.
@@ -132,7 +150,7 @@ LAST UPDATED: 2026-10-15
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-05 verification:** Codex verifies repair pass 1 (base `f494c95`, head `2e58280`) against its three findings. T-05 stays unaccepted until then.
+1. **T-05 verification:** Codex verifies repair pass 2 (base `44c5a84`, head = the repair pass 2 commit) against its two remaining parser findings. T-05 stays unaccepted until then.
 2. T-02 and T-06 are not started. No further Nebius calls are planned before T-06.
 
 ## Unresolved questions

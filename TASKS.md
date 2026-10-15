@@ -14,7 +14,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
-| T-05 | 10 | **Codex review 1 found three P2 defects (cleanup, snapshot bounds, parser bounds); repair pass 1 done and self-tested; awaiting Codex verification** (not accepted). Acceptance command 28/28 passed with `ATLAS_REQUIRE_DOCKER=1` after the repair; full candidate re-evaluation is T-06 | Isolated runner and hash-bound candidate approval |
+| T-05 | 10 | **Codex verified repair pass 1 at `44c5a84`: cleanup and snapshot fixes verified; two parser P2 findings remained (PAX padding, JSON encoding). Repair pass 2 done and self-tested; awaiting Codex verification** (not accepted). Acceptance command 28/28 passed with `ATLAS_REQUIRE_DOCKER=1` after repair pass 2; full candidate re-evaluation is T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | Proposed | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
@@ -511,6 +511,69 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - `cleanup_failed` runs keep any validated outputs in `out/` for diagnosis. Consumers must gate on `status`, as before.
     - The JSON depth pre-check counts brackets outside strings. An unterminated string is scanned as structure, which can only over-count (it refuses more, never less).
     - The other T-05 limitations listed above stand. **T-05 remains unaccepted** pending Codex's verification of this repair.
+- **CODEX VERIFICATION OF REPAIR PASS 1 (local Codex, at `44c5a84`, 2026-10-15) and REPAIR PASS 2 (Claude Code, Opus 5.5 high):**
+  - **Review evidence:** preserved unchanged at `runs/review-t05/repair1-44c5a84/` (git-ignored). Hash manifests of it (283 lines) and of `session-f494c95-20261015/` (516 lines) were identical before and after this repair. Key files:
+    - `review.md` (`72ec2efd…62dbdf68`);
+    - `parser_disagreement.py` (`50062399…bbf2a8ce`) and `parser-disagreement-results.json` (`b801c475…5f021060`);
+    - `lifecycle_matrix.py` (`b8f29e14…375e0620`) and `lifecycle-matrix-results.json` (`71a3ac0b…efa237a2`);
+    - `pax_padding_size.tar` (`6eef07b1…bf096b36`) and `pax_padding_hidden_chain.tar` (`65c05032…d2bc4d13`).
+  - **Codex's disposition:**
+    - Cleanup (finding 1), bounded snapshot reads (finding 2) and the related candidate-diff fix: **verified fixed**.
+    - Parser hardening (finding 3): **partially fixed**. Two P2 structural-limit bypasses remained, both offline host-parser reproductions; neither showed a candidate replacing the supervisor's frame or escaping the container.
+    - The guide overstated parser enforcement and container removal.
+    - The intermediate-directory race stays a trusted/stable-host-directory assumption (see the repair pass 1 limitations).
+  - **Checkpoints:** base `44c5a84`; head = the local commit "Repair T-05 parser findings after Codex verification" (parent `44c5a84`).
+  - **Findings, causes and repairs.** Each was a check and a parser reading different representations of the same input.
+    1. **PAX padding.**
+       - *Cause:* `_check_tar_structure` validated only a PAX header's declared payload. Python 3.11.17's `tarfile._proc_pax` reads and parses the whole padded 512-byte block, so records hidden in the padding reached `tarfile` unchecked.
+       - *Codex's reproductions:*
+         - `9 size=0` in the padding made a 1-byte member extract as an empty file, and the run completed.
+         - The same override exposed 600 chained PAX headers hidden in a member's data. The pre-check accepted it; `tarfile` hit `RecursionError`.
+       - *Repair, pre-check:* the padding after the declared payload must be zero. Records are parsed with `tarfile`'s own rules (`[0-9]{1,20} ` length prefix, length ≥ 5, newline-terminated, non-empty key, `=`) and must be UTF-8, with only the key `path`, at most once; that is all the supervisor writes. This replaces the old size/`GNU.sparse` deny-list. Every numeric header field (mode, uid, gid, size, mtime, devmajor, devminor) is checked as octal, because `tarfile` silently ends its member list at an invalid one after the first header. Next-header positions follow `tarfile`'s rule: data blocks follow only regular and unknown types, and a v7 directory has none.
+       - *Repair, cross-check:* `_check_tar_structure` returns the layout it read: per member, the first-header offset, data offset, size, PAX records and next-header offset (`TarEntry`). `_validated_members` steps `tarfile` with `tar.next()` one member at a time. Each member, and `tar.offset` afterwards, must equal the pre-checked entry, and `tarfile` must then find only the end marker. So `tarfile` only starts reading at a header the pre-check accepted, and any remaining interpretation difference is refused as `malformed_archive` before it reads further. Rejection still happens before anything is written.
+    2. **JSON encoding.**
+       - *Cause:* `_json_depth_exceeds` scanned the raw bytes with ASCII string rules, while `json.loads(bytes)` auto-detects UTF-16/UTF-32. In UTF-16 an escaped quote made the scan misplace string boundaries and skip the nesting.
+       - *Codex's reproductions:* a 386-byte, 20-deep header was accepted. A 2000-deep one reached `json.loads` and was stopped only by its `RecursionError`.
+       - *Repair:* `_header_text` refuses a UTF-8/UTF-16 byte-order mark (UTF-32's starts with UTF-16's) or any NUL byte. UTF-16 and UTF-32 always contain one, so these are "unsupported encoding". It decodes strict UTF-8 ("not UTF-8" otherwise), and both the depth scan and `json.loads` read that one `str`. The supervisor writes ASCII JSON, so no legitimate header is refused.
+       - *Why the two now agree:* on any prefix `json.loads` accepts, the scan finds the same strings and brackets, so `json.loads` cannot nest deeper than the count before it fails or returns. A correction to repair pass 1's note: a malformed string *can* make the scan under-count later brackets, but only after a point where `json.loads` has already failed.
+  - **Tests.** RED at `44c5a84`: **31 failed**, 67 passed (`runs/t05-repair2/red-at-base.log`). 42 new test items: 31 failed at the base, and 11 passed there by design (the over-rejection guards and checks the base already met). All pass after the repair.
+    - `tests/unit/test_runner_collection.py`:
+      - `test_non_utf8_header_is_refused_before_parsing[utf-16-le|utf-16-be|utf-16|utf-32 × 20|2000]`: Codex's UTF-16 bypass. It asserts `json.loads` is never called.
+      - `test_header_must_be_plain_utf8[utf8_bom|invalid_utf8|nul_byte]`.
+      - `test_escaped_strings_cannot_hide_nesting[escaped_quote|escaped_backslash|brackets_after_quote|unicode_escape|utf8]`: passed at base.
+      - `test_valid_utf8_headers_with_escapes_are_accepted[brackets_in_strings|non_ascii|every_escape|depth_at_the_limit]`: the over-rejection guard; passed at base.
+      - `test_header_depth_check_agrees_with_the_parsed_value`: 400 generated headers full of quotes, backslashes and brackets inside strings. Accepted exactly when the real depth is ≤ 8. Passed at base, which had no UTF-8 bypass.
+      - `test_nonzero_pax_padding_is_refused_before_tarfile[hidden_size_zero|hidden_header_chain|hidden_path|nonzero_byte]`: Codex's two archives plus two variants. Asserts `tarfile.open` is never called and nothing is written.
+      - `test_pax_records_other_than_one_utf8_path_are_refused[mtime|hdrcharset|uname|duplicate_path|non_utf8_path|empty_key|nul_after_records]`: `nul_after_records` passed at base.
+      - `test_member_tarfile_would_silently_drop_is_refused`.
+      - `test_tarfile_must_agree_with_the_prechecked_layout[size|next_offset|pax|tarfile_has_more|tarfile_has_fewer]`: the stepped cross-check, given a tampered layout.
+      - `test_prechecked_layout_matches_tarfile_for_supervisor_archives`.
+    - `tests/unit/test_runner_lifecycle.py`:
+      - `test_pax_padding_archive_is_a_recorded_collection_failure[hidden_size_zero|hidden_header_chain]` and `test_utf16_header_is_a_recorded_collection_failure`: Codex's lifecycle cases.
+      - Each asserts a saved `collection_failed`, no `out/`, `tarfile` not opened (archives) and cleanup `confirmed_absent`.
+  - **Actual results (2026-10-15):**
+    - `uv run --locked pytest tests/unit -q` → **261 passed, 1 skipped** (the existing symlink-permission skip). Log: `runs/t05-repair2/unit.log`.
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` → **28 passed** in 42.23 s. Log: `runs/t05-repair2/contract.log`; records: `runs/t05-repair2/contract-tmp/`.
+      - The 13 runs that started a container all have `cleanup.status` `confirmed_absent`: 8 completed, 2 failed, 2 timed_out, 1 collection_failed. 8 more were refused or not executed without a container.
+      - Afterwards, `docker ps --all --quiet --filter label=atlas.runner=t05` → empty.
+      - Real supervisor archives pass the stricter pre-check.
+    - Copies of Codex's probes are in `runs/t05-repair2/probes/`; the originals were not run or modified.
+      - `parser_disagreement.py`: both padding archives → pre-check `malformed_archive: non-zero PAX padding`, nothing written, lifecycle `collection_failed` with removal confirmed. Both UTF-16 headers → `malformed_header: unsupported encoding`.
+      - The copy was adapted once: it called the private `_json_depth_exceeds` directly with bytes, and that helper now takes the decoded text.
+      - `lifecycle_matrix.py` (unchanged copy): `utf16_depth20` → `collection_failed`, where it previously completed. The eight unknown-cleanup paths are still `cleanup_failed`, and the deep candidate diff is still `too_complex`.
+    - **Differential fuzz** (`runs/t05-repair2/fuzz_parsers.py`, log `runs/t05-repair2/fuzz.log`). 4 seeds × (3000 mutated archives + 3000 generated headers): **0 problems**.
+      - *Archives:* mutated supervisor-style archives (padding junk, PAX records, header bytes with fixed checksums, type and size fields, numeric fields, arbitrary bytes). For about 1,800 archives per seed the pre-check accepted, and an independent full `tarfile` read produced exactly the pre-checked layout, with header processing nested at most 2 deep.
+      - *Headers:* every encoding refusal happened before `json.loads`. No accepted header was deeper than 8, no valid UTF-8 header within the limit was refused, and `json.loads` only ever received `str`.
+      - One harness false positive was resolved: a mutation inserted a newline that cut a UTF-32 header to a short NUL-free prefix, which really is UTF-8.
+      - This is randomized evidence, not a proof.
+    - `ruff check .` and `ruff format --check .` → clean.
+      - *Correction:* the documentation commit `44c5a84` had broken `ruff format --check .`. Ruff also formats Python code blocks in Markdown, and the guide's new excerpts were not formatted; that commit had not been checked with ruff. Fixed here.
+    - **Not rerun:** T-01 and `scripts/mutation_check.py`. Only `runner/docker.py` and its tests changed, and no T-01 or mutation dependency did. No image rebuild was needed (recipe and `container_entry.py` unchanged). 0 inference calls.
+  - **Remaining limitations (repair pass 2):**
+    - The accepted archive layout is deliberately narrow: PAX headers may carry only `path`. A future supervisor that writes other PAX records (a float `mtime`, a non-ASCII `uname`) would be refused until this allowlist changes.
+    - The pre-check mirrors Python 3.11.17's `tarfile` rules. A later `tarfile` that interprets headers differently would be refused by the stepped cross-check rather than trusted. The cross-check compares `TarInfo.offset`, `offset_data`, `size` and `pax_headers` and `TarFile.offset`; the last is an undocumented attribute of this `tarfile`.
+    - Within one `tar.next()` call, `tarfile` reads a PAX header and the header after it. The pre-check computes that second position the same way; this is backed by the cross-check after the call and by the fuzz, not by a proof.
+    - The repair pass 1 limitations stand: the intermediate-directory race, a single-instant absence listing, and `cleanup_failed` runs keeping validated outputs. **T-05 remains unaccepted** pending independent verification of this repair.
 
 ### T-06 Bounded live agent loop
 - **OWNER:** Claude Code (writer); Codex reviews.
