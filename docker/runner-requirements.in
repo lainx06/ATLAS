@@ -1,0 +1,9 @@
+# Runtime imports of the code mounted into the runner container (atlas/adapter.py,
+# recorder.py, reports.py, tables.py and runner/container_entry.py), plus the Parquet
+# engine pandas needs for adapter.write_predictions (DataFrame.to_parquet).
+# Versions are constrained to uv.lock; regenerate docker/runner-requirements.txt with
+# scripts/runner_requirements.py after any lockfile change.
+numpy
+pandas
+scikit-learn
+pyarrow

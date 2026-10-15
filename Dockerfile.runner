@@ -1,0 +1,20 @@
+# ATLAS candidate runner image (SPEC §10, T-05).
+# Built only through `uv run --locked python -m atlas.runner.docker build`, whose build context
+# is an allowlist: this file (as "Dockerfile") and docker/runner-requirements.txt. No ATLAS
+# code is baked in; the adapter/recorder subset is bind-mounted read-only per run.
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+
+ENV PYTHONDONTWRITEBYTECODE=1
+
+COPY runner-requirements.txt /tmp/runner-requirements.txt
+RUN python -m pip install --no-cache-dir --disable-pip-version-check --no-deps \
+        --require-hashes --only-binary=:all: -r /tmp/runner-requirements.txt \
+    && python -m pip check \
+    && rm /tmp/runner-requirements.txt \
+    && groupadd --gid 10001 atlas \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent \
+        --shell /usr/sbin/nologin atlas \
+    && mkdir -p /opt/atlas /work/project /work/out
+
+USER 10001:10001
+WORKDIR /work/project

@@ -3,10 +3,10 @@
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
 CURRENT STEP: Start Here Step 10.
-- **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **All four T-04 acceptance criteria are demonstrated; awaiting user acceptance** (TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
-- **T-05 prerequisites:** Docker prerequisites checked read-only (see "Docker prerequisites"). Docker and WSL 2 are not installed; nothing was installed or changed.
+- **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **T-04 accepted by the user within its documented smoke-test scope** (2026-10-14; TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
+- **T-05:** **implemented and self-tested; awaiting independent Codex review; not accepted.** The restricted Docker runner, candidate snapshot/diff validation and hash-bound approval are in place. The acceptance command passed 28/28 with Docker required (TASKS.md T-05 "RESULT"). The runner does not re-evaluate candidates; that is T-06.
 - T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, and the T-04 commit containing this update). Nothing is pushed.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), and the T-05 implementation commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -36,12 +36,11 @@ LAST UPDATED: 2026-10-14
   - Codex review 1 and its verification: findings, traced causes, dispositions and tests are recorded once in TASKS.md (T-01 "REVIEW 1" and "CODEX VERIFICATION OF REPAIR PASS 1"). The reproductions are preserved unchanged at `runs/review-t01/` and `runs/review-t01-repair/`.
 
 ## What does not exist yet
-- Not implemented: T-02 assertions (windows, temporal separation, `future_time`, reported-metric comparison, metric recomputation and baselines); `load_holdout_features()`; isolated runner (Docker); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. These are materialized as NOT_ASSESSED `unimplemented_assertion` where policy requires them.
+- Not implemented: T-02 assertions (windows, temporal separation, `future_time`, reported-metric comparison, metric recomputation and baselines); `load_holdout_features()`; candidate re-evaluation of the required set after isolated execution (T-06); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. These are materialized as NOT_ASSESSED `unimplemented_assertion` where policy requires them.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` holds only the Step 8 packet.)
 - Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. No production model client, schemas or agent loop (T-06); diagnosis, tool-use and repair quality untested.
-- No completed independent verification of the T-01 repairs yet. T-01 is not accepted.
-- Docker is not on PATH (isolation not available; trusted fixtures only).
+- The Docker runner is self-tested only: Codex has not reviewed it, and T-05 is not accepted. `audit.py` still accepts only trusted-runner records, so audits remain `trusted_pipeline_only`. No user-facing candidate approval step exists yet.
 
 ## Commands executed in setup
 1. `git init -b main`
@@ -54,20 +53,20 @@ LAST UPDATED: 2026-10-14
 8. Step 6: `/setup-matt-pocock-skills` (user-invoked) → wrote docs/agents/*, AGENTS.md block; verified with `sync_skills.py --check`, path checks, ruff. Earlier: `git clone` both skill repos into `.dev/skill-sources/{matt,addy}`, `git rev-parse HEAD`; `uv run --locked python scripts/sync_skills.py` (install) and `--check`; `diff`/`sha256sum` comparisons; ruff check/format.
 
 9. T-01: TDD cycles with `uv run --locked pytest tests/unit/<file> -q` (RED then GREEN per module); `uv run --locked python benchmarks/t01/generate.py`; `uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01`; full suite; `scripts/mutation_check.py`; CLI audits of s01/s02/s07; ruff check/format; `sync_skills.py --check`.
+10. T-05: `docker pull python:3.11-slim`; `uv run --locked python scripts/runner_requirements.py`; `uv run --locked python -m atlas.runner.docker build`; the new offline unit tests; `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` (28 passed); the T-01 suite once (165 passed); ruff.
 
 ## Blockers
 - **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
-- **Docker isolation (T-05):** WSL 2 and Docker are not installed (read-only check 2026-10-14). The first action is user-run `wsl --install`, which needs administrator rights and a restart.
+- **Docker isolation (T-05):** none for implementation. Acceptance waits for the independent Codex review.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
-- Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
 ## Nebius configuration (Step 10 preparation, 2026-10-14)
 - **Contract:** `.env.example` and SPEC §11. The key goes in variable `NEBIUS_API_KEY`, in the git-ignored file `.env` at the repository root (loaded with `python-dotenv`). Base URL `NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/`. `ATLAS_MODEL_PRIMARY=nvidia/nemotron-3-super-120b-a12b` in the local `.env` (verified by `GET /models`; set 2026-10-14 by a one-line in-place edit that left the key and the other 3 settings unchanged, checked by value/hash comparison without printing). `ATLAS_MODEL_MODE=fixture` until the T-06 client exists.
 - **`.env`:** created from `.env.example` (byte-identical: placeholders only). `git check-ignore -v .env` → `.gitignore:2:.env`; it is not tracked and does not appear in `git status`. Its contents are never printed by the builder.
 - **Key source (official docs, checked 2026-10-14):** a Nebius **Token Factory** API key, from https://tokenfactory.nebius.com/project/api-keys ("Create API key" → name → "Create"; shown once). Sent as `Authorization: Bearer <key>` to the base URL above. This is not a Nebius AI Cloud IAM service-account key.
-- **Done since:** model list, model selection and two smoke calls (below). No Docker.
+- **Done since:** model list, model selection and two smoke calls (below).
 
 ## Nebius smoke (prepared 2026-10-14; two calls run 2026-10-15 UTC)
 - **Key:** `NEBIUS_API_KEY` present in `.env`, not the placeholder, no stray whitespace/quotes (checked with `dotenv_values`; value not printed).
@@ -85,22 +84,23 @@ LAST UPDATED: 2026-10-14
   - Usage: prompt 47, completion 52 (of which reasoning 38), total 99. Cost from listed prices **$0.0000609**. Within caps.
   - **Classification: application-validated output, not provider-enforced structured output.** Nothing on the provider side constrained the format; one passing call does not show the model always complies.
 
-## Docker prerequisites (read-only check, 2026-10-14; nothing installed or changed)
-| Item | Observed | How observed |
-| --- | --- | --- |
-| Docker CLI | **absent**: not on PATH | `Get-Command docker` |
-| Docker Desktop | **absent**: no executable in Program Files or LocalAppData, no uninstall entry, no Docker services | file, registry and service checks |
-| WSL | **not installed**: only the inbox `wsl.exe` stub; `wsl --version`, `--status` and `-l -v` all report "The Windows Subsystem for Linux is not installed"; no WSL app package | `wsl.exe`, `Get-AppxPackage` |
-| Windows features | `Microsoft-Windows-Subsystem-Linux` **disabled**, `VirtualMachinePlatform` **disabled**, `HypervisorPlatform` disabled; Hyper-V and Containers **not available** on this edition | `Win32_OptionalFeature` (InstallState 2 = disabled) |
-| OS / RAM | Windows 11 **Home** 25H2, build 26200.9457, 64-bit; 31.2 GB RAM | `Win32_OperatingSystem`, registry |
-| Firmware virtualization | **enabled** (AMD SVM, Ryzen 7 7800X3D). A hypervisor is already running because virtualization-based security / Memory Integrity is active, which is why SLAT and VM-monitor extensions read `False` to Windows; this is expected | `Win32_Processor`, `Win32_ComputerSystem`, `Win32_DeviceGuard` |
-| LanmanServer (Docker requirement) | Running, start mode Automatic | `Win32_Service` |
+## Docker installation (complete; the restricted runner is implemented in T-05 and self-tested, not yet reviewed)
+**Reported by the user** (observed earlier; not re-run by the builder):
+- WSL 3.0.3.0, default version 2.
+- Docker Desktop 4.95.0, Engine 29.8.2.
+- Context `desktop-linux`; server `linux/amd64`; `docker info` reported `linux`.
+- `docker run --rm hello-world` succeeded.
 
-- **Docker's current requirements page** (https://docs.docker.com/desktop/setup/install/windows-install/, checked 2026-10-14):
-  - The WSL 2 backend requirement lists Windows 11 **Pro, Enterprise or Education** 23H2 (build 22631) or later, WSL ≥ 2.1.5, virtualization enabled, 8 GB RAM, and LanmanServer on Automatic.
-  - Home is mentioned only as allowing Linux containers.
-  - **Open point:** whether Docker Desktop is officially supported on Windows 11 **Home** is ambiguous on the current page. Docker Engine inside a WSL 2 Linux distribution is the alternative. Both start with WSL 2, so the runtime choice is deferred until after WSL is installed.
-- **First action (user, needs administrator rights and a restart; not done):** `wsl --install` in an administrator PowerShell, then restart Windows.
+**Builder read-only checks (2026-10-14; nothing installed, started or changed):**
+- `wsl --version` → WSL 3.0.3.0. `wsl -l -v` → `docker-desktop`, version 2.
+- Docker Desktop is a **per-user install** at `%LOCALAPPDATA%\Programs\DockerDesktop`. Its `resources\bin` is on the **user** PATH, but not on the PATH of a shell that started before the install (this Claude Code session); the full path works. T-05 must resolve the CLI explicitly or require a fresh shell.
+- `docker version` → client and server 29.8.2, API 1.56, `linux/amd64`. `docker context show` → `desktop-linux`.
+- `docker info` → `OSType=linux`, kernel `6.18.54.1-microsoft-standard-WSL2`, cgroup v2, 16 CPUs, ~16.3 GB memory for the VM, security options `seccomp` (builtin profile) and `cgroupns`, default runtime `runc`.
+- Local images: only `hello-world:latest`; no containers.
+
+**Installation evidence only.** Per Start Here Step 10, hello-world does not show isolation. The T-05 contract tests do; see TASKS.md T-05 "RESULT". Building the runner image requires the per-user Docker bin directory on the CLI's PATH, for `docker-credential-desktop`. The runner adds it automatically.
+
+**Superseded:** the pre-install check of 2026-10-14 (Docker and WSL absent; Windows 11 Home; the open question about Home support) is preserved in git history at `ddde27e`. The OS, RAM and virtualization facts still hold: Windows 11 Home 25H2 build 26200.9457, 31.2 GB RAM, AMD SVM enabled.
 
 ## Publication readiness (pre-check 2026-10-14, for `lainx06/atlas`; published as a private repository)
 - **State:** branch `main`; working tree clean apart from this acceptance record; **no remotes**.
@@ -119,8 +119,8 @@ LAST UPDATED: 2026-10-14
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **User:** accept T-04 (or request changes). No further Nebius calls are planned before T-06.
-2. **Docker/isolation (T-05), user action first:** run `wsl --install` in an administrator PowerShell, then restart. Afterwards: verify WSL 2 (read-only), then choose and install the container runtime. The runner is not implemented. T-02 is not started.
+1. **T-05 review:** an independent local Codex review of the T-05 commit (TASKS.md T-05 "HANDOFF"). T-05 stays unaccepted until then.
+2. T-02 and T-06 are not started. No further Nebius calls are planned before T-06.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).

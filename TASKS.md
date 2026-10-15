@@ -13,8 +13,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
-| T-04 | 10 | Credits available, key set. **Acceptance criteria met** (2026-10-14; see entry); awaiting user acceptance. Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
-| T-05 | 10 | Prerequisites checked (read-only): Docker and WSL 2 absent; first action `wsl --install` (user, admin, restart). Runner not started | Isolated runner and hash-bound candidate approval |
+| T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
+| T-05 | 10 | **Implemented and self-tested; awaiting Codex review** (not accepted). Acceptance command 28/28 passed with `ATLAS_REQUIRE_DOCKER=1`; full candidate re-evaluation is T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | Proposed | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
@@ -349,7 +349,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - one capped structured-output call succeeds and its response is validated;
   - sanitized evidence is saved;
   - the key is never echoed or committed.
-- **RESULT (2026-10-14; calls at 2026-10-15 UTC):** all four criteria demonstrated; awaiting user acceptance. Evidence is local and git-ignored, in `runs/nebius_smoke/`.
+- **RESULT (2026-10-14; calls at 2026-10-15 UTC):** all four criteria demonstrated. **Accepted by the user within its documented smoke-test scope** (2026-10-14). Evidence is local and git-ignored, in `runs/nebius_smoke/`.
   - [x] `GET /models?verbose=true` (free) listed 25 models, four NVIDIA: `nvidia/nemotron-3-super-120b-a12b`, `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, `nvidia/Nemotron-3_5-Lightning`, `nvidia/Nemotron-3-Ultra-550b-a55b` (`models-verbose-20261014.json`).
   - [x] One capped JSON call succeeded, and its whole reply passed a strict Pydantic schema (`json-20261015T023413Z.json`). **Qualification:** the JSON was prompt-requested and **application-validated**. It was not provider-enforced structured output, because no NVIDIA model on Nebius advertises it (DECISIONS.md "Initial model and response approach"). A separate text connectivity call also succeeded (`call-20261015T023151Z.json`).
   - [x] Sanitized evidence saved: the model list and both call records. Each was checked to be free of the key before it was written.
@@ -368,7 +368,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex Extra high for the review if offered.
 - **READ FIRST:** SPEC §9, §10; AGENTS.md "Isolation".
 - **INPUT STATE:** Docker Desktop installed and running (the user handles OS prompts and restarts). T-01 committed.
-- **CHANGE:** `src/atlas/runner/docker.py`, `Dockerfile.runner`, candidate validation and hash-bound approval (SPEC §9), `tests/integration/test_runner_contract.py`.
+- **CHANGE:** `src/atlas/runner/docker.py`, `Dockerfile.runner`, candidate validation and hash-bound approval (SPEC §9), `tests/integration/test_runner_contract.py`. (As built, see RESULT.)
 - **ACCEPTANCE:** the contract tests show that:
   - there is no network;
   - no secrets exist in the environment;
@@ -382,6 +382,64 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** contract-test output; capability state in run JSON.
 - **HANDOFF:** Codex review.
 - **RECOVERY:** stay `trusted_pipeline_only`; never fall back to the host.
+- **RESULT (2026-10-14; self-tested, awaiting Codex review; NOT accepted):**
+  - **Built (decisions A–C):**
+    - Image `atlas-runner:t05`, ID `sha256:e13f91a3c9baa52e2314b91a0b17c2437033acd98cbb396a104b9c3545b5f625`, recipe `f67fd121afc1a2aa…`.
+    - Base `python:3.11-slim@sha256:e88e9763…`, Python 3.11.17.
+    - 11 hash-pinned wheels matching `uv.lock`. The Docker CLI is resolved as `%LOCALAPPDATA%\Programs\DockerDesktop\resources\bin\docker.exe` and recorded per run.
+  - **Files:**
+    - `src/atlas/runner/docker.py`: CLI resolution, probe, build, staging, lifecycle, bounded IO, frame and archive checks.
+    - `src/atlas/runner/container_entry.py`: the in-container supervisor and child.
+    - `src/atlas/candidates.py` (SPEC §9).
+    - `src/atlas/tables.py`: the `read_table` logic moved out of `intake.py`, which now delegates to it, so the container needs no policy code.
+    - `Dockerfile.runner`, `docker/runner-requirements.{in,txt}` and `scripts/runner_requirements.py`.
+    - `tests/unit/test_candidates.py`, `test_runner_collection.py`, `test_runner_config.py` and `tests/integration/test_runner_contract.py`.
+    - `audit.py` is **unchanged**.
+  - **Requirements 1–6:**
+    1. **Build context:** the build context is a temporary directory holding exactly `Dockerfile` and `runner-requirements.txt` (tested). Nothing from the repository is sent.
+    2. **Dependency set:** derived from the AST imports of the mounted code (numpy, pandas, scikit-learn) plus the Parquet engine for `to_parquet` (pyarrow), resolved for Linux by uv against `uv.lock`. Transitive dependencies resolved: scipy, joblib, cloudpickle, threadpoolctl, narwhals, python-dateutil and six. pandas' `tzdata` is Windows-only. `pip check` runs in the build. The tests assert pins equal `uv.lock`, hashes are present, and openai, dotenv, streamlit and pydantic are absent.
+    3. **Mounted code:** only `atlas/{__init__,adapter,recorder,reports,tables}.py` and the entry script, read-only. In the container, policy, audit, contracts, intake, checks and candidates are not importable (tested). The snapshot is built only from the manifest (re-serialized from the validated model), the declared table and the entry point; extra project files such as `.env` are never copied (tested).
+    4. **Output collection:** outputs are collected before the container stops. The PID-1 supervisor (non-dumpable, so the candidate cannot reach its stdout) emits one frame: a header plus a tar of regular files under caps.
+       - The host bounds stdout (≈32.8 MiB), stderr (1 MiB), archive size, expanded bytes (32 MiB), file count (256) and total time (exec + 30 s).
+       - It rejects absolute, `..`, backslash, drive and reserved names, links, devices and directories, and duplicate or case-duplicate or file/dir-conflicting destinations, validating everything before writing.
+       - The container is removed on every path (inspect, `rm --force`, confirm gone).
+    5. **Probes:** probes are bounded (fork up to 200 and stop at the first refusal; allocate at most 32 × 64 MiB).
+       - The cgroup limits are read back in a module fixture before the stress tests run, and the tests run sequentially.
+       - Only containers labelled `atlas.runner=t05` and named by this task are listed or removed.
+    6. **Approval and no fallback:**
+       - Approval and hashes follow SPEC §9. The runner recomputes the snapshot and candidate hashes, then re-hashes the staged bytes before mounting.
+       - No host fallback: the Docker module never imports the trusted runner (tested). A missing CLI, unreachable daemon, or missing or other-recipe image gives `not_executed`, with no container start and no host execution (spied and marker-checked).
+  - **Acceptance:** `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` → **28 passed** in 38.56 s (final code) (log: `runs/t05/acceptance.log`, run records under `runs/t05/acceptance-tmp/`, git-ignored). Observed:
+    - [x] **No network:** only `lo`; TCP to 1.1.1.1:53 failed with errno 101; DNS raised `gaierror`.
+    - [x] **No secrets:** the candidate environment is exactly the allowlist (plus 2 `KMP_*` variables scikit-learn sets at import). Host canaries, both secret-named and plain-named, were absent from the probe and the record. No `.env` files; `/proc/1/environ` gives EACCES.
+    - [x] **Read-only root:** `/` is mounted `ro`, and every write to the root filesystem, code and snapshot fails with EROFS. Only `/tmp` and `/work/out` are writable (tmpfs, `noexec`). uid/gid 10001, all capability sets 0, NoNewPrivs 1, seccomp 2.
+    - [x] **Limits trigger:**
+      - Memory (max 1 GiB, swap max 0): the probe was OOM-killed (child −9, `oom_kill`=1) after 13 × 64 MiB.
+      - PIDs (max 128): EAGAIN after 124 forks, `pids.max` event 1.
+      - Execution timeout: 3 s configured, killed at ≈3.7 s elapsed.
+      - Host deadline: 8 s configured, container killed and removed at 8.2 s.
+      - Scratch and outputs: ENOSPC at exactly 64 MiB and ≈32 MiB.
+      - Output file cap: 300 files → `collection_failed`.
+    - [x] **Refusals:** path escapes, evaluator, label, manifest and table targets, changed candidate bytes, a changed or extra-file snapshot, and an approval for another snapshot are all refused before any Docker call.
+    - [x] **Unavailable isolation → no execution:** CLI missing, daemon unreachable, image missing, image from another recipe.
+    - **Behaves like the trusted runner:** an approved trivial change to s02 ran in the container, and its `provenance.jsonl` and `splits.json` are byte-identical to the trusted host runner's on the unmodified fixture. The four prediction frames are equal.
+    - **Mutation sanity check (scratch only, repository untouched):** dropping `--network none` or `--pids-limit` made the network and PID probes observe a connection and 200 forks. Dropping `--read-only` turned root writes into EACCES, which the tightened write test now rejects.
+  - **Other runs:**
+    - The new offline unit tests: 96 passed, 1 skipped (symlink creation is not permitted for this Windows account; a directory-junction test covers reparse-point refusal).
+    - The existing T-01 suite, run once: **165 passed**.
+    - `ruff check`/`format --check`: clean.
+    - The mutation check was not rerun: `intake.read_table` only delegates now, and no mutation target (fit_provenance, split_integrity, recorder) changed.
+  - **Limitations:**
+    - The runner does **not** re-evaluate candidates: no required-set scheduling, and `audit.py` does not accept Docker execution records yet (T-06).
+    - Approval is programmatic (`approve()`); there is no user-facing approval step yet.
+    - The recorder runs inside the candidate process, so container evidence is candidate-produced (SPEC §9.9).
+    - The probe's `isolated_available` checks the CLI, daemon, Linux server and image recipe/user. It does not rerun the contract tests per run; their pass is tied to this commit and image.
+    - Docker Desktop: the daemon is root inside its VM. Bind mounts reach the VM through a 9p share of `C:\` (the container sees only the two bound directories). CPU is limited (`cpu.max` read back) but not stress-tested.
+    - `--ipc none` removes `/dev/shm`, so joblib runs serially (warning recorded).
+    - PID 1 inherits the base image's public `GPG_KEY` variable; the candidate cannot see it.
+    - The archive is held in memory (≤ ≈33 MiB).
+    - Only tested on this Windows 11 Home / Docker Desktop host.
+    - Building the image requires network access (approved). The base image's Debian packages are pinned only through the image digest.
 
 ### T-06 Bounded live agent loop
 - **OWNER:** Claude Code (writer); Codex reviews.

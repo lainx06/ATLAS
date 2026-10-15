@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
+from atlas import tables
 from atlas.contracts import Manifest
 from atlas.policy import supported_claim
 
@@ -82,14 +83,6 @@ def load_project(project: Path) -> Intake:
 
 def read_table(project: Path, manifest: Manifest) -> pd.DataFrame:
     """The table indexed by string row IDs (used by the candidate session and, separately, the evaluator)."""
-    path = project / manifest.table.path
-    row_id = manifest.columns.row_id
-    if manifest.table.format == "csv":
-        table = pd.read_csv(path, dtype={row_id: str})
-    else:
-        table = pd.read_parquet(path)
-        table[row_id] = table[row_id].astype(str)
-    table = table.set_index(row_id)
-    if not table.index.is_unique:
-        raise ValueError("row_id values are not unique")
-    return table
+    return tables.read_table(
+        project / manifest.table.path, manifest.table.format, manifest.columns.row_id
+    )
