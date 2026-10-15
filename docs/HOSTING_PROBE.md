@@ -114,17 +114,64 @@ Planning caps: judge pool $10 (about 196 worst-case runs); public pool at most $
 
 **Backstop.** Nebius documents no per-key spending limit (not found; **unknown**). **Payment information is already on the account (lead, 2026-10-15) and billing settings are not changed.** Because the billing page says a negative balance leads to an automatic card charge (**documented**), the credit balance is **not** a hard ceiling: usage beyond the credits could be charged to the card. The in-application caps above are therefore the real spending control, they fail closed, and the $30 inference allowance is a planning figure, not an authorization. Whether an account with a payment method is auto-paused or charged at zero balance is **unknown**.
 
+## 5a. Durable budget store: recommendation (research only, 2026-10-15)
+
+**Recommended: Neon serverless Postgres, Free plan.** One store holds every counter, reservation and the hashed judge code (§5). Nothing was created, no account opened, no connection made. Only public documentation was read.
+
+### Why this fits the §5 design
+
+| Requirement | Neon Free | Label |
+| --- | --- | --- |
+| Free-tier limits | 1 GB storage per project; 100 compute-unit-hours per project each month; 100 projects; 5 GB network transfer a month; 6-hour restore history. Storage-increasing operations fail at the cap; compute suspends if the monthly compute allowance is exhausted until the next period | **Documented** (neon.com/docs/introduction/plans) |
+| Size of our need | Counters and a few thousand reservation rows are kilobytes to a few MB. The 1 GB cap is not a concern. Whether 100 compute-unit-hours is ample depends on the compute size Neon assigns, which the page read does not state | need: **proposed**; compute size **unknown** |
+| Atomic reservation | Ordinary Postgres transactions. A conditional `UPDATE ... WHERE reserved + spent + :amount <= cap RETURNING ...` is one atomic statement; the row lock serializes concurrent callers, so two requests cannot both take the last of a budget. Each cap (judge pool, public pool, daily key, session key) is one row | Standard Postgres behavior (**not tested here**); **proposed** design |
+| Restart behavior | All state is in the database, none in app memory. A Community Cloud restart, sleep or second process just reads the same rows. Neon suspends idle compute after 5 minutes (cannot be disabled on Free) and reactivates "within a few hundred milliseconds" on the next query. Free-plan data is not deleted for inactivity (storage, not compute, is what is kept) | **Documented**; first-query latency after suspension **not measured** |
+| Failure when exhausted or unreachable | Exhausted compute or storage, an unreachable database, or a connect timeout all make the reservation fail, and the app fails closed to recorded-example mode (§5) | **Proposed** |
+| Pausing risk | No inactivity pause or deletion is described for Free projects (unlike Supabase below). A single quiet day does not establish availability through 15 December | **Documented** absence; availability **unknown** |
+
+### Reservation protocol on this store (proposed; implements the 2026-10-15 decisions)
+
+All amounts are integer micro-dollars. Each pool row has `cap`, `reserved` and `spent`.
+
+1. **Reserve** (one transaction): atomically add the ceiling cost to the judge-or-public pool, the daily key and the session key. If any statement updates zero rows, roll back and refuse (recorded-example mode).
+2. **Mark dispatched before sending.** Commit the reservation's state as `dispatched` **before** the HTTP request leaves. A crash afterwards then leaves a dispatched reservation, which is never auto-released (the decision that unknown usage stays reserved). A retry is a new reservation and counts toward the six-call limit.
+3. **Settle** after the response: replace the reservation with the response's actual usage (`reserved` down, `spent` up).
+4. **Release** only if the request was never dispatched (for example a validation failure before sending), or an owner reconciles it against the Nebius Usage tab.
+5. **Reconcile** unknown-usage reservations by an owner procedure: compare against Nebius usage, then settle manually. It needs a small admin script; none exists.
+
+### Limits and open points
+
+- **Reachability from Community Cloud is unknown.** Neon accepts TLS Postgres connections on port 5432 (documented). Whether Community Cloud allows outbound 5432 is **not documented** on the pages read. A one-connection test is therefore needed (stage D, below). Neon also documents an HTTP/WebSocket driver over port 443, but I could not confirm a usable Python client for it, so treat it as a **fallback to investigate**, not a plan.
+- **Cold-connection latency** after suspension is documented only as "a few hundred milliseconds"; it must be measured from the host. Hold no long-lived pool: reconnect per request or use short-lived connections.
+- **Account and terms.** Account creation, whether a payment card is required, and Neon's terms for this use were **not** established: the plan page does not say. Not researched: Neon's retention or deletion rules for abandoned accounts.
+- **A paid fallback is not needed to start** but is unknown in price; no spending is proposed.
+- **Backup of truth.** The Nebius Usage tab remains the independent record of actual spend; the store is the control, not the ledger of record.
+
+### Alternatives considered (documented, not chosen)
+
+| Store | Free-tier finding | Why not chosen |
+| --- | --- | --- |
+| **Supabase Postgres** | 500 MB per project, two free projects. Free projects with low activity over 7 days are **paused**; a paused project can be restored in Studio for 90 days (documented, supabase.com/docs/guides/platform/free-project-pausing). | A budget store that can pause during a quiet week is a failure mode for 15 December. A keep-alive ping would be a workaround that adds its own dependency. |
+| **Upstash Redis** | 250 MB, 500K commands a month, one database, atomic commands. The pricing page lists **no persistence/durability** on the free plan, and an unclaimed instance is deleted after 3 days (documented, upstash.com/docs/redis/overall/pricing). | A budget ledger that may lose data on restart breaks the "unknown usage stays reserved" rule. |
+| Turso, Cloudflare D1/KV, Google Sheets, others | **Not researched.** Google Sheets has no atomic conditional update. | Out of scope for this bounded step; not ruled out. |
+
+### Stage D (proposed; needs its own approval and a separate new account)
+
+A canary-only test that does not touch the sleeping stage A probe: create a Neon account and a throwaway project; deploy a second stub (not yet written) that makes **one** database connection using a `DATABASE_URL` secret, runs one conditional-update statement on a scratch table, and prints only success, latency and row counts. It would settle: outbound 5432 reachability, first-query latency after suspension, and the atomicity of the conditional update under two simultaneous sessions. No Nebius key, no ATLAS code. Requires: a Neon account (permission to sign up), a second Streamlit app (the free plan's app count is **unknown**), and the owner entering the connection string as a secret.
+
 ## 6. Credits and the 15 December requirement
 
 | Fact | Status |
 | --- | --- |
-| $50 in Token Factory credits awarded in total (an initial $25, then an additional $25) | **User-reported** (STATUS.md). Remaining balance **unverified** |
+| $50 in Token Factory credits awarded in total (an initial $25, then an additional $25) | **User-reported** (STATUS.md) |
+| Billing screenshot (owner-reported, 2026-10-15): account balance **$50.00**; a **separate $1.00 trial credit** shown with **29 days remaining**; Token Factory usage **less than $0.01** | **Observed by the owner**, not independently verified by the builder. The $50 balance is consistent with unspent awards and tiny smoke usage. **No expiry is shown for the $50: keep it unknown** |
+| Trial credit: "$1 in trial credit, valid for 30 days" | **Documented**. 29 days remaining on 2026-10-15 means it ends about 2026-11-13, well before 15 December; it is not a judging resource |
 | Nebius Builder Program terms: "All promotional credits are nonrefundable, nontransferable, and expire 90 days from the date of issuance" | **Documented** (nebius.com/builders-terms-and-conditions, 2026-10-15). Whether the user's credits fall under these terms is **unknown** |
 | If the first $25 was issued on 2026-10-14 (the earliest evidence that the key worked), 90 days ends about **2027-01-12**, after 15 December. The issue date of each award is **unknown**, so this is an illustration, not a finding | **proposed** reading, **unknown** dates |
 | The terms say the same programme credits must not be used "for production workloads, large-scale commercial deployment, or any revenue-generating activity beyond prototyping and experimentation", and that Nebius may auto-pause an account whose monthly use exceeds the allocation by more than 30% | **Documented.** Whether a public judging demo counts as prototyping or production is **unknown**; the lead should confirm with Nebius before relying on credits for public traffic |
 | Promo-code pages say "usually" a promo has an expiry and do not give a validity after applying | **Documented**, no specific answer |
 
-**The expiry of the user's actual credits, and the balance, are unknown** until someone reads the Nebius console (Usage / balance). Until then, T-03's third acceptance criterion is "marked unknown".
+**The balance is now owner-observed ($50.00). The expiry of the $50 is still unknown**: the console view the owner checked showed none. T-03's third acceptance criterion therefore stays "marked unknown". Billing settings and spending authorization are unchanged.
 
 ## 7. The smallest probe
 

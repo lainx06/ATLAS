@@ -715,6 +715,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - The canary was present and its hash prefix matched.
     - Still pending: the sleep/wake observation (earliest about 2026-10-16 06:54 -0400 with no visits in between, after the owner's signed-out check at about 18:44 -0400 showed the page loads), outbound network, the full locked build, and the credit facts.
     - **T-03 remains unaccepted.**
+  - **Credit screenshot (owner-reported, 2026-10-15):** account balance $50.00; a separate $1.00 trial credit with 29 days remaining (ends about 2026-11-13); Token Factory usage under $0.01; no expiry shown for the $50, which stays **unknown**. Billing settings and spending authorization unchanged.
+  - **Durable budget store (research only):** recommend **Neon serverless Postgres, Free plan** (1 GB, 100 compute-unit-hours a month, compute suspends after 5 minutes and resumes in a few hundred milliseconds, no inactivity deletion documented, atomic conditional `UPDATE`). Supabase rejected (pauses after 7 days of low activity); Upstash rejected (no persistence on the free plan). Open: outbound port 5432 from Community Cloud is unknown, and account terms and card requirement were not established, so a separately approved stage D canary is proposed. `docs/HOSTING_PROBE.md` §5a. No account created, nothing deployed, no API call; the sleeping stage A probe was not touched.
 
 ### T-04 Nebius access smoke (Start Here Step 10)
 - **OWNER:** Claude Code (writer); the user enters the key privately.
