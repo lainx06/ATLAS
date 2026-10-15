@@ -2,7 +2,10 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 10 (T-04), **configuration preparation only**. The placeholder `.env` exists and is git-ignored; **waiting for the user to enter the Nebius Token Factory API key locally.** No API call made. T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
+CURRENT STEP: Start Here Step 10.
+- **T-04 (Nebius):** the placeholder `.env` is ready and git-ignored. **Credits have not arrived**: the hackathon credit form is submitted and the Builder Program application is pending, so no paid API calls are made.
+- **T-05 prerequisites:** Docker prerequisites checked read-only (see "Docker prerequisites"). Docker and WSL 2 are not installed; nothing was installed or changed.
+- T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
 CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `main` tracks `origin/main` at `35dbb63` (verified: `git ls-remote origin refs/heads/main` equals local HEAD; remote refs are only `HEAD` and `refs/heads/main`). This STATUS update is a local commit on top of `35dbb63` and is not pushed.
 LAST UPDATED: 2026-10-14
 
@@ -53,7 +56,8 @@ LAST UPDATED: 2026-10-14
 9. T-01: TDD cycles with `uv run --locked pytest tests/unit/<file> -q` (RED then GREEN per module); `uv run --locked python benchmarks/t01/generate.py`; `uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01`; full suite; `scripts/mutation_check.py`; CLI audits of s01/s02/s07; ruff check/format; `sync_skills.py --check`.
 
 ## Blockers
-- **Nebius key (user action):** T-04 waits for the user to enter `NEBIUS_API_KEY` in the local `.env`.
+- **Nebius credits (external, 2026-10-14):** not yet received. The hackathon credit form is submitted; the Builder Program application is pending. **No paid API calls** until credits are confirmed. T-04 also waits for the user to enter `NEBIUS_API_KEY` in the local `.env`.
+- **Docker isolation (T-05):** WSL 2 and Docker are not installed (read-only check 2026-10-14). The first action is user-run `wsl --install`, which needs administrator rights and a restart.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
@@ -64,6 +68,23 @@ LAST UPDATED: 2026-10-14
 - **`.env`:** created from `.env.example` (byte-identical: placeholders only). `git check-ignore -v .env` → `.gitignore:2:.env`; it is not tracked and does not appear in `git status`. Its contents are never printed by the builder.
 - **Key source (official docs, checked 2026-10-14):** a Nebius **Token Factory** API key, from https://tokenfactory.nebius.com/project/api-keys ("Create API key" → name → "Create"; shown once). Sent as `Authorization: Bearer <key>` to the base URL above. This is not a Nebius AI Cloud IAM service-account key.
 - **Not done:** no API call, no model selection, no Docker.
+
+## Docker prerequisites (read-only check, 2026-10-14; nothing installed or changed)
+| Item | Observed | How observed |
+| --- | --- | --- |
+| Docker CLI | **absent**: not on PATH | `Get-Command docker` |
+| Docker Desktop | **absent**: no executable in Program Files or LocalAppData, no uninstall entry, no Docker services | file, registry and service checks |
+| WSL | **not installed**: only the inbox `wsl.exe` stub; `wsl --version`, `--status` and `-l -v` all report "The Windows Subsystem for Linux is not installed"; no WSL app package | `wsl.exe`, `Get-AppxPackage` |
+| Windows features | `Microsoft-Windows-Subsystem-Linux` **disabled**, `VirtualMachinePlatform` **disabled**, `HypervisorPlatform` disabled; Hyper-V and Containers **not available** on this edition | `Win32_OptionalFeature` (InstallState 2 = disabled) |
+| OS / RAM | Windows 11 **Home** 25H2, build 26200.9457, 64-bit; 31.2 GB RAM | `Win32_OperatingSystem`, registry |
+| Firmware virtualization | **enabled** (AMD SVM, Ryzen 7 7800X3D). A hypervisor is already running because virtualization-based security / Memory Integrity is active, which is why SLAT and VM-monitor extensions read `False` to Windows; this is expected | `Win32_Processor`, `Win32_ComputerSystem`, `Win32_DeviceGuard` |
+| LanmanServer (Docker requirement) | Running, start mode Automatic | `Win32_Service` |
+
+- **Docker's current requirements page** (https://docs.docker.com/desktop/setup/install/windows-install/, checked 2026-10-14):
+  - The WSL 2 backend requirement lists Windows 11 **Pro, Enterprise or Education** 23H2 (build 22631) or later, WSL ≥ 2.1.5, virtualization enabled, 8 GB RAM, and LanmanServer on Automatic.
+  - Home is mentioned only as allowing Linux containers.
+  - **Open point:** whether Docker Desktop is officially supported on Windows 11 **Home** is ambiguous on the current page. Docker Engine inside a WSL 2 Linux distribution is the alternative. Both start with WSL 2, so the runtime choice is deferred until after WSL is installed.
+- **First action (user, needs administrator rights and a restart; not done):** `wsl --install` in an administrator PowerShell, then restart Windows.
 
 ## Publication readiness (pre-check 2026-10-14, for `lainx06/atlas`; published as a private repository)
 - **State:** branch `main`; working tree clean apart from this acceptance record; **no remotes**.
@@ -85,8 +106,8 @@ LAST UPDATED: 2026-10-14
 1. **User (private, local):** in VS Code, open `.env` at the repository root and replace `replace_with_local_secret` on the line `NEBIUS_API_KEY=replace_with_local_secret` with a Token Factory API key.
    - Create the key at https://tokenfactory.nebius.com/project/api-keys; it is shown only once.
    - Never paste the key into chat, commit it, or put it in any other file.
-2. **Then T-04 (separate go-ahead):** create `scripts/nebius_smoke.py`, list models with an authenticated `GET /models`, make one capped structured-output call, and save sanitized evidence. The key is never printed. `ATLAS_MODEL_PRIMARY` is set only from a verified model ID.
-3. Docker/isolation (T-05) and T-02 are not started.
+2. **Then T-04 (separate go-ahead, after credits are confirmed):** create `scripts/nebius_smoke.py`, list models with an authenticated `GET /models`, make one capped structured-output call, and save sanitized evidence. The key is never printed. `ATLAS_MODEL_PRIMARY` is set only from a verified model ID.
+3. **Docker/isolation (T-05), user action first:** run `wsl --install` in an administrator PowerShell, then restart. Afterwards: verify WSL 2 (read-only), then choose and install the container runtime. The runner is not implemented. T-02 is not started.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
