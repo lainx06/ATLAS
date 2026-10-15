@@ -410,3 +410,89 @@ def test_undecodable_hash_matching_splits_is_an_evidence_error(tmp_path, case):
     assert set(outputs) == on_disk
     for name, digest in outputs.items():
         assert sha256_file(run_dir / name) == digest, name
+
+
+# --- Codex verification of bb9bac8: provenance and index decoding boundaries -------------------
+
+FIT = ("fit.state_dependencies_within_fold_train", "fit.coverage_complete")
+LABELS_ID = "temporal.training_labels_available_by_cutoff"
+
+
+def _undecodable_line(case: str) -> bytes:
+    if case == "integer_5000_digits":
+        return ('{"type": "load", "n_rows": ' + "1" + "0" * 4999 + "}").encode("utf-8")
+    if case == "malformed_json":
+        return b'{"type": "load", "n_rows":'
+    if case == "invalid_utf8":
+        return b"\xff"
+    return ("[" * 100_000 + "]" * 100_000).encode("utf-8")  # deep_nesting
+
+
+def _late_prediction(manifest, splits, table):
+    """Separate valid split/table evidence: a training row predicted after its fold's cutoff."""
+    return _late_training_row(manifest, splits, table, 61.0, None)
+
+
+@pytest.mark.parametrize(
+    "case", ["integer_5000_digits", "malformed_json", "invalid_utf8", "deep_nesting"]
+)
+def test_undecodable_provenance_is_wholly_invalid_and_independent_fail_stands(
+    tmp_path, case
+):
+    from atlas.reports import sha256_file
+
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    assert control.outcome is Outcome.VIOLATION_FOUND
+    provenance = run_dir / "provenance.jsonl"
+    valid_events = provenance.read_bytes()
+    assert valid_events.count(b"\n") > 10  # a decodable prefix precedes the bad line
+    provenance.write_bytes(valid_events + _undecodable_line(case) + b"\n")
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    index["artifacts"]["provenance.jsonl"] = sha256_file(provenance)
+    (run_dir / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+    result = evaluate(
+        tmp_path / "project", run_dir
+    )  # returns; no uncaught decoder error
+
+    by_id, before = _by_id(result), _by_id(control)
+    for aid in FIT:  # the decoded prefix is not used: provenance is wholly invalid
+        assert (by_id[aid].status, by_id[aid].reason) == (E, Reason.EVIDENCE_INVALID)
+    assert by_id[LABELS_ID].status is F and by_id[LABELS_ID].evidence_valid
+    for aid, a in by_id.items():  # only provenance-dependent assertions changed
+        if aid not in FIT:
+            assert (a.status, a.reason) == (before[aid].status, before[aid].reason), aid
+    assert result.outcome is Outcome.VIOLATION_FOUND
+    assert "provenance.jsonl could not be decoded" in result.reason
+    outputs = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))[
+        "outputs"
+    ]
+    on_disk = {"outcome.json", "report.json"} | {
+        f"checks/{p.name}" for p in (run_dir / "checks").glob("*.json")
+    }
+    assert set(outputs) == on_disk
+    for name, digest in outputs.items():
+        assert sha256_file(run_dir / name) == digest, name
+
+
+def test_index_recursion_uses_the_index_unavailable_recovery_path(tmp_path):
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    assert control.outcome is Outcome.VIOLATION_FOUND
+    deep = ("[" * 100_000 + "]" * 100_000).encode("utf-8")
+    (run_dir / "index.json").write_bytes(deep)
+
+    result = evaluate(
+        tmp_path / "project", run_dir
+    )  # returns; no uncaught RecursionError
+
+    # Existing recovery contract: no trusted manifest, so no assertion set is invented, and the
+    # run is INCONCLUSIVE. Stale outputs are replaced by fresh ones; the index is not rebuilt.
+    assert result.outcome is Outcome.INCONCLUSIVE
+    assert result.assertions == []
+    assert "run index missing or unparseable" in result.reason
+    written = json.loads((run_dir / "outcome.json").read_text(encoding="utf-8"))
+    assert written["outcome"] == "INCONCLUSIVE" and written["assertions"] == []
+    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["outcome"] == "INCONCLUSIVE"
+    assert not (run_dir / "checks").exists()  # the stale check files were cleared
+    assert (run_dir / "index.json").read_bytes() == deep

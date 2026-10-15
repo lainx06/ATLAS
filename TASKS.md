@@ -11,7 +11,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
-| T-02 | 11 | **Codex verified repair pass 1 at `0cf955d`: all four review-1 findings fixed; one more P2 (undecodable split evidence) remained. Repair pass 2 done and self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
+| T-02 | 11 | **Codex verified repair passes 1 (`0cf955d`) and 2 (`bb9bac8`): the four review-1 findings and the split-decoding fix. Two more decoding P2s remained (provenance, index recursion). Repair pass 3 done and self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
@@ -461,6 +461,44 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Remaining limitations (repair pass 2):**
     - **Sibling decoder, identified by inspection and not demonstrated or repaired** (this pass was scoped to the split boundary): `audit._read_events` decodes `provenance.jsonl` with the same unguarded `json.loads`. A hash-matching provenance line with an over-limit integer would likely escape `evaluate()` the same way.
     - The repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of this repair.
+- **CODEX VERIFICATION OF REPAIR PASS 2 (local Codex, at `bb9bac8`, 2026-10-15) and REPAIR PASS 3 (Claude Code, Opus 5.5 high):**
+  - **Review evidence:** preserved unchanged at `runs/review-t02-pass2/bb9/` (git-ignored). Hash manifests of `runs/review-t02/` (4,885 lines) and `runs/review-t02-pass2/` (664 lines) were identical before and after this repair. Key files:
+    - `review.md` (`b2e9337f…53694b47`);
+    - `decoder_probes.py` (`d8e569b3…1286e97a`) and `decoder-results.json` (`86cb8049…5f581ce4`).
+  - **Codex's disposition:**
+    - The split-decoding repair is **verified**: 4/4 regressions, the original `json5000_runtime` case, valid splits decoded unchanged, and the digit limit unchanged.
+    - The other JSON boundaries are safe: snapshot, project-manifest fallback, execution and runtime.
+    - **Two P2s remained, both pre-existing sibling defects:**
+      - **A. Provenance:** `_read_events` let a 5,000-digit integer, malformed JSON, invalid UTF-8 and excessive nesting escape from hash-matching `provenance.jsonl`. Every probe left no outcome, report or check files. The hash-mismatch control already gave fit ERRORs while keeping the temporal FAIL and VIOLATION_FOUND.
+      - **B. Index:** `_load_index` missed `RecursionError`, so a deeply nested `index.json` escaped before outputs were cleared and left the previous outcome in place.
+    - **P3:** guide line 92 still called the four original repairs unverified.
+  - **Checkpoints:** base `bb9bac8`; head = the local commit "Repair T-02 provenance and index decoding after Codex verification" (parent `bb9bac8`).
+  - **Repairs:**
+    - **Provenance:** `_read_events` decodes the whole stream inside one guarded step and returns `(events, problem)`. On `ValueError`/`RecursionError` it returns no events, so a decoded prefix is never used, and the problem is "provenance.jsonl could not be decoded (…)". `prov_ok` becomes false, so only the provenance-dependent fit assertions take ERROR(`evidence_invalid`). Split, table, metric and temporal findings keep their status, and the problem is added to the outcome's reason. The split and provenance messages share `_decode_problem`.
+    - **Index:** `_load_index` also handles `RecursionError`, which routes to the existing index-unavailable path. That path clears stale outputs, writes a fresh INCONCLUSIVE outcome and report with no invented assertion set, and does not rebuild the index.
+    - Only `ValueError` and `RecursionError` are caught, at the two decoding calls; nothing broader. No policy, fixture, numeric limit or existing assertion changed.
+  - **Tests** (`tests/integration/test_t02_scenarios.py`, full evaluator):
+    - **`test_undecodable_provenance_is_wholly_invalid_and_independent_fail_stands[integer_5000_digits|malformed_json|invalid_utf8|deep_nesting]`:**
+      - The setup is the partial-label run, where separate split/table evidence shows a late training prediction, so the control is VIOLATION_FOUND. The test appends one undecodable line *after* the valid events and re-hashes.
+      - It asserts that both fit assertions are ERROR(`evidence_invalid`), which proves the decoded prefix is not used, and that the temporal FAIL stands with valid evidence.
+      - Every other assertion matches the control, the outcome is VIOLATION_FOUND, the reason names `provenance.jsonl`, and the indexed outputs equal the files on disk with current hashes.
+    - **`test_index_recursion_uses_the_index_unavailable_recovery_path`:** after a VIOLATION_FOUND control, `index.json` becomes 100,000-deep nesting. The test asserts a fresh INCONCLUSIVE outcome with no assertions and a reason naming the index, a fresh report, stale check files removed, and the index left unrebuilt (the existing recovery contract).
+    - **RED at `bb9bac8`**, from a temporary `git archive` copy placed first on `PYTHONPATH`: **5 failed** (`runs/t02r3/red-at-base.log`), with `ValueError`, `JSONDecodeError`, `UnicodeDecodeError` and `RecursionError` ×2. All pass after the repair.
+  - **Actual results (2026-10-15):**
+    - Evidence-error and recovery suites: `uv run --locked pytest tests/integration/test_t01_scenarios.py tests/integration/test_review_t01.py tests/integration/test_review_t01_repair.py tests/integration/test_t02_scenarios.py tests/integration/test_cli.py tests/unit/test_policy.py --basetemp=runs/t02r3/c` → **113 passed** (`runs/t02r3/audit-tests.log`).
+    - An unchanged copy of Codex's `decoder_probes.py` (`runs/t02r3/probes/`, `initial` and `siblings`; `summary.txt`):
+      - all four provenance payloads → fit ERROR, temporal FAIL, VIOLATION_FOUND, current output hashes;
+      - all four index payloads, including deep nesting → a fresh INCONCLUSIVE, with no stale outcome;
+      - snapshot, fallback, execution and runtime cases are unchanged and safe;
+      - the original `json5000_runtime` case is still INCONCLUSIVE with all assertions ERROR.
+    - `ruff check .` and `ruff format --check .` → clean.
+    - **Not run:** the full suite, Docker and mutation. Only the two loaders in `audit.py` changed, and valid inputs decode exactly as before. 0 inference calls.
+  - **Newly demonstrated, NOT repaired (outside this pass's decoding scope; lead decision needed):** `runs/t02r3/shape_probe.py` (`shape-results.json`) shows that hash-matching evidence which decodes but has the wrong JSON shape still escapes.
+    - An `index.json` that decodes to a list raises `AttributeError` in `_load_index` (`.get` on a list), and the previous outcome is left in place.
+    - A `provenance.jsonl` line that decodes to a number raises `TypeError` in the fit check, and no outcome is written.
+    - A `splits.json` that decodes to an object is handled (INCONCLUSIVE, no crash).
+    - The smallest likely fix is a type check at each loader (index a dict; each provenance event a dict), routed through the same invalid-evidence or recovery paths.
+  - **Remaining limitations:** the repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of this repair and the lead's decision on the wrong-shape defects.
 
 ### T-03 Hosting and isolated-worker probe (early, per playbook §11 Day 2)
 - **OWNER:** Claude Code (research and documentation only); the lead decides.

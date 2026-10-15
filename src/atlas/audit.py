@@ -184,7 +184,8 @@ def _finalize(
 def _load_index(run_dir: Path) -> dict | None:
     try:
         index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    # Unreadable or undecodable (including excessive nesting): the index is unavailable.
+    except (OSError, ValueError, RecursionError):
         return None
     return index if isinstance(index.get("artifacts"), dict) else None
 
@@ -341,12 +342,20 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
     return outcome
 
 
-def _read_events(path: Path) -> list[dict]:
-    return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line
-    ]
+def _read_events(path: Path) -> tuple[list[dict], str | None]:
+    """(events, decoding problem). The event stream is decoded whole: one undecodable line (an
+    over-limit integer, malformed JSON, non-UTF-8 bytes, excessive nesting) makes all of
+    provenance.jsonl invalid evidence. A decoded prefix is never returned.
+    """
+    try:
+        events = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+    except (ValueError, RecursionError) as exc:
+        return [], _decode_problem("provenance.jsonl", exc)
+    return events, None
 
 
 def _load_splits(path: Path) -> tuple[list, str | None]:
@@ -358,16 +367,17 @@ def _load_splits(path: Path) -> tuple[list, str | None]:
     try:
         return json.loads(path.read_text(encoding="utf-8")), None
     except (ValueError, RecursionError) as exc:
-        return (
-            [],
-            f"splits.json could not be decoded ({type(exc).__name__}: {str(exc)[:160]})",
-        )
+        return [], _decode_problem("splits.json", exc)
+
+
+def _decode_problem(artifact: str, exc: Exception) -> str:
+    return f"{artifact} could not be decoded ({type(exc).__name__}: {str(exc)[:160]})"
 
 
 def _compute(
     project: Path, run_dir: Path, index: dict, manifest: Manifest
 ) -> tuple[dict[str, AssertionResult], list[DescriptiveResult], str | None]:
-    """(computed assertions, descriptive results, evidence-decoding problem or None)."""
+    """(computed assertions, descriptive results, evidence-decoding problems or None)."""
     table_info = index.get("table") or {}
     table_path = project / manifest.table.path
     table_ok = table_path.exists() and sha256_file(table_path) == table_info.get(
@@ -386,7 +396,12 @@ def _compute(
         splits_ok = splits_problem is None
 
     prov_path, prov_hash, prov_ok = verified(run_dir, index, "provenance.jsonl")
-    events = _read_events(prov_path) if prov_ok else []
+    events, prov_problem = [], None
+    if prov_ok:
+        events, prov_problem = _read_events(prov_path)
+        # Undecodable provenance is wholly invalid: the fit assertions that depend on it become
+        # ERROR(evidence_invalid); findings with separate valid evidence are unaffected.
+        prov_ok = prov_problem is None
 
     # Expected prediction inventory: exactly predictions/<fold>.parquet per declared fold.
     # Never inferred from files that exist, and never remapped by candidate-produced events.
@@ -468,7 +483,8 @@ def _compute(
         evidence_valid=splits_ok and table_ok,
     )
     computed.update(metrics)
-    return computed, descriptive, splits_problem
+    problems = "; ".join(p for p in (splits_problem, prov_problem) if p)
+    return computed, descriptive, problems or None
 
 
 def _report(project, manifest, execution, outcome: RunOutcome) -> dict:
