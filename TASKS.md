@@ -713,7 +713,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Stage A deployed by the owner (2026-10-15 18:41 -0400) and first observations recorded** (`docs/HOSTING_PROBE.md` §7a): public repository `lainx06/atlas-hosting-probe` with the two files (byte-identical to the local set), `https://atlas-hosting-probe.streamlit.app/`.
     - Build about 14 s; no extra permission; Python 3.11.17 and Streamlit 1.66.0 on Linux.
     - The canary was present and its hash prefix matched.
-    - Still pending: the sleep/wake observation (earliest about 2026-10-16 06:51 -0400 with no visits in between), a signed-out access check, outbound network, the full locked build, and the credit facts.
+    - Still pending: the sleep/wake observation (earliest about 2026-10-16 06:54 -0400 with no visits in between, after the owner's signed-out check at about 18:44 -0400 showed the page loads), outbound network, the full locked build, and the credit facts.
     - **T-03 remains unaccepted.**
 
 ### T-04 Nebius access smoke (Start Here Step 10)
