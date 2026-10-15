@@ -2,8 +2,8 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: **T-01 accepted** by the lead at `f5aa4dc` within its documented scope (2026-10-14), on Codex's independent verification (165 tests passed; no remaining blocker in the reviewed scope). Immediate next action: GitHub setup (publish this repository as `lainx06/atlas`). T-02 not started.
-CHECKPOINT: T-01 accepted at `f5aa4dc`; head = local commit "Record T-01 acceptance" (parent `f5aa4dc`). Not pushed; no remote configured.
+CURRENT STEP: Start Here Step 10 (T-04), **configuration preparation only**. The placeholder `.env` exists and is git-ignored; **waiting for the user to enter the Nebius Token Factory API key locally.** No API call made. T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `main` tracks `origin/main` at `35dbb63` (verified: `git ls-remote origin refs/heads/main` equals local HEAD; remote refs are only `HEAD` and `refs/heads/main`). This STATUS update is a local commit on top of `35dbb63` and is not pushed.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -53,12 +53,19 @@ LAST UPDATED: 2026-10-14
 9. T-01: TDD cycles with `uv run --locked pytest tests/unit/<file> -q` (RED then GREEN per module); `uv run --locked python benchmarks/t01/generate.py`; `uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01`; full suite; `scripts/mutation_check.py`; CLI audits of s01/s02/s07; ruff check/format; `sync_skills.py --check`.
 
 ## Blockers
+- **Nebius key (user action):** T-04 waits for the user to enter `NEBIUS_API_KEY` in the local `.env`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
-## Publication readiness (pre-check 2026-10-14, for `lainx06/atlas`)
+## Nebius configuration (Step 10 preparation, 2026-10-14)
+- **Contract:** `.env.example` and SPEC §11. The key goes in variable `NEBIUS_API_KEY`, in the git-ignored file `.env` at the repository root (loaded with `python-dotenv`). Base URL `NEBIUS_BASE_URL=https://api.tokenfactory.nebius.com/v1/`. `ATLAS_MODEL_PRIMARY` stays a placeholder until an authenticated `GET /models` verifies an NVIDIA model ID. `ATLAS_MODEL_MODE=fixture` until live access is verified.
+- **`.env`:** created from `.env.example` (byte-identical: placeholders only). `git check-ignore -v .env` → `.gitignore:2:.env`; it is not tracked and does not appear in `git status`. Its contents are never printed by the builder.
+- **Key source (official docs, checked 2026-10-14):** a Nebius **Token Factory** API key, from https://tokenfactory.nebius.com/project/api-keys ("Create API key" → name → "Create"; shown once). Sent as `Authorization: Bearer <key>` to the base URL above. This is not a Nebius AI Cloud IAM service-account key.
+- **Not done:** no API call, no model selection, no Docker.
+
+## Publication readiness (pre-check 2026-10-14, for `lainx06/atlas`; published as a private repository)
 - **State:** branch `main`; working tree clean apart from this acceptance record; **no remotes**.
 - **Authors:** all 11 commits are authored and committed as `Adnan Hossain <adnan.hossain0802@gmail.com>`, the expected identity.
 - **History scan:** every blob reachable from all refs (185 blobs, 11 commits) was checked.
@@ -75,10 +82,11 @@ LAST UPDATED: 2026-10-14
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **GitHub setup (immediate):** publish this existing repository as `lainx06/atlas`.
-   - The publication pre-check is recorded below under "Publication readiness".
-   - Creating the remote and pushing need the user's explicit go-ahead, including a decision on repository visibility.
-2. T-02 only after GitHub setup and a lead instruction.
+1. **User (private, local):** in VS Code, open `.env` at the repository root and replace `replace_with_local_secret` on the line `NEBIUS_API_KEY=replace_with_local_secret` with a Token Factory API key.
+   - Create the key at https://tokenfactory.nebius.com/project/api-keys; it is shown only once.
+   - Never paste the key into chat, commit it, or put it in any other file.
+2. **Then T-04 (separate go-ahead):** create `scripts/nebius_smoke.py`, list models with an authenticated `GET /models`, make one capped structured-output call, and save sanitized evidence. The key is never printed. `ATLAS_MODEL_PRIMARY` is set only from a verified model ID.
+3. Docker/isolation (T-05) and T-02 are not started.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
