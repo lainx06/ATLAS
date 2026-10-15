@@ -17,7 +17,14 @@ Outputs live on a tmpfs that disappears when the container stops, so the in-cont
 supervisor (PID 1) emits them as one framed tar archive on stdout before exiting; the host
 reads it under byte, file-count, expanded-size and time caps, validates every entry and only
 then writes files. Containers created here are always removed (success, timeout, malformed
-output, collection failure).
+output, collection failure), and removal counts only when a successful Docker listing no
+longer shows the container; an unreachable daemon or failing CLI leaves it unconfirmed, and
+a run whose removal is unconfirmed never reports `completed`.
+
+Before any parser sees untrusted output, its structure is bounded: the header's JSON nesting
+depth is capped, and the archive's raw tar headers are walked first (checksums, at most one
+PAX header per member, no size override, no global or GNU extension headers, nothing after
+the end marker), so chained extension headers cannot recurse inside `tarfile`.
 
 Containers reduce execution risk; they do not make hostile code safe (SPEC §10) and do not
 prove provenance integrity or scientific correctness (SPEC §9.9).
@@ -30,6 +37,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -44,12 +52,15 @@ from pathlib import Path
 
 import atlas
 from atlas.candidates import (
+    MAX_ENTRY_BYTES,
     Approval,
     Candidate,
     Snapshot,
     SnapshotError,
+    _permitted_file,
     candidate_hash,
     current_inventory,
+    input_limits,
     inventory_hash,
     safe_relpath,
     sha256_bytes,
@@ -84,8 +95,12 @@ ENTRY_NAME = "atlas_runner_entry.py"
 _SECRET_MARKERS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 FRAME_MAGIC = b"ATLAS-OUT-V1 "
 MAX_HEADER_BYTES = 256 * 1024
+MAX_HEADER_DEPTH = 8  # the supervisor's header nests 3 levels
+MAX_PAX_BYTES = 8 * 1024  # one PAX record set (a path of <= 200 characters)
+MAX_CODE_FILE_BYTES = 1 << 20
 STDERR_TAIL_BYTES = 64 * 1024
 CLI_TIMEOUT_S = 30.0
+CLEANUP_CONFIRMED = "confirmed_absent"
 
 
 @dataclass(frozen=True)
@@ -342,17 +357,18 @@ def stage_code(dest: Path) -> tuple[tuple[str, str], ...]:
         (dest / "atlas" / name).write_bytes(_lf_bytes(PACKAGE_DIR / name))
     (dest / ENTRY_NAME).write_bytes(_lf_bytes(ENTRY_SOURCE))
     paths = [f"atlas/{n}" for n in MOUNTED_MODULES] + [ENTRY_NAME]
-    return current_inventory(dest, paths)
+    return current_inventory(dest, dict.fromkeys(paths, MAX_CODE_FILE_BYTES))
 
 
 def stage_project(snapshot: Snapshot, candidate: Candidate, dest: Path) -> None:
+    caps = input_limits(snapshot)
     for rel, _ in snapshot.inventory:
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         if rel == snapshot.entry_point:
             data = candidate.entry_bytes
         else:
-            data = (snapshot.root / rel).read_bytes()
+            data = _permitted_file(snapshot.root, rel, caps[rel])
         with open(target, "xb") as f:
             f.write(data)
 
@@ -463,9 +479,14 @@ def parse_frame(data: bytes, limits: Limits) -> tuple[dict, bytes]:
     newline = data.find(b"\n", start, start + MAX_HEADER_BYTES + 1)
     if newline < 0:
         raise CollectionError("malformed_header", "no header terminator within the cap")
+    raw = data[start:newline]
+    if _json_depth_exceeds(raw, MAX_HEADER_DEPTH):
+        raise CollectionError(
+            "malformed_header", f"nested deeper than {MAX_HEADER_DEPTH}"
+        )
     try:
-        header = json.loads(data[start:newline])
-    except ValueError as exc:
+        header = json.loads(raw)
+    except (ValueError, RecursionError) as exc:
         raise CollectionError("malformed_header", "not JSON") from exc
     if (
         not isinstance(header, dict)
@@ -484,14 +505,123 @@ def parse_frame(data: bytes, limits: Limits) -> tuple[dict, bytes]:
     return header, archive
 
 
+_JSON_TOKENS = re.compile(rb'"(?:[^"\\]|\\.)*"|[\[\]{}]')
+
+
+def _json_depth_exceeds(raw: bytes, max_depth: int) -> bool:
+    """Bracket nesting outside JSON strings, without recursion (checked before json.loads)."""
+    depth = 0
+    for token in _JSON_TOKENS.finditer(raw):
+        t = token.group()
+        if t in (b"[", b"{"):
+            depth += 1
+            if depth > max_depth:
+                return True
+        elif t in (b"]", b"}"):
+            depth -= 1
+    return False
+
+
+_EXTENSION_TYPES = {
+    tarfile.XGLTYPE: "global PAX header",
+    tarfile.SOLARIS_XHDTYPE: "Solaris extended header",
+    tarfile.GNUTYPE_LONGNAME: "GNU long name",
+    tarfile.GNUTYPE_LONGLINK: "GNU long link",
+    tarfile.GNUTYPE_SPARSE: "GNU sparse file",
+}
+_FORBIDDEN_PAX_KEYS = (b"size", b"GNU.sparse")
+
+
+def _tar_number(field: bytes) -> int:
+    if field[:1] and field[0] & 0x80:
+        raise CollectionError("malformed_archive", "base-256 header number")
+    text = field.split(b"\0", 1)[0].strip(b" ")
+    if not re.fullmatch(rb"[0-7]*", text):
+        raise CollectionError("malformed_archive", "invalid octal header number")
+    return int(text or b"0", 8)
+
+
+def _check_pax_records(data: bytes) -> None:
+    """Every record is `<len> <key>=<value>\\n` and none overrides the member size."""
+    pos = 0
+    while pos < len(data):
+        space = data.find(b" ", pos, pos + 12)
+        digits = data[pos:space] if space > pos else b""
+        if not digits.isdigit():
+            raise CollectionError("malformed_archive", "invalid PAX record length")
+        end = pos + int(digits)
+        record = data[space + 1 : end]
+        if end > len(data) or not record.endswith(b"\n") or b"=" not in record:
+            raise CollectionError("malformed_archive", "invalid PAX record")
+        if record.split(b"=", 1)[0].startswith(_FORBIDDEN_PAX_KEYS):
+            raise CollectionError("malformed_archive", "PAX record overrides size")
+        pos = end
+
+
+def _check_tar_structure(archive: bytes, limits: Limits) -> None:
+    """Walk the raw tar headers before `tarfile` parses them: the layout the supervisor writes
+    (ustar members, each preceded by at most one PAX header) and nothing else.
+
+    `tarfile` recurses once per consecutive extension header, so chained headers could exhaust
+    the stack; here each header costs one loop iteration, and member count is capped.
+    """
+    bs = tarfile.BLOCKSIZE
+    if len(archive) % bs:
+        raise CollectionError("malformed_archive", "not a whole number of blocks")
+    offset, pax_pending, members = 0, False, 0
+    while True:
+        block = archive[offset : offset + bs]
+        if len(block) < bs:
+            raise CollectionError("malformed_archive", "no end-of-archive marker")
+        if not block.strip(b"\0"):
+            if pax_pending:
+                raise CollectionError(
+                    "malformed_archive", "PAX header without a member"
+                )
+            if archive[offset:].strip(b"\0"):
+                raise CollectionError("malformed_archive", "data after end of archive")
+            return
+        stored = _tar_number(block[148:156])
+        rest = block[:148] + block[156:]
+        if stored != 256 + sum(rest) and stored != 256 + sum(
+            b - 256 if b > 127 else b for b in rest
+        ):  # tarfile accepts the unsigned or the signed sum
+            raise CollectionError("malformed_archive", "header checksum mismatch")
+        kind, size = block[156:157], _tar_number(block[124:136])
+        data_start = offset + bs
+        offset = data_start + -(-size // bs) * bs
+        if offset > len(archive):
+            raise CollectionError("malformed_archive", "entry extends past the archive")
+        if kind in _EXTENSION_TYPES:
+            raise CollectionError("malformed_archive", _EXTENSION_TYPES[kind])
+        if kind == tarfile.XHDTYPE:
+            if pax_pending:
+                raise CollectionError("malformed_archive", "consecutive PAX headers")
+            if size > MAX_PAX_BYTES:
+                raise CollectionError("malformed_archive", "PAX header too large")
+            _check_pax_records(archive[data_start : data_start + size])
+            pax_pending = True
+            continue
+        pax_pending = False
+        members += 1
+        if members > limits.max_output_files:
+            raise CollectionError("file_count_exceeded")
+
+
 def extract_archive(archive: bytes, dest: Path, limits: Limits) -> list[dict]:
-    """Validate every entry first, then write regular files only into the new `dest`."""
+    """Check the raw structure, validate every entry, then write regular files only into the
+    new `dest`. Malformed input of any kind raises CollectionError."""
+    _check_tar_structure(archive, limits)
     try:
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
             members = _validated_members(tar, limits)
             return _write_members(tar, members, Path(dest))
-    except tarfile.TarError as exc:
-        raise CollectionError("malformed_archive", str(exc)) from exc
+    except CollectionError:
+        raise
+    except (tarfile.TarError, RecursionError, ValueError) as exc:
+        raise CollectionError(
+            "malformed_archive", f"{type(exc).__name__}: {exc}"[:500]
+        ) from exc
 
 
 def _validated_members(tar: tarfile.TarFile, limits: Limits) -> list:
@@ -545,8 +675,33 @@ def _write_members(tar: tarfile.TarFile, members: list, dest: Path) -> list[dict
 # --- lifecycle ------------------------------------------------------------------------------
 
 
+def _cli_error(proc) -> str:
+    tail = proc.stderr.decode("utf-8", "replace")[-200:].strip()
+    return f"exit {proc.returncode}: {tail}"
+
+
+def _container_listed(
+    cli: Path, env: dict, name: str
+) -> tuple[bool | None, str | None]:
+    """Is the container still listed? (True/False, None) when Docker answered the listing;
+    (None, error) when it could not, which never counts as absence."""
+    args = ["ps", "--all", "--no-trunc", "--filter", f"name={name}"]
+    try:
+        proc = _docker(cli, [*args, "--format", "{{.Names}}"], env)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"listing failed: {type(exc).__name__}"
+    if proc.returncode != 0:
+        return None, f"listing failed: {_cli_error(proc)}"
+    return name in proc.stdout.decode("utf-8", "replace").split(), None
+
+
 def _remove_container(cli: Path, env: dict, name: str) -> dict:
-    """Inspect, then force-remove a container this runner created; confirm it is gone."""
+    """Inspect, force-remove and confirm the absence of a container this runner created.
+
+    `cleanup` is `confirmed_absent` only when a successful listing no longer shows the
+    container; `still_present` when it does; `unknown` when Docker could not be asked (the
+    CLI failed or the daemon was unreachable). `removed` is true only when confirmed.
+    """
     state = None
     try:
         inspect = _docker(
@@ -556,20 +711,51 @@ def _remove_container(cli: Path, env: dict, name: str) -> dict:
             state = json.loads(inspect.stdout)
     except (OSError, subprocess.TimeoutExpired, ValueError):
         pass
-    removed = False
-    for _ in range(3):
+    cleanup, errors = "unknown", []
+    for attempt in range(3):
+        if attempt:
+            time.sleep(0.5)
         try:
-            _docker(cli, ["rm", "--force", name], env)
-            gone = _docker(
-                cli, ["container", "inspect", name, "--format", "{{.Id}}"], env
-            )
-            removed = gone.returncode != 0
-        except (OSError, subprocess.TimeoutExpired):
-            removed = False
-        if removed:
+            rm = _docker(cli, ["rm", "--force", name], env)
+            if rm.returncode != 0:
+                errors.append(f"rm {_cli_error(rm)}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            errors.append(f"rm failed: {type(exc).__name__}")
+        listed, error = _container_listed(cli, env, name)
+        if listed is False:
+            cleanup = CLEANUP_CONFIRMED
             break
-        time.sleep(0.5)
-    return {"state": state, "removed": removed}
+        cleanup = "still_present" if listed else "unknown"
+        if error:
+            errors.append(error)
+    return {
+        "state": state,
+        "removed": cleanup == CLEANUP_CONFIRMED,
+        "cleanup": cleanup,
+        "errors": errors[-6:],
+    }
+
+
+def _record_cleanup(record: dict, result: dict) -> None:
+    record.update(
+        container_removed=result["removed"],
+        docker_state=result["state"],
+        cleanup={"status": result["cleanup"], "errors": result["errors"]},
+    )
+
+
+def _finish(record: dict, status: str, reason: str | None) -> None:
+    """Set the final status; a container whose removal is unconfirmed overrides it, so a run
+    never reports success (or any plain outcome) while its container may still exist."""
+    if record.get("container_removed") is False:
+        record.update(
+            execution_status=status,
+            execution_reason=reason,
+            status="cleanup_failed",
+            reason=f"container removal unconfirmed ({record['cleanup']['status']})",
+        )
+    else:
+        record.update(status=status, reason=reason)
 
 
 def run_candidate(
@@ -586,7 +772,10 @@ def run_candidate(
 
     Writes run_dir/execution.json and returns the same record. Statuses: `refused` (hash or
     staging check failed; nothing started), `not_executed` (isolation unavailable),
-    `completed`, `failed` (non-zero exit), `timed_out`, `collection_failed`.
+    `completed`, `failed` (non-zero exit), `timed_out`, `collection_failed`,
+    `cleanup_failed` (container removal unconfirmed; the outcome it replaced is kept in
+    `execution_status`), and `runner_error` (an unexpected exception, re-raised after the
+    record is written; cleanup has already run if a container was started).
     """
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -604,6 +793,10 @@ def run_candidate(
     }
     try:
         _run(snapshot, candidate, approval, run_dir, limits, image, env, record)
+    except BaseException as exc:
+        if record["status"] is None:
+            _finish(record, "runner_error", f"{type(exc).__name__}: {exc}"[:500])
+        raise
     finally:
         write_json(run_dir / "execution.json", record)
     return record
@@ -614,10 +807,10 @@ def _refuse(record: dict, reason: str) -> None:
 
 
 def _run(snapshot, candidate, approval, run_dir, limits, image, env, record) -> None:
-    # 1. Hash binding, before anything touches Docker.
-    paths = [rel for rel, _ in snapshot.inventory]
+    # 1. Hash binding, before anything touches Docker. Revalidation reads are bounded.
+    limits_by_path = input_limits(snapshot)
     try:
-        live = current_inventory(snapshot.root, paths)
+        live = current_inventory(snapshot.root, limits_by_path)
     except SnapshotError as exc:
         return _refuse(record, f"snapshot_invalid: {exc}")
     if inventory_hash(live) != snapshot.base_hash:
@@ -643,12 +836,15 @@ def _run(snapshot, candidate, approval, run_dir, limits, image, env, record) -> 
 
     # 3. Stage exactly the approved bytes and re-check them as they will be mounted.
     project, code = run_dir / "stage" / "project", run_dir / "stage" / "code"
-    stage_project(snapshot, candidate, project)
-    record["mounted_code"] = [list(i) for i in stage_code(code)]
-    staged = dict(current_inventory(project, paths))
+    try:
+        stage_project(snapshot, candidate, project)
+        record["mounted_code"] = [list(i) for i in stage_code(code)]
+        staged = dict(current_inventory(project, limits_by_path))
+        entry_bytes = _permitted_file(project, snapshot.entry_point, MAX_ENTRY_BYTES)
+    except SnapshotError as exc:
+        return _refuse(record, f"staged_invalid: {exc}")
     expected = dict(snapshot.inventory)
     expected[snapshot.entry_point] = sha256_bytes(candidate.entry_bytes)
-    entry_bytes = (project / snapshot.entry_point).read_bytes()
     if staged != expected or (
         candidate_hash(approval.base_snapshot_hash, entry_bytes)
         != approval.candidate_hash
@@ -673,16 +869,16 @@ def _run(snapshot, candidate, approval, run_dir, limits, image, env, record) -> 
     try:
         proc = _spawn(cli, args, e)
     except OSError as exc:
-        record.update(
-            status="not_executed",
-            reason=f"docker run could not start: {type(exc).__name__}",
-            container_removed=_remove_container(cli, e, name)["removed"],
+        _record_cleanup(record, _remove_container(cli, e, name))
+        _finish(
+            record, "not_executed", f"docker run could not start: {type(exc).__name__}"
         )
         return None
     try:
         io_result = communicate_bounded(proc, limits)
     finally:
-        cleanup = _remove_container(cli, e, name)
+        # Recorded here, so cleanup is in the record even if reading the output raised.
+        _record_cleanup(record, _remove_container(cli, e, name))
         if proc.poll() is None:
             proc.kill()
         try:
@@ -694,8 +890,6 @@ def _run(snapshot, candidate, approval, run_dir, limits, image, env, record) -> 
                 t.join(timeout=5)
     record.update(
         elapsed_s=round(time.monotonic() - started, 3),
-        container_removed=cleanup["removed"],
-        docker_state=cleanup["state"],
         docker_cli_returncode=proc.returncode,
         host_timed_out=io_result["host_timed_out"],
         io_problems=io_result["problems"],
@@ -726,19 +920,25 @@ def _run(snapshot, candidate, approval, run_dir, limits, image, env, record) -> 
     except OSError as exc:
         collection.update(status="failed", problem="write_failed", detail=str(exc))
         shutil.rmtree(out_dir, ignore_errors=True)
+    except Exception as exc:  # noqa: BLE001 - any collection failure ends collection_failed
+        collection.update(
+            status="failed",
+            problem="unexpected_error",
+            detail=f"{type(exc).__name__}: {exc}"[:500],
+        )
+        shutil.rmtree(out_dir, ignore_errors=True)
 
     sup = record.get("supervisor") or {}
     if io_result["host_timed_out"] or sup.get("timed_out"):
-        record.update(status="timed_out", reason="execution timeout")
+        _finish(record, "timed_out", "execution timeout")
     elif collection["status"] != "ok":
-        record.update(status="collection_failed", reason=collection["problem"])
+        _finish(record, "collection_failed", collection["problem"])
     elif sup.get("child_returncode") != 0:
-        record.update(
-            status="failed",
-            reason=f"candidate exited with {sup.get('child_returncode')}",
+        _finish(
+            record, "failed", f"candidate exited with {sup.get('child_returncode')}"
         )
     else:
-        record.update(status="completed", reason=None)
+        _finish(record, "completed", None)
     return None
 
 

@@ -4,10 +4,15 @@ WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
 CURRENT STEP: Start Here Step 10.
 - **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **T-04 accepted by the user within its documented smoke-test scope** (2026-10-14; TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
-- **T-05:** **implemented and self-tested; awaiting independent Codex review; not accepted.** The restricted Docker runner, candidate snapshot/diff validation and hash-bound approval are in place. The acceptance command passed 28/28 with Docker required (TASKS.md T-05 "RESULT"). The runner does not re-evaluate candidates; that is T-06.
+- **T-05:** **Codex review 1 (of `f494c95`) found three P2 defects; repair pass 1 is done and self-tested; awaiting Codex verification; not accepted.**
+  - The defects: cleanup reported removal on Docker/API failure; snapshot limits were applied after whole-file reads and AST parsing; nested JSON/PAX input escaped as `RecursionError` with a null saved status.
+  - Causes, repairs, tests and results: TASKS.md T-05 "REVIEW 1 … REPAIR PASS 1". The 25 new regression tests failed at `f494c95` and pass now.
+  - After the repair: unit 219 passed, 1 skipped; contract suite 28/28 with Docker required, every live removal confirmed by a Docker listing.
+  - The review evidence at `runs/review-t05/session-f494c95-20261015/` is preserved unchanged.
+  - The runner does not re-evaluate candidates; that is T-06.
 - T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), and the T-05 implementation commit containing this update). Nothing is pushed.
-LAST UPDATED: 2026-10-14
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), and the T-05 repair commit containing this update). Nothing is pushed.
+LAST UPDATED: 2026-10-15
 
 ## What works (verified by running)
 - Python 3.11 environment: uv-managed CPython 3.11.17 in `.venv/`, pinned by `.python-version`.
@@ -40,7 +45,7 @@ LAST UPDATED: 2026-10-14
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` holds only the Step 8 packet.)
 - Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. No production model client, schemas or agent loop (T-06); diagnosis, tool-use and repair quality untested.
-- The Docker runner is self-tested only: Codex has not reviewed it, and T-05 is not accepted. `audit.py` still accepts only trusted-runner records, so audits remain `trusted_pipeline_only`. No user-facing candidate approval step exists yet.
+- The Docker runner's repair pass 1 is self-tested only: Codex has not verified it, and T-05 is not accepted. `audit.py` still accepts only trusted-runner records, so audits remain `trusted_pipeline_only`. No user-facing candidate approval step exists yet.
 
 ## Commands executed in setup
 1. `git init -b main`
@@ -54,10 +59,17 @@ LAST UPDATED: 2026-10-14
 
 9. T-01: TDD cycles with `uv run --locked pytest tests/unit/<file> -q` (RED then GREEN per module); `uv run --locked python benchmarks/t01/generate.py`; `uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01`; full suite; `scripts/mutation_check.py`; CLI audits of s01/s02/s07; ruff check/format; `sync_skills.py --check`.
 10. T-05: `docker pull python:3.11-slim`; `uv run --locked python scripts/runner_requirements.py`; `uv run --locked python -m atlas.runner.docker build`; the new offline unit tests; `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` (28 passed); the T-01 suite once (165 passed); ruff.
+11. T-05 repair pass 1 (2026-10-15):
+    - the new regression tests, first against `f494c95` (25 failed) and then after the repair;
+    - `uv run --locked pytest tests/unit -q` (219 passed, 1 skipped);
+    - the four intake-dependent T-01 integration files (67 passed);
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` (28 passed);
+    - scratch copies of Codex's probes;
+    - ruff.
 
 ## Blockers
 - **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
-- **Docker isolation (T-05):** none for implementation. Acceptance waits for the independent Codex review.
+- **Docker isolation (T-05):** none for implementation. Acceptance waits for Codex's verification of repair pass 1.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
@@ -84,7 +96,7 @@ LAST UPDATED: 2026-10-14
   - Usage: prompt 47, completion 52 (of which reasoning 38), total 99. Cost from listed prices **$0.0000609**. Within caps.
   - **Classification: application-validated output, not provider-enforced structured output.** Nothing on the provider side constrained the format; one passing call does not show the model always complies.
 
-## Docker installation (complete; the restricted runner is implemented in T-05 and self-tested, not yet reviewed)
+## Docker installation (complete; the restricted runner (T-05) was reviewed once by Codex and repaired; not accepted)
 **Reported by the user** (observed earlier; not re-run by the builder):
 - WSL 3.0.3.0, default version 2.
 - Docker Desktop 4.95.0, Engine 29.8.2.
@@ -119,7 +131,7 @@ LAST UPDATED: 2026-10-14
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-05 review:** an independent local Codex review of the T-05 commit (TASKS.md T-05 "HANDOFF"). T-05 stays unaccepted until then.
+1. **T-05 verification:** Codex verifies repair pass 1 (base `f494c95`, head = the repair commit) against its three findings. T-05 stays unaccepted until then.
 2. T-02 and T-06 are not started. No further Nebius calls are planned before T-06.
 
 ## Unresolved questions

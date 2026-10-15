@@ -1,14 +1,19 @@
 """Candidate snapshot, diff validation, hashing and approval (SPEC §9). Offline."""
 
+import ast
+import builtins
 import difflib
 import json
+import os
 import shutil
 from pathlib import Path
 
 import pytest
 
+from atlas import candidates
 from atlas.candidates import (
     MAX_DIFF_BYTES,
+    MAX_ENTRY_BYTES,
     CandidateRejected,
     SnapshotError,
     approve,
@@ -139,6 +144,120 @@ def test_existing_destination_is_refused(tmp_path):
         build_snapshot(CLEAN, tmp_path / "snapshot")
 
 
+# --- bounded snapshot reads (Codex review of f494c95, finding 2) ---------------------------
+
+
+class _CountingFile:
+    def __init__(self, f, name: str, log: dict):
+        self._f, self._name, self._log = f, name, log
+
+    def read(self, n=-1):
+        data = self._f.read(n)
+        self._log[self._name] = self._log.get(self._name, 0) + len(data)
+        return data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._f.close()
+
+    def __getattr__(self, attr):
+        return getattr(self._f, attr)
+
+
+@pytest.fixture
+def bytes_read(monkeypatch):
+    """Bytes read per file name, through open() and the whole-file Path readers."""
+    log: dict[str, int] = {}
+    real_open = builtins.open
+    real_read_bytes, real_read_text = Path.read_bytes, Path.read_text
+
+    def counting_open(file, mode="r", *args, **kwargs):
+        f = real_open(file, mode, *args, **kwargs)
+        if "r" in mode and "b" in mode and isinstance(file, (str, os.PathLike)):
+            return _CountingFile(f, Path(file).name, log)
+        return f
+
+    def read_bytes(path):
+        data = real_read_bytes(path)
+        log[path.name] = log.get(path.name, 0) + len(data)
+        return data
+
+    def read_text(path, *args, **kwargs):
+        text = real_read_text(path, *args, **kwargs)
+        log[path.name] = log.get(path.name, 0) + len(text.encode("utf-8"))
+        return text
+
+    monkeypatch.setattr(builtins, "open", counting_open)
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    monkeypatch.setattr(Path, "read_text", read_text)
+    return log
+
+
+def test_oversized_entry_is_refused_before_intake_parsing(
+    tmp_path, monkeypatch, bytes_read
+):
+    project = copy_project(tmp_path)
+    entry = project / "evaluate.py"
+    entry.write_bytes(entry.read_bytes() + b"\n#" + b"x" * MAX_ENTRY_BYTES + b"\n")
+    parsed = []
+    real_parse = ast.parse
+    monkeypatch.setattr(
+        ast, "parse", lambda *a, **k: parsed.append(1) or real_parse(*a, **k)
+    )
+    bytes_read.clear()
+    with pytest.raises(SnapshotError, match="exceeds"):
+        build_snapshot(project, tmp_path / "snapshot")
+    assert parsed == []
+    assert bytes_read.get("evaluate.py", 0) <= MAX_ENTRY_BYTES + 1
+    assert not (tmp_path / "snapshot").exists()
+
+
+def test_oversized_table_is_refused_with_a_bounded_read(
+    tmp_path, monkeypatch, bytes_read
+):
+    project = copy_project(tmp_path)
+    monkeypatch.setattr(candidates, "MAX_TABLE_BYTES", 32)
+    bytes_read.clear()
+    with pytest.raises(SnapshotError, match="exceeds 32 bytes"):
+        build_snapshot(project, tmp_path / "snapshot")
+    assert bytes_read.get("table.csv", 0) <= 33
+
+
+def test_oversized_manifest_is_refused_with_a_bounded_read(tmp_path, bytes_read):
+    project = copy_project(tmp_path)
+    path = project / "atlas_manifest.json"
+    path.write_bytes(path.read_bytes() + b" " * (2 * 1024 * 1024))  # still valid JSON
+    bytes_read.clear()
+    with pytest.raises(SnapshotError, match="exceeds"):
+        build_snapshot(project, tmp_path / "snapshot")
+    assert bytes_read.get("atlas_manifest.json", 0) <= 1024 * 1024
+
+
+def test_input_replaced_after_its_checks_is_refused(tmp_path, monkeypatch):
+    """The opened file must be the file whose path was checked (no swap in between)."""
+    project = copy_project(tmp_path)
+    real_fstat = os.fstat
+
+    def another_file(fd):
+        st = real_fstat(fd)
+        return os.stat_result((st.st_mode, st.st_ino + 1, *tuple(st)[2:10]))
+
+    monkeypatch.setattr(os, "fstat", another_file)
+    with pytest.raises(SnapshotError, match="changed"):
+        build_snapshot(project, tmp_path / "snapshot")
+
+
+def test_deeply_nested_entry_point_is_refused_not_crashed(tmp_path):
+    project = copy_project(tmp_path)
+    entry = project / "evaluate.py"
+    entry.write_bytes(entry.read_bytes() + b"x" + b".a" * 80_000 + b"\n")
+    assert entry.stat().st_size <= MAX_ENTRY_BYTES
+    with pytest.raises(SnapshotError):
+        build_snapshot(project, tmp_path / "snapshot")
+
+
 @pytest.mark.parametrize(
     "path",
     ["", ".", "a/../b", "/abs", "a//b", "con", "lpt1.txt", "a/b. ", "x:y", "a\\b"],
@@ -264,6 +383,15 @@ def test_syntax_error_is_refused(snap):
     with pytest.raises(CandidateRejected) as exc:
         validate_diff(snap, make_diff(old, old + "def broken(:\n"))
     assert exc.value.code == "syntax_error"
+
+
+def test_too_deeply_nested_candidate_is_refused_not_crashed(snap):
+    old = entry_text(snap)
+    diff = make_diff(old, old + "x" + ".a" * 30_000 + "\n")
+    assert len(diff.encode()) <= MAX_DIFF_BYTES
+    with pytest.raises(CandidateRejected) as exc:
+        validate_diff(snap, diff)
+    assert exc.value.code == "too_complex"
 
 
 def test_no_change_and_carriage_returns_are_refused(snap):

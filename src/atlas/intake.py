@@ -24,7 +24,12 @@ class Intake:
 
 def uses_adapter(entry: Path) -> bool:
     """Static check: does the entry point import the ATLAS adapter at all?"""
-    tree = ast.parse(entry.read_text(encoding="utf-8"), filename=str(entry))
+    return source_uses_adapter(entry.read_text(encoding="utf-8"), str(entry))
+
+
+def source_uses_adapter(source: str, filename: str) -> bool:
+    """`uses_adapter` on source already in memory (the candidate snapshot reads it bounded)."""
+    tree = ast.parse(source, filename=filename)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import) and any(
             a.name == "atlas" or a.name.startswith("atlas.") for a in node.names
@@ -51,22 +56,9 @@ def load_project(project: Path) -> Intake:
             f"manifest unparseable: {exc.error_count()} validation error(s)",
             None,
         )
-    if not supported_claim(manifest.claim.type):
-        return Intake(
-            False,
-            f"claim type {manifest.claim.type!r} is not supported in V1 (combined or unknown)",
-            manifest,
-        )
-    if len(manifest.columns.class_map) < 2:
-        return Intake(
-            False,
-            "task is not classification (class_map has fewer than two classes)",
-            manifest,
-        )
-    if manifest.table.format not in TABLE_FORMATS:
-        return Intake(
-            False, f"table format {manifest.table.format!r} is unsupported", manifest
-        )
+    reason = manifest_reason(manifest)
+    if reason is not None:
+        return Intake(False, reason, manifest)
     if not (project / manifest.table.path).exists():
         return Intake(False, "table absent", manifest)
     entry = project / manifest.entry_point
@@ -79,6 +71,17 @@ def load_project(project: Path) -> Intake:
             manifest,
         )
     return Intake(True, None, manifest)
+
+
+def manifest_reason(manifest: Manifest) -> str | None:
+    """Why a validated manifest alone makes the project unsupported, or None."""
+    if not supported_claim(manifest.claim.type):
+        return f"claim type {manifest.claim.type!r} is not supported in V1 (combined or unknown)"
+    if len(manifest.columns.class_map) < 2:
+        return "task is not classification (class_map has fewer than two classes)"
+    if manifest.table.format not in TABLE_FORMATS:
+        return f"table format {manifest.table.format!r} is unsupported"
+    return None
 
 
 def read_table(project: Path, manifest: Manifest) -> pd.DataFrame:

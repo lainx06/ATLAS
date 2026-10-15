@@ -147,6 +147,79 @@ def test_corrupt_archive_is_rejected(tmp_path):
     assert exc.value.code == "malformed_archive"
 
 
+# --- parser resource bounds (Codex review of f494c95, finding 3) ---------------------------
+
+
+def test_deeply_nested_header_is_a_collection_error():
+    """A few KB of nesting, far below the header byte cap (Codex's reproduction)."""
+    header = b'{"nested":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}"
+    with pytest.raises(CollectionError) as exc:
+        parse_frame(FRAME_MAGIC + header + b"\n", SMALL)
+    assert exc.value.code == "malformed_header"
+
+
+def _pax_record(payload: bytes, kind=tarfile.XHDTYPE) -> bytes:
+    info = tarfile.TarInfo("pax")
+    info.type, info.size = kind, len(payload)
+    padding = b"\0" * (-len(payload) % tarfile.BLOCKSIZE)
+    return info.tobuf(format=tarfile.USTAR_FORMAT) + payload + padding
+
+
+def _member(name: str, data: bytes, size: int | None = None) -> bytes:
+    info = tarfile.TarInfo(name)
+    info.size = len(data) if size is None else size
+    padding = b"\0" * (-len(data) % tarfile.BLOCKSIZE)
+    return info.tobuf(format=tarfile.USTAR_FORMAT) + data + padding
+
+
+END = b"\0" * (2 * tarfile.BLOCKSIZE)
+
+
+def test_consecutive_pax_headers_are_a_collection_error(tmp_path):
+    """600 chained extension records recurse in tarfile (Codex's reproduction)."""
+    archive = _pax_record(b"10 path=x\n") * 600 + _member("file.txt", b"x") + END
+    assert len(archive) <= Limits().max_archive_bytes
+    with pytest.raises(CollectionError) as exc:
+        extract_archive(archive, tmp_path / "out", Limits())
+    assert exc.value.code == "malformed_archive"
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    "archive",
+    [
+        _pax_record(b"10 path=x\n", tarfile.XGLTYPE) + _member("a.txt", b"x") + END,
+        _pax_record(b"a" * 120 + b"\0", tarfile.GNUTYPE_LONGNAME)
+        + _member("a.txt", b"x")
+        + END,
+        _pax_record(b"9 size=0\n") + _member("a.txt", b"x") + END,
+        _pax_record(b"10 path=x\n") + END,
+        _pax_record(b"99 path=x\n") + _member("a.txt", b"x") + END,
+        _member("a.txt", b"x") + END + b"\x01" + b"\0" * 511,
+    ],
+    ids=[
+        "global_pax",
+        "gnu_longname",
+        "pax_size_override",
+        "pax_without_member",
+        "bad_pax_record",
+        "data_after_end",
+    ],
+)
+def test_unexpected_tar_structure_is_rejected(tmp_path, archive):
+    with pytest.raises(CollectionError) as exc:
+        extract_archive(archive, tmp_path / "out", SMALL)
+    assert exc.value.code == "malformed_archive"
+    assert not (tmp_path / "out").exists()
+
+
+def test_single_pax_header_for_a_non_ascii_name_is_accepted(tmp_path):
+    """The supervisor writes PAX: a non-ASCII name needs one extension header."""
+    archive = tar_bytes([("résumé.txt", b"1")])
+    files = extract_archive(archive, tmp_path / "out", SMALL)
+    assert [f["path"] for f in files] == ["résumé.txt"]
+
+
 def test_existing_destination_is_not_overwritten(tmp_path):
     (tmp_path / "out").mkdir()
     with pytest.raises(FileExistsError):

@@ -14,7 +14,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
-| T-05 | 10 | **Implemented and self-tested; awaiting Codex review** (not accepted). Acceptance command 28/28 passed with `ATLAS_REQUIRE_DOCKER=1`; full candidate re-evaluation is T-06 | Isolated runner and hash-bound candidate approval |
+| T-05 | 10 | **Codex review 1 found three P2 defects (cleanup, snapshot bounds, parser bounds); repair pass 1 done and self-tested; awaiting Codex verification** (not accepted). Acceptance command 28/28 passed with `ATLAS_REQUIRE_DOCKER=1` after the repair; full candidate re-evaluation is T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | Proposed | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
@@ -440,6 +440,77 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - The archive is held in memory (≤ ≈33 MiB).
     - Only tested on this Windows 11 Home / Docker Desktop host.
     - Building the image requires network access (approved). The base image's Debian packages are pinned only through the image digest.
+- **REVIEW 1 (local Codex, of `f494c95`, 2026-10-15) and REPAIR PASS 1 (Claude Code, Opus 5.5 high):**
+  - **Review evidence:** preserved unchanged at `runs/review-t05/session-f494c95-20261015/` (git-ignored). A hash manifest of all files there was identical before and after the repair (516 lines). The directory holds Codex's probes, their results and `verification-summary.json` (sha256 `c466d8a8…5689baa1`); it contains no separate narrative review text. Key files: `bounded_probes.py` (`7e677e7a…c6e735b7`), `bounded-results.json` (`d9cad12a…dcf1bef7`), `lifecycle_probes.py` (`e7e96337…d30d1f28`) and `lifecycle-results.json` (`347a7aa9…d2596178`). Codex's run: 28 contract tests and 96 unit tests passed, 1 skipped; 0 inference calls.
+  - **Checkpoints:** repair base `f494c95`; head = the local commit "Repair T-05 after Codex review 1" (parent `f494c95`).
+  - **Findings (three, P2), causes and repairs.** Each regression test below failed at `f494c95`: 25 failed, 82 passed, 1 skipped (log `runs/t05-repair1/red-at-base.log`). All pass after the repair.
+    1. **Cleanup reported removal on Docker/API failure.**
+       - *Cause:* `_remove_container` took any non-zero `docker container inspect` exit as "gone", so an unreachable daemon looked like a removed container. `run_candidate` also reported `completed` even when `container_removed` was false.
+       - *Repair:* absence is now confirmed only by a successful `docker ps --all --filter name=…` listing that does not show the exact name. A failing CLI, timeout or unreachable daemon gives `cleanup: unknown`; a container still listed gives `still_present`; `removed` is true only for `confirmed_absent`. `docker rm --force` returns 0 even for a missing container (observed), so its exit code is recorded but never used as evidence.
+       - *Recording:* every run that started (or tried to start) a container records `cleanup {status, errors}`, `container_removed` and `docker_state`, inside the `finally` that removes the container. When removal is unconfirmed, the final status becomes `cleanup_failed`, with the outcome it replaced kept in `execution_status`/`execution_reason`. This applies to every outcome, including `completed`, `not_executed` after a launch failure, and `runner_error`.
+       - *Tests:* `tests/unit/test_runner_lifecycle.py`:
+         - `test_daemon_failure_does_not_confirm_removal` (Codex's reproduction);
+         - `test_cli_launch_failure_does_not_confirm_removal`;
+         - `test_absence_is_confirmed_by_a_successful_listing`;
+         - `test_container_still_listed_is_not_removed`;
+         - `test_unconfirmed_cleanup_prevents_completion[daemon_unreachable|still_present]` (Codex's reproduction);
+         - `test_unconfirmed_cleanup_after_launch_failure_is_explicit`;
+         - `test_confirmed_cleanup_allows_completion`.
+    2. **Snapshot limits applied after whole-file reads and AST parsing.**
+       - *Cause:* `build_snapshot` called `intake.load_project`, which read and `ast.parse`d the whole entry point (and read the manifest) before any size check. `_permitted_file` used `Path.read_bytes()` and compared the length afterwards. Revalidation (`current_inventory`) enumerated the whole tree with `rglob` and hashed every file with whole-file reads.
+       - *Repair:* `build_snapshot` decides supportedness itself, on bounded in-memory reads. The order is: read the manifest (new cap `MAX_MANIFEST_BYTES` = 64 KiB) → validate it → `intake.manifest_reason` → validate both paths with `safe_relpath` and check for collisions → read the entry point and table → AST adapter check (`intake.source_uses_adapter`). `intake.load_project` keeps its behavior; its checks were factored into those two helpers.
+       - *Checked reads:* every read goes through `_open_permitted`. It lstat-checks each path component (no symlink/reparse point) and requires a regular file inside the root whose lstat size is within the cap. It opens the file, requires `fstat` to show the same device and inode, regular, and within the cap. It then reads at most cap + 1 bytes. OS errors become `SnapshotError`.
+       - *Revalidation:* `current_inventory(root, limits)` takes a cap per expected path. It refuses at the first unexpected entry (enumeration stops early) and streams hashes through the same checked open with the same bound. `stage_project`, the staged-entry re-read and `validate_diff`'s base read use the bounded reader too. A staging-time `SnapshotError` is now a `refused`/`staged_invalid` record rather than an exception.
+       - *Normalized parse failures:* AST failures in the snapshot (`RecursionError`, `MemoryError`, `ValueError`) are `SnapshotError`. In `validate_diff` they are `CandidateRejected` with `too_complex`, or `syntax_error` for `ValueError`. Before, `"x" + ".a" * 30000` escaped as `RecursionError`. This is the same class of defect, found while repairing finding 2.
+       - *Tests:* in `tests/unit/test_candidates.py`:
+         - `test_oversized_entry_is_refused_before_intake_parsing` (Codex's `entry_cap_after_AST`; no `ast.parse` call, ≤ cap + 1 bytes read);
+         - `test_oversized_table_is_refused_with_a_bounded_read` (Codex's `snapshot_read_before_cap`);
+         - `test_oversized_manifest_is_refused_with_a_bounded_read`;
+         - `test_input_replaced_after_its_checks_is_refused`;
+         - `test_deeply_nested_entry_point_is_refused_not_crashed`;
+         - `test_too_deeply_nested_candidate_is_refused_not_crashed`.
+
+         In `tests/unit/test_runner_lifecycle.py`: `test_revalidation_hashes_with_bounded_reads` and `test_revalidation_stops_at_the_first_unexpected_entry` (203 lstat calls before the repair; now ≤ 20).
+    3. **Nested JSON and PAX input escaped as `RecursionError`, leaving the saved status null.**
+       - *Cause:* `parse_frame` gave a 4 KB, 2000-deep header straight to `json.loads`. `tarfile` recurses once per consecutive extension header, so 600 chained PAX records (616 KB, under the 34 MB archive cap) overflowed the stack. Only `CollectionError`/`OSError` were caught, so the exception escaped `_run`, and `execution.json` was written with `status: null`.
+       - *Header repair:* `parse_frame` checks bracket depth outside strings without recursion (`MAX_HEADER_DEPTH` = 8; the supervisor's header uses 3) before `json.loads`, and also maps `RecursionError` to `malformed_header`.
+       - *Archive repair:* `extract_archive` first walks the raw tar headers (`_check_tar_structure`), one loop iteration per header. It verifies checksums and octal numbers (base-256 is refused). It allows at most one PAX `x` header per member (≤ 8 KiB, well-formed records, no `size` or `GNU.sparse` override) and refuses global PAX, Solaris and GNU long-name/link/sparse headers, a PAX header without a member, entries extending past the archive, and any non-zero data after the end marker. The member count is capped before `tarfile` runs. `TarError`/`RecursionError`/`ValueError` from `tarfile` still become `malformed_archive`. This accepts exactly the layout the supervisor writes (PAX format, a PAX header only for non-ASCII or long names).
+       - *Final records:* any other exception during collection becomes `collection_failed` with problem `unexpected_error`, and partial outputs are removed. An exception anywhere else in `_run` is recorded as `runner_error` (or `cleanup_failed`) before it is re-raised. Cleanup always runs first, since it sits in the `finally` around the container's IO.
+       - *Tests:* in `tests/unit/test_runner_collection.py`:
+         - `test_deeply_nested_header_is_a_collection_error` and `test_consecutive_pax_headers_are_a_collection_error` (Codex's reproductions);
+         - `test_unexpected_tar_structure_is_rejected[global_pax|gnu_longname|pax_size_override|pax_without_member|bad_pax_record|data_after_end]`;
+         - `test_single_pax_header_for_a_non_ascii_name_is_accepted`.
+
+         In `tests/unit/test_runner_lifecycle.py`:
+         - `test_nested_header_is_a_recorded_collection_failure` (Codex's `parser_lifecycle`);
+         - `test_chained_pax_archive_is_a_recorded_collection_failure`;
+         - `test_unexpected_collection_error_is_recorded`;
+         - `test_lifecycle_error_still_cleans_up_and_saves_a_final_status`.
+  - **Actual results after the repair (2026-10-15):**
+    - `uv run --locked pytest tests/unit -q` → 219 passed, 1 skipped (the existing symlink-permission skip). Log: `runs/t05-repair1/unit.log`.
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` → **28 passed** in 38.20 s. Log: `runs/t05-repair1/contract.log`; records: `runs/t05-repair1/contract-tmp/`.
+      - Every live run's `cleanup.status` is `confirmed_absent`, confirmed by a real Docker listing: 8 completed, 2 failed, 2 timed_out, 1 collection_failed.
+      - Afterwards, `docker ps --all --quiet --filter label=atlas.runner=t05` → empty.
+    - **T-01 dependants of `intake.py`:** `intake.py` was refactored (a concrete changed dependency of `audit.py`), so the four intake-dependent T-01 integration files were run once: `test_cli`, `test_review_t01`, `test_review_t01_repair` and `test_t01_scenarios` → 67 passed. Log: `runs/t05-repair1/t01-intake-dependents.log`.
+    - The full T-01 acceptance run and `scripts/mutation_check.py` were not rerun: no mutation target (fit_provenance, split_integrity, recorder) or mutation script changed.
+    - Copies of Codex's probes (scratch only; the preserved originals were not run or modified) now give:
+      - `snapshot_read_before_cap` → 0 bytes read, `SnapshotError`;
+      - `nested_json` → `CollectionError malformed_header`;
+      - `nested_pax` → `CollectionError malformed_archive` ("consecutive PAX headers");
+      - `cleanup_daemon_unreachable` → `removed: false, cleanup: unknown`;
+      - `parser_lifecycle` → saved `collection_failed` with cleanup recorded;
+      - `entry_cap_after_AST` → no AST call;
+      - `injected_cleanup_failure` → `cleanup_failed`;
+      - the live case-collision probe → `collection_failed`/`duplicate_entry`, removal confirmed.
+
+      The copies' stubs of `_remove_container` needed the new `cleanup`/`errors` keys.
+    - `ruff check .` and `ruff format --check .` → clean. No image rebuild was needed: the recipe and `container_entry.py` are unchanged. 0 inference calls.
+  - **Remaining limitations (repair pass 1):**
+    - The same-file check uses (st_dev, st_ino). On Windows these come from the volume serial and file index, which matched lstat/fstat on this host. A swap between a component's check and the final lstat is not detected for intermediate directories. A swap to a link before the open is detected (the opened file differs).
+    - Docker's `name=` filter is a substring/regex match; the runner compares the exact name in the output. Absence is confirmed by a listing at one instant; a container recreated under the same random name afterwards would not be seen.
+    - `cleanup_failed` runs keep any validated outputs in `out/` for diagnosis. Consumers must gate on `status`, as before.
+    - The JSON depth pre-check counts brackets outside strings. An unterminated string is scanned as structure, which can only over-count (it refuses more, never less).
+    - The other T-05 limitations listed above stand. **T-05 remains unaccepted** pending Codex's verification of this repair.
 
 ### T-06 Bounded live agent loop
 - **OWNER:** Claude Code (writer); Codex reviews.
