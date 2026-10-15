@@ -87,10 +87,13 @@ def temporal_assertions(
 
 
 def time_value(value) -> float:
-    """A usable time as a float, or NaN (null, non-numeric, boolean or nonfinite)."""
+    """A usable time as a float, or NaN (null, non-numeric, boolean, nonfinite or beyond float64)."""
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         return math.nan
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an integer (or fraction) outside the float64 range
+        return math.nan
     return number if math.isfinite(number) else math.nan
 
 
@@ -185,10 +188,18 @@ def _usable_windows(ids, starts, ends) -> tuple[list[str], np.ndarray, np.ndarra
 def _stream_group_contradictions(
     table: pd.DataFrame, stream_col, group_col, splits
 ) -> list[dict]:
+    """Streams observed in several groups, over participating rows with both values known.
+
+    Each role is selected as its own Series, so stream_id and group_id may name the same
+    physical column (then no stream can be in two groups) without duplicating a column.
+    """
     if stream_col is None or group_col is None:
         return []
-    rows = table.loc[_participating(splits), [stream_col, group_col]].dropna()
-    groups = rows.groupby(stream_col)[group_col].unique()
+    ids = _participating(splits)
+    rows = pd.DataFrame(
+        {"stream": table.loc[ids, stream_col], "group": table.loc[ids, group_col]}
+    ).dropna()
+    groups = rows.groupby("stream")["group"].unique()
     return [
         {"stream_id": str(k), "group_ids": sorted(map(str, g))}
         for k, g in groups.items()
@@ -504,24 +515,57 @@ def _unknown(reason: str, aid: str, evidence, observed=None) -> AssertionResult:
     )
 
 
-def _label_times(manifest, table, pt: pd.Series) -> pd.Series | None:
+def _global_clock_problem(manifest: Manifest) -> str | None:
+    """A single cutoff per fold is comparable with row times only on a declared global clock."""
+    basis = manifest.time_basis
+    if basis is None:
+        return "time_basis not declared"
+    if basis.scope != "global":
+        return (
+            "a single training cutoff per fold needs a global clock "
+            f"(time_basis.scope: {basis.scope or 'unspecified'})"
+        )
+    return None
+
+
+def _label_times(manifest, table, pt: pd.Series) -> tuple[pd.Series, str | None]:
+    """Label-availability times, or all-unknown times with the reason the source is absent."""
     la = manifest.label_availability
+    unknown = pd.Series(math.nan, index=table.index, dtype=float)
+    if la is None:
+        return unknown, "label_availability not declared"
     if la.column is not None:
         col = _column(table, la.column)
-        return None if col is None else _times(table, col)
-    return pt + la.horizon + la.reporting_delay
+        if col is None:
+            return unknown, f"label availability column {la.column!r} absent"
+        return _times(table, col), None
+    return pt + la.horizon + la.reporting_delay, None
+
+
+def _json_time(value: float) -> float | None:
+    return None if math.isnan(value) else value
 
 
 def _labels_by_cutoff(manifest, table, splits, evidence) -> AssertionResult:
-    problem = _clock_problem(manifest, table, need_global=True)
-    if problem is None and manifest.label_availability is None:
-        problem = "label_availability not declared"
+    """Every training row needs prediction_time <= cutoff AND label availability <= cutoff.
+
+    The two comparisons are independent: a known value after the cutoff is a witness even when
+    the row's other value is unknown. Unknown values are counted and prevent PASS; they never
+    erase a witness (known values first).
+    """
+    problem = _global_clock_problem(manifest)
     if problem is not None:
         return _unknown(problem, LABELS, evidence)
-    pt = _times(table, manifest.columns.prediction_time)
-    la = _label_times(manifest, table, pt)
-    if la is None:
-        return _unknown("label availability column absent", LABELS, evidence)
+    sources = {}
+    pt_col = _column(table, manifest.columns.prediction_time)
+    if pt_col is None:
+        pt = pd.Series(math.nan, index=table.index, dtype=float)
+        sources["prediction_time"] = "prediction_time column not declared or absent"
+    else:
+        pt = _times(table, pt_col)
+    la, la_problem = _label_times(manifest, table, pt)
+    if la_problem is not None:
+        sources["label_availability"] = la_problem
 
     folds, witnesses, n_witnesses, invalid, unknown = [], [], 0, [], 0
     for s in splits:
@@ -533,30 +577,43 @@ def _labels_by_cutoff(manifest, table, splits, evidence) -> AssertionResult:
                 invalid.append(s["fold"])
             unknown += state == "missing"
             continue
-        n_unknown = 0
+        missing_pt = missing_la = undecided = 0
         for r in s["train_ids"]:
             p, a = pt[r], la[r]
-            if math.isnan(p) or math.isnan(a):
-                n_unknown += 1
-            elif p > cutoff or a > cutoff:
+            missing_pt += math.isnan(p)
+            missing_la += math.isnan(a)
+            late = [
+                name
+                for name, value in (("prediction_time", p), ("label_available", a))
+                if not math.isnan(value) and value > cutoff
+            ]
+            if late:
                 n_witnesses += 1
                 if len(witnesses) < MAX_WITNESSES:
                     witnesses.append(
                         {
                             "fold": s["fold"],
                             "row_id": r,
-                            "prediction_time": p,
-                            "label_available": a,
+                            "after_cutoff": late,
+                            "prediction_time": _json_time(p),
+                            "label_available": _json_time(a),
                             "cutoff": cutoff,
                         }
                     )
-        fold["training_rows_with_unknown_time"] = n_unknown
-        unknown += n_unknown
+            elif math.isnan(p) or math.isnan(a):
+                undecided += 1  # no known value is late, and one is unknown: not a PASS
+        fold.update(
+            training_rows_missing_prediction_time=missing_pt,
+            training_rows_missing_label_availability=missing_la,
+            training_rows_undecided=undecided,
+        )
+        unknown += undecided
     observed = {
         "folds": folds,
         "witnesses": witnesses,
         "witness_count": n_witnesses,
         "invalid_cutoff_folds": invalid,
+        "absent_sources": sources,
     }
     status, reason = _status(n_witnesses, bool(invalid), unknown > 0)
     return _result(

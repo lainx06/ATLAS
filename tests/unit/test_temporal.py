@@ -578,3 +578,134 @@ def test_no_participating_rows_is_not_executed():
     assert {(r.status, r.reason) for r in results.values()} == {
         (N, Reason.NOT_EXECUTED)
     }
+
+
+# --- Codex review of 487664e: regressions ------------------------------------------------------
+# Finding 1: a missing value must not suppress a violation shown by the row's other known value.
+
+
+def _partial(pt, label, label_source="label_day"):
+    table = _table(
+        {"r1": {"pt": pt, "label_day": label}, "r2": {"pt": 150, "label_day": 150}}
+    )
+    m = _future(label={"column": label_source})
+    return _run(m, table, [_split(["r1"], ["r2"], cutoff=120)])[LABELS]
+
+
+@pytest.mark.parametrize(
+    ("pt", "label", "late"),
+    [(130, None, ["prediction_time"]), (None, 130, ["label_available"])],
+    ids=["known_prediction_late_label_missing", "known_label_late_prediction_missing"],
+)
+def test_known_late_value_fails_despite_the_other_value_missing(pt, label, late):
+    result = _partial(pt, label)
+
+    assert result.status is F and result.evidence_valid
+    witness = result.observed["witnesses"][0]
+    assert witness["after_cutoff"] == late
+    fold = result.observed["folds"][0]
+    assert fold["training_rows_missing_prediction_time"] == (pt is None)
+    assert fold["training_rows_missing_label_availability"] == (label is None)
+
+
+def test_absent_label_source_still_preserves_a_late_prediction():
+    result = _partial(130, 100, label_source="not_a_column")
+
+    assert result.status is F
+    assert "label_availability" in result.observed["absent_sources"]
+
+
+@pytest.mark.parametrize(("pt", "label"), [(100, None), (None, 100)])
+def test_missing_value_without_a_known_late_value_is_missing_metadata(pt, label):
+    result = _partial(pt, label)
+
+    assert (result.status, result.reason) == (N, Reason.MISSING_METADATA)
+    assert result.observed["folds"][0]["training_rows_undecided"] == 1
+
+
+# Finding 2: stream_id and group_id may name the same physical column.
+
+
+def _aliased(rows, containment=None):
+    extra = {"window_containment": containment} if containment else {}
+    return _manifest(columns={"group_id": "stream"}, **extra), _table(rows)
+
+
+def test_shared_stream_group_column_complete_direct_routes():
+    disjoint = {"t": _w("A", 0, 10), "e": _w("B", 5, 15)}
+    crossing = {"t": _w("A", 0, 10), "e": _w("A", 5, 15)}
+
+    m, table = _aliased(disjoint)
+    assert _run(m, table, [_split(["t"], ["e"])])[WINDOW].status is P
+    m, table = _aliased(crossing)
+    assert _run(m, table, [_split(["t"], ["e"])])[WINDOW].status is F
+
+
+@pytest.mark.parametrize(
+    "containment", [None, CONTAINMENT], ids=["undeclared", "declared"]
+)
+def test_shared_stream_group_column_incomplete_direct_route_does_not_raise(
+    containment,
+):
+    """Unknown bounds in a crossing stream: route D is incomplete; route C is considered."""
+    from atlas.checks.split_integrity import split_assertions
+
+    values = {
+        "f0": 0.0,
+        "f1": 0.0,
+        "y": 0,
+    }  # split_assertions reads features and target
+    rows = {"t": _w("S", None, 10) | values, "e": _w("S", 5, 15) | values}
+    m, table = _aliased(rows, containment)
+    splits = [_split(["t"], ["e"])]
+    group = split_assertions(m, table, splits, EVIDENCE)["split.no_group_overlap"]
+
+    result = _run(m, table, splits, group=group)[WINDOW]
+
+    assert (result.status, result.reason) == (N, Reason.MISSING_METADATA)
+    assert result.observed["route_c"]["stream_group_contradictions"] == []
+
+
+def test_shared_stream_group_column_with_unknown_stream_does_not_raise():
+    m, table = _aliased({"t": _w("A", 0, 10), "e": _w(None, 5, 15)}, CONTAINMENT)
+
+    result = _run(m, table, [_split(["t"], ["e"])], group=_group(N))[WINDOW]
+
+    assert (result.status, result.reason) == (N, Reason.MISSING_METADATA)
+
+
+# Finding 3: an integer beyond the float64 range is unusable, not an exception.
+
+
+def test_integer_beyond_float64_is_not_a_time():
+    from atlas.checks.temporal import time_value
+
+    assert math.isnan(time_value(10**400))
+    assert time_value(10**300) == 1e300  # large but finite: still a valid time
+
+
+def test_oversized_cutoff_is_an_evidence_error():
+    table, splits = _counterexample(10**400)
+
+    results = _run(_future(), table, splits)
+
+    for aid in (LABELS, PRECEDES):
+        assert (results[aid].status, results[aid].reason) == (
+            E,
+            Reason.EVIDENCE_INVALID,
+        )
+
+
+def test_oversized_cutoff_does_not_hide_a_fail_in_another_fold():
+    table = _table(
+        {"r1": {"pt": 100}, "r2": {"pt": 120}, "r3": {"pt": 200}, "r4": {"pt": 260}}
+    )
+    splits = [
+        _split(["r1"], ["r2"], fold="a", cutoff=120),  # label at 150 > 120
+        _split(["r3"], ["r4"], fold="b", cutoff=10**400),
+    ]
+
+    result = _run(_future(), table, splits)[LABELS]
+
+    assert result.status is F
+    assert result.observed["invalid_cutoff_folds"] == ["b"]

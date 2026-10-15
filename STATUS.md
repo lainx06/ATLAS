@@ -2,11 +2,17 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-02 is implemented and self-tested, awaiting Codex review (not accepted).
-- **T-02 (policy-v1.3, manifest schema 0.3):** implemented and self-tested; **awaiting Codex review; not accepted.**
+CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-02 repair pass 1 is self-tested and awaits independent verification (not accepted).
+- **T-02 (policy-v1.3, manifest schema 0.3):** implemented at `487664e`. **Codex review 1 found four P2 defects. Repair pass 1 is done and self-tested; it awaits independent verification. Not accepted.**
+  - The four repairs:
+    - a missing value no longer suppresses a known cutoff violation;
+    - a shared stream/group column no longer crashes the window check;
+    - integers beyond float64 are rejected at intake or recorded as invalid evidence;
+    - duplicate fold identifiers make the affected metric results evidence errors instead of overwriting them.
+  - Results: 31 of 34 new regressions failed at `487664e` and all pass now; full suite 534 passed, 1 skipped. Details: TASKS.md T-02 "CODEX REVIEW 1 … REPAIR PASS 1".
   - The lead decided the contract on 2026-10-15: the repeated-measures scope and the T-02 contract dispositions (DECISIONS.md; `docs/specs/t02-contract.md`; SPEC §3, §4.2, §5, §8).
   - New: window-overlap routes D/C, two-sided separation, the three `temporal.*` checks, reported-versus-recomputed metrics with completeness rules, and descriptive recomputation, a dummy baseline and class support. There are 5 trusted fixtures in `benchmarks/t02/`.
-  - Results: unit + integration 500 passed, 1 skipped; Docker contract suite 28/28; sensitivity probe 10/10 defects caught. s07 now PASSes the window check (`NO_VIOLATION_FOUND`), as approved; its policy-v1.2 result stays historical. Details and limitations: TASKS.md T-02 "RESULT".
+  - First implementation's results (`487664e`): unit + integration 500 passed, 1 skipped; Docker contract suite 28/28; sensitivity probe 10/10 defects caught. s07 now PASSes the window check (`NO_VIOLATION_FOUND`), as approved; its policy-v1.2 result stays historical. Details and limitations: TASKS.md T-02 "RESULT".
 - **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **T-04 accepted by the user within its documented smoke-test scope** (2026-10-14; TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
 - **T-05:** **accepted by the lead at `eed73ee` within its documented scope (2026-10-15)**, based on Codex's independent verification of repair pass 2. Record: TASKS.md T-05 "CODEX VERIFICATION OF REPAIR PASS 2" and "ACCEPTANCE".
   - Codex verified both remaining parser findings (PAX padding, JSON encoding) fixed, with no remaining parser blocker. Its contract run: 28/28 with Docker required; 13 containers, all with removal confirmed. Unit tests: 261 passed, 1 skipped, after the path retry below.
@@ -23,11 +29,12 @@ CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Da
   - All review evidence is preserved unchanged under `runs/review-t05/` (`session-f494c95-20261015/`, `repair1-44c5a84/`, `repair2-eed73ee/`).
 - T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). **T-03 due, not started.**
 - **Learning guide:** `docs/ATLAS_Learning_Guide.md` is the canonical guide (tracked since `44c5a84`; maintenance rule in AGENTS.md "Learning guide"). The T-02 update:
-  - marks T-02 implemented, self-tested and awaiting review;
+  - marks T-02's review-1 repairs as self-tested and awaiting verification, and corrects the overstated aggregate-completeness claim (duplicate fold names had defeated it);
+  - explains the four review findings as beginner lessons;
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), and the T-02 commit containing this update). Nothing is pushed.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), `487664e` (T-02), and the T-02 repair pass 1 commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-15
 
 ## What works (verified by running)
@@ -57,7 +64,7 @@ LAST UPDATED: 2026-10-15
   - Codex review 1 and its verification: findings, traced causes, dispositions and tests are recorded once in TASKS.md (T-01 "REVIEW 1" and "CODEX VERIFICATION OF REPAIR PASS 1"). The reproductions are preserved unchanged at `runs/review-t01/` and `runs/review-t01-repair/`.
 
 ## What does not exist yet
-- T-02 assertions are implemented but self-tested only (Codex review pending; not accepted). The linear baseline is deferred; splitter minimum requirements are not recorded.
+- T-02 assertions are implemented. The review-1 repairs are self-tested only (verification pending; not accepted). The adapter still accepts duplicate fold names; only the metric checks refuse them. The linear baseline is deferred; splitter minimum requirements are not recorded.
 - Not implemented: `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED); candidate re-evaluation of the required set after isolated execution (T-06); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. Under policy-v1.3 every required assertion is implemented.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - `docs/specs/` holds one spec, `t02-contract.md`. `handoffs/` holds only the Step 8 packet.
@@ -97,12 +104,17 @@ LAST UPDATED: 2026-10-15
     - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` (28 passed);
     - `uv run --locked python runs/t02/probe_mutations.py` (10/10 defects caught);
     - ruff.
+14. T-02 repair pass 1 (2026-10-15):
+    - the new regressions against a `git archive` copy of `487664e` (31 failed, 3 passed);
+    - `uv run --locked pytest tests/unit tests/integration -q --ignore=tests/integration/test_runner_contract.py --basetemp=runs/t02r/f` (534 passed, 1 skipped);
+    - copies of Codex's `probe.py` and `evaluate_probes.py` in `runs/t02r/probes/`;
+    - ruff.
 
 ## Blockers
 - **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** none. Accepted at `eed73ee`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
-- **T-02:** none for implementation. Acceptance waits for Codex's review.
+- **T-02:** none for implementation. Acceptance waits for Codex's verification of repair pass 1.
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
 
@@ -164,9 +176,9 @@ LAST UPDATED: 2026-10-15
 
 ## Next task
 1. **T-03 hosting probe: due now.** It was scheduled for playbook §11 Day two (2026-10-15), and the playbook says "Do not defer this discovery to recording week". It is not started. It is independent of T-02 and is docs/evidence only, with no purchases or deployment.
-2. **T-02 review:** Codex reviews the T-02 commit (base `52c99c8`) against the decided contract. T-02 stays unaccepted until then.
+2. **T-02 verification:** Codex verifies repair pass 1 (base `487664e`) against its four findings. T-02 stays unaccepted until then.
 3. T-06 waits for T-02 acceptance (T-04 and T-05 are accepted). No further Nebius calls are planned before T-06.
 
 ## Unresolved questions
-- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the T-02 assertions (contract decided; implementation awaiting review), synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
+- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the T-02 assertions (contract decided; repair pass 1 awaiting verification), synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".

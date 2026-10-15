@@ -11,7 +11,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
-| T-02 | 11 | **Implemented and self-tested (2026-10-15); awaiting Codex review; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3); see RESULT | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
+| T-02 | 11 | **Codex review 1 of `487664e` found four P2 defects; repair pass 1 done and self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
@@ -367,6 +367,65 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - Splitter minimum requirements are unavailable (not recorded), and the linear baseline is deferred.
     - Window and separation checks compare all train × eval pairs per stream (chunked): fine at fixture scale, untested at large scale.
     - The checks verify declared rules, not statistical independence. They run on trusted fixtures only (`trusted_pipeline_only`).
+
+- **CODEX REVIEW 1 (local Codex, of `487664e`, 2026-10-15) and REPAIR PASS 1 (Claude Code, Opus 5.5 high):**
+  - **Review evidence:** preserved unchanged at `runs/review-t02/r487/` (git-ignored). A hash manifest of `runs/review-t02/` (2,314 lines) was identical before and after this repair. Key files:
+    - `review.md` (`b785a7bf…ae7bdff9`);
+    - `probe.py` (`ae01bbf9…8b7b7ca6`) and `probe-results.json` (`9efcd5b3…160d9baa`);
+    - `evaluate_probes.py` (`fb13e20b…25285ab3`) and `evaluate-results.json` (`720d93dc…7b43665b`).
+
+    Codex's run: 500 passed, 1 skipped. The 14 T-01 allowlist entries were unchanged. Verdict: request changes. Four P2 findings; every other route and all nine dispositions behaved as specified.
+  - **Checkpoints:** base `487664e`; head = the local commit "Repair T-02 after Codex review 1" (parent `487664e`).
+  - **Findings, causes and repairs:**
+    1. **A missing value suppressed a demonstrated cutoff violation.**
+       - *Cause:* `_labels_by_cutoff` treated a row as unknown when either its prediction time or its label time was missing, before comparing either one. A known prediction time after the cutoff with a missing label time (or the converse) gave NOT_ASSESSED, and the full evaluator reported INCONCLUSIVE instead of VIOLATION_FOUND. An absent label column returned early in the same way.
+       - *Repair:* each known value is compared on its own. A witness records which values are after the cutoff. Missing prediction and label times are counted separately, per fold, and a row with no known late value and a missing value is "undecided", which prevents PASS. A missing prediction-time column or label source now gives unknown values instead of an early return. The global-clock prerequisite is unchanged.
+    2. **A shared stream/group column crashed the window check.**
+       - *Cause:* `_stream_group_contradictions` selected `[stream_col, group_col]`. When both name one physical column, pandas created two columns with the same name and `groupby` raised. The crash was reachable whenever the direct route was incomplete, with or without a containment declaration, and the evaluator left no `outcome.json`.
+       - *Repair:* each role is selected as its own named Series, the pattern already used by `split_integrity._roles`. A shared column cannot show a stream in two groups. Missing-data semantics are unchanged.
+    3. **An integer beyond the float64 range escaped validation and reporting.**
+       - *Cause:* `math.isfinite(10**400)` and `float(10**400)` raise `OverflowError`, which neither pydantic nor the evaluator treated as invalid input.
+       - *Repair:* `contracts._finite_number` converts with an overflow guard and reports "must be finite (outside the float64 range)", so intake gives `NOT_SUPPORTED` naming the field. `temporal.time_value` maps overflow to unknown, so a cutoff becomes invalid (ERROR `evidence_invalid`) and a table time becomes unknown.
+       - *Nearby paths, same cause:* `evaluator.canonical_label` now treats float overflow (for example a huge `Fraction`) and Python's integer-to-string digit limit as "not a label".
+       - Large finite values (10**300) stay valid.
+    4. **Duplicate fold identifiers overwrote invalid metric evidence.**
+       - *Cause:* metric scores were keyed by fold name, so a later same-named fold replaced an earlier unusable one. The aggregate then counted the later fold twice and reported `complete: true` and PASS.
+       - *Repair:* repeated identifiers are detected before anything is keyed by name. Scores stay aligned with the declared splits, and every fold with a repeated name is unusable (ERROR `evidence_invalid`, "fold identifier declared more than once"). Aggregates including them are incomplete, single-fold entries naming them are ERROR, and unrelated folds keep their values. The dummy baseline marks them unusable, class support flags them, and both outputs list the duplicate identifiers.
+  - **Tests.** RED at `487664e`, from a temporary `git archive` copy of `src/atlas` placed first on `PYTHONPATH`: **31 failed, 3 passed** (`runs/t02r/red-at-base.log`). 34 new test items; the 3 that pass at base are guards by design:
+    - complete direct routes with a shared column;
+    - large finite values staying valid;
+    - the 5,000-digit JSON case.
+
+    All pass after the repair.
+    - `tests/unit/test_temporal.py`:
+      - `test_known_late_value_fails_despite_the_other_value_missing[both directions]`;
+      - `test_absent_label_source_still_preserves_a_late_prediction`;
+      - `test_missing_value_without_a_known_late_value_is_missing_metadata` (fails at base only on the new disclosure field);
+      - `test_shared_stream_group_column_*` (complete direct routes; incomplete with and without a declaration; unknown stream);
+      - `test_integer_beyond_float64_is_not_a_time`;
+      - `test_oversized_cutoff_is_an_evidence_error`;
+      - `test_oversized_cutoff_does_not_hide_a_fail_in_another_fold`.
+    - `tests/unit/test_independent_metrics.py`: `test_duplicate_fold_identifiers_*[invalid_first|valid_first]` (entries, aggregates, descriptive results) and `test_oversized_numbers_are_not_labels`.
+    - `tests/unit/test_manifest_schema.py`: `test_integer_beyond_float64_is_rejected[5 fields]`, `test_large_but_finite_values_stay_valid`, `test_intake_names_an_oversized_reported_value[401|5000]`.
+    - `tests/integration/test_t02_scenarios.py` (full evaluator; executes trusted s11b, then evaluates changed and re-hashed copies of its evidence):
+      - `test_known_cutoff_violation_with_a_missing_value_is_violation_found[3 cases]`;
+      - `test_shared_stream_group_column_writes_an_outcome[undeclared|declared]`;
+      - `test_oversized_cutoff_is_recorded_and_a_supported_fail_is_preserved`;
+      - `test_oversized_reported_value_is_not_supported_with_the_field_named`;
+      - `test_duplicate_fold_identifier_is_an_evidence_error[invalid_first|valid_first]`.
+  - **Actual results (2026-10-15):**
+    - `uv run --locked pytest tests/unit tests/integration -q --ignore=tests/integration/test_runner_contract.py --basetemp=runs/t02r/f` → **534 passed, 1 skipped** (the existing symlink-permission skip). Log: `runs/t02r/full-suite.log`.
+    - Codex's probes, run from copies in `runs/t02r/probes/` (originals not run or modified). `probe.py` ran unchanged. `evaluate_probes.py` was adapted twice (`adaptation.diff`): it reads Codex's preserved runs read-only, and its duplicate-fold setup no longer finds a complete aggregate value to copy, which is the repaired behavior.
+      - *After:* partial label → labels FAIL, VIOLATION_FOUND; aliased columns → window NOT_ASSESSED, outcome written; huge cutoff → ERROR, outcome written; oversized manifest → NOT_SUPPORTED naming `reported_metrics.0.value`; duplicate fold → reported ERROR. See `summary.txt`.
+    - `ruff check .` and `ruff format --check .` → clean.
+    - **Not rerun:**
+      - The Docker contract suite. The only shared dependency, `contracts._finite_number`, changes behavior only for integers beyond float64, which no runner manifest uses. No runner, candidate or container code changed.
+      - `scripts/mutation_check.py`. Its targets (`fit_provenance.py`, `split_integrity.py`, `recorder.py`) are unchanged.
+      - 0 inference calls. No fixture, expected value or policy changed.
+  - **Remaining limitations (repair pass 1):**
+    - A number with more digits than the JSON parser accepts (about 4,300 or more) is rejected by pydantic's JSON parser before field validation. Intake still gives `NOT_SUPPORTED`, but the reason names a position ("number out of range at line 1 column N"), not the field.
+    - Duplicate fold identifiers are refused only by the metric assertions. The adapter still accepts them. Other checks surface their effects in Codex's reproduction (row-overlap FAIL, coverage gaps), but they do not name the duplication.
+    - The RESULT limitations above stand. **T-02 remains unaccepted** pending independent verification of this repair.
 
 ### T-03 Hosting and isolated-worker probe (early, per playbook §11 Day 2)
 - **OWNER:** Claude Code (research and documentation only); the lead decides.

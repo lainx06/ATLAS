@@ -1,12 +1,12 @@
 # Understanding ATLAS, end to end
 
-Personal learning guide for Adnan · 15 October 2026 · last checked against the T-02 implementation commit (the commit after `52c99c8`)
+Personal learning guide for Adnan · 15 October 2026 · last checked against T-02 repair pass 1 (the commit after `487664e`)
 
 ## How to use this guide
 
 This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
 
-**Evidence boundary:** last checked against the local repository at the T-02 implementation commit, the commit after `52c99c8` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+**Evidence boundary:** last checked against the local repository at T-02 repair pass 1, the commit after `487664e` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
 
 **Status words used here** (they are deliberately different):
 
@@ -41,7 +41,7 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
 | Candidate re-evaluation integration | Planned for T-06. The evaluator (`audit.py`) still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` | Not demonstrated by T-05 |
 | Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
-| T-02 time, window and metric checks | **Implemented (self-tested); awaiting Codex review; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
+| T-02 time, window and metric checks | Implemented at `487664e`. Codex's first review found four defects. **Repair pass 1 is self-tested and awaits independent verification; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
@@ -89,7 +89,7 @@ The three supported claim types are:
 
 Combined group-and-time claims are outside the selected V1 scope.
 
-In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.3). "Supported" means in scope, not fully checked. The accepted T-01 slice covers `unseen_group` fixtures. T-02 adds the time, window and metric checks that `future_time` and `same_population` need; it is implemented and self-tested, awaiting independent review. Under the older policy-v1.2 those checks were recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
+In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.3). "Supported" means in scope, not fully checked. The accepted T-01 slice covers `unseen_group` fixtures. T-02 adds the time, window and metric checks that `future_time` and `same_population` need; it is implemented, and the four defects found by its first review are repaired and self-tested, awaiting independent verification. Under the older policy-v1.2 those checks were recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
 
 ### Leakage and preprocessing
 
@@ -120,9 +120,9 @@ Judge a fitted state against the training rows of the fold where it is used. A s
 
 Exercise: a scaler learns from rows `{1, 2, 3}`. It is used in a fold with training rows `{1, 2}` and evaluation row `{3}`. Why is that a violation? Answer: row 3 influenced the scaler while being held out for this use.
 
-### Time, windows and honest metrics (T-02: implemented, self-tested, awaiting review)
+### Time, windows and honest metrics (T-02: implemented; repairs self-tested, awaiting verification)
 
-T-02 adds checks for evaluations where time matters. The rules were decided by the lead on 15 October 2026 (`DECISIONS.md`, "T-02 contract dispositions"). The code passes the builder's tests but has not been independently reviewed, so treat this as implemented, not verified.
+T-02 adds checks for evaluations where time matters. The rules were decided by the lead on 15 October 2026 (`DECISIONS.md`, "T-02 contract dispositions"). Codex's first review found four defects (below). They are repaired and pass the builder's tests, but the repairs have not been independently verified, so treat this as implemented, not verified.
 
 **A label you could not have known yet.** A row predicted on day 100 has an outcome that becomes known on day 150. If a model trained with a cutoff of day 120 used that label, it learned something it could not have known on day 120. ATLAS checks both sides of the cutoff:
 
@@ -151,7 +151,9 @@ C++ connection: this is the same convention as `begin()`/`end()` iterators, wher
 
 **Documented is not verified.** If a dataset has no stream column, a project may declare in writing that each recording stays within one person. ATLAS records that declaration prominently and relies on it only together with a valid "no person in both partitions" result. It never claims to have verified the declaration, and it never fetches the cited source. A declaration the table visibly contradicts is not used at all.
 
-**Averages that hide a missing fold.** Suppose four folds were declared but one has no valid predictions. Averaging the three remaining folds would quietly report a different experiment. ATLAS therefore marks the aggregate incomplete and refuses to PASS it, while still showing each valid fold's value.
+**Averages that hide a missing fold.** Suppose four folds were declared but one has no valid predictions. Averaging the three remaining folds would quietly report a different experiment. ATLAS is designed to mark such an aggregate incomplete and refuse to PASS it, while still showing each valid fold's value.
+
+The first version did not fully live up to that: two folds declared with the *same name* let the later fold's result overwrite the earlier fold's error, so an incomplete aggregate was reported as complete. The repair (awaiting verification) treats a repeated fold name as ambiguous evidence, so both folds become evidence errors.
 
 **Floating-point at the edge.** The reported-metric rule is `abs(reported - recomputed) <= 1e-6`, applied literally to binary floats. Many decimals have no exact binary form, so a difference meant to be exactly 1e-6 can land just above it:
 
@@ -160,6 +162,22 @@ print(abs((5 / 9 + 1e-6) - 5 / 9))  # 1.0000000000287557e-06, which fails
 ```
 
 C++ connection: `double` behaves the same way, because it is the same IEEE 754 format.
+
+**What the first review found.** Each of the four defects is a general programming lesson:
+
+- **"Both must hold" can fail on partial information.** The training-label rule needs the prediction time *and* the label time to be at or before the cutoff. If the prediction time is already after the cutoff, the rule is broken even if the label time is unknown. The first version gave up when either value was missing. Now each known value is compared on its own, and missing values only prevent a PASS.
+- **One column, two roles.** A table may use the same column as both stream and group. Selecting it twice created a table with two columns of the same name, and pandas refused to group it. Now each role is selected separately.
+- **Numbers too big for a float.** Python integers have no size limit, but a float stops near 1.8 × 10^308. `float(10**400)` raises `OverflowError` instead of returning infinity. Inputs that large are now rejected or treated as invalid evidence instead of crashing.
+- **A name used as a key must be unique.** A Python dictionary keeps only the last value for a repeated key:
+
+```python
+scores = {}
+for fold, score in [("f", "error"), ("f", 0.9)]:
+    scores[fold] = score
+print(scores)  # {'f': 0.9}: the error disappeared
+```
+
+C++ connection: `std::map::operator[]` overwrites in the same way, while `insert` keeps the first value. Neither tells you a key was repeated unless you check.
 
 **What these checks do not prove.** Window-overlap and separation checks test declared rules. They are not proof that rows are statistically independent.
 

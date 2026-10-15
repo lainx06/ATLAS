@@ -9,6 +9,7 @@ True labels come from the evaluator's own table copy; predictions from the verif
 fold is never silently left out of an aggregate: an incomplete aggregate cannot support PASS.
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -208,25 +209,49 @@ def metric_assertions(
             for rid in (RECOMPUTED, BASELINES, CLASS_SUPPORT)
         ]
 
-    scores = {
-        s["fold"]: score_fold(manifest, table, s, predictions.get(s["fold"]))
+    # Fold identifiers key the prediction artifacts, so a repeated one is ambiguous evidence.
+    # It is detected before anything is keyed by name; scores stay aligned with `splits`.
+    duplicates = duplicate_folds(splits)
+    scores = [
+        _ambiguous(s)
+        if s["fold"] in duplicates
+        else score_fold(manifest, table, s, predictions.get(s["fold"]))
         for s in splits
-    }
+    ]
     computed = {}
     if manifest.reported_metrics:
-        computed[REPORTED] = _reported(manifest, splits, scores, evidence)
+        computed[REPORTED] = _reported(manifest, splits, scores, duplicates, evidence)
     descriptive = [
         _recomputed(manifest, splits, scores, evidence),
-        _baselines(manifest, table, splits, evidence),
-        _class_support(manifest, table, splits, evidence),
+        _baselines(manifest, table, splits, duplicates, evidence),
+        _class_support(manifest, table, splits, duplicates, evidence),
     ]
     return computed, descriptive
+
+
+def duplicate_folds(splits: list[dict]) -> set[str]:
+    """Fold identifiers declared more than once."""
+    return {f for f, n in Counter(s["fold"] for s in splits).items() if n > 1}
+
+
+AMBIGUOUS = "fold identifier declared more than once; its evidence is ambiguous"
+
+
+def _ambiguous(split: dict) -> FoldScore:
+    return FoldScore(
+        fold=split["fold"],
+        kind=_kind(split),
+        status=Status.ERROR,
+        reason=Reason.EVIDENCE_INVALID,
+        detail=AMBIGUOUS,
+    )
 
 
 # --- metric.reported_matches_recomputed -------------------------------------------------------
 
 
 def _entry(entry: ReportedMetric, splits, scores, order) -> dict:
+    """`scores` is aligned with `splits` (one per declared fold, duplicates included)."""
     out: dict = {"entry": entry.model_dump()}
     if entry.partition == "final_holdout":
         return out | {
@@ -234,7 +259,7 @@ def _entry(entry: ReportedMetric, splits, scores, order) -> dict:
             "reason": Reason.NOT_EXECUTED,
             "detail": "no evaluator-only holdout label store exists yet",
         }
-    declared = {s["fold"]: s for s in splits}
+    declared = [s["fold"] for s in splits]
     if entry.fold == "all":
         if "all" in declared:
             return out | {
@@ -242,18 +267,23 @@ def _entry(entry: ReportedMetric, splits, scores, order) -> dict:
                 "reason": Reason.EVIDENCE_INVALID,
                 "detail": "a declared fold is named 'all', so fold 'all' is ambiguous",
             }
-        folds = [s for s in splits if _kind(s) == entry.partition]
+        chosen = [i for i, s in enumerate(splits) if _kind(s) == entry.partition]
     else:
-        split = declared.get(entry.fold)
-        if split is None or _kind(split) != entry.partition:
+        chosen = [i for i, s in enumerate(splits) if s["fold"] == entry.fold]
+        if len(chosen) > 1:
+            return out | {
+                "status": Status.ERROR,
+                "reason": Reason.EVIDENCE_INVALID,
+                "detail": f"fold {entry.fold!r}: {AMBIGUOUS}",
+            }
+        if not chosen or _kind(splits[chosen[0]]) != entry.partition:
             return out | {
                 "status": Status.ERROR,
                 "reason": Reason.EVIDENCE_INVALID,
                 "detail": f"no declared {entry.partition} fold named {entry.fold!r}",
             }
-        folds = [split]
     agg = aggregate(
-        [scores[s["fold"]] for s in folds],
+        [scores[i] for i in chosen],
         entry.aggregation,
         entry.metric_definition,
         order,
@@ -270,7 +300,7 @@ def _entry(entry: ReportedMetric, splits, scores, order) -> dict:
     }
 
 
-def _reported(manifest, splits, scores, evidence) -> AssertionResult:
+def _reported(manifest, splits, scores, duplicates, evidence) -> AssertionResult:
     order = list(manifest.columns.class_map)
     entries = [_entry(e, splits, scores, order) for e in manifest.reported_metrics]
     worst = max(entries, key=lambda e: _SEVERITY[e["status"]])
@@ -281,7 +311,12 @@ def _reported(manifest, splits, scores, evidence) -> AssertionResult:
         reason=worst["reason"]
         if status in (Status.NOT_ASSESSED, Status.ERROR)
         else None,
-        observed={"tolerance": TOLERANCE, "rule": RULE, "entries": entries},
+        observed={
+            "tolerance": TOLERANCE,
+            "rule": RULE,
+            "entries": entries,
+            "duplicate_fold_identifiers": sorted(duplicates),
+        },
         evidence=evidence,
         depends_on=["metric.prediction_ids_match_eval_ids"],
         evidence_valid=status is not Status.ERROR,
@@ -317,14 +352,15 @@ def _aggregates(scores_by_kind: dict, order) -> dict:
 def _recomputed(manifest, splits, scores, evidence) -> DescriptiveResult:
     order = list(manifest.columns.class_map)
     by_kind = {
-        k: [scores[s["fold"]] for s in splits if _kind(s) == k] for k in _kinds(splits)
+        k: [sc for s, sc in zip(splits, scores, strict=True) if _kind(s) == k]
+        for k in _kinds(splits)
     }
     return DescriptiveResult(
         result_id=RECOMPUTED,
         available=True,
         observed={
             "primary_metric": manifest.primary_metric,
-            "per_fold": [scores[s["fold"]].summary() for s in splits],
+            "per_fold": [sc.summary() for sc in scores],
             "aggregates": _aggregates(by_kind, order),
         },
         evidence=evidence,
@@ -332,7 +368,7 @@ def _recomputed(manifest, splits, scores, evidence) -> DescriptiveResult:
     )
 
 
-def _baselines(manifest, table, splits, evidence) -> DescriptiveResult:
+def _baselines(manifest, table, splits, duplicates, evidence) -> DescriptiveResult:
     """Most frequent training class per fold; ties by declared class_map order (SPEC §8)."""
     order = list(manifest.columns.class_map)
     per_fold, by_kind = [], {}
@@ -341,7 +377,9 @@ def _baselines(manifest, table, splits, evidence) -> DescriptiveResult:
         train = _labels(table, manifest, s["train_ids"])
         evaluated = _labels(table, manifest, s["eval_ids"])
         unavailable = (Status.NOT_ASSESSED, Reason.NOT_EXECUTED)
-        if not train:
+        if s["fold"] in duplicates:
+            _problem(score, Status.ERROR, Reason.EVIDENCE_INVALID, AMBIGUOUS)
+        elif not train:
             _problem(
                 score, *unavailable, "baseline unavailable: empty training partition"
             )
@@ -394,11 +432,15 @@ def _baselines(manifest, table, splits, evidence) -> DescriptiveResult:
     )
 
 
-def _class_support(manifest, table, splits, evidence) -> DescriptiveResult:
+def _class_support(manifest, table, splits, duplicates, evidence) -> DescriptiveResult:
     order = list(manifest.columns.class_map)
     folds = []
     for s in splits:
-        row = {"fold": s["fold"], "kind": _kind(s)}
+        row = {
+            "fold": s["fold"],
+            "kind": _kind(s),
+            "ambiguous_fold_identifier": s["fold"] in duplicates,
+        }
         for part in ("train", "eval"):
             labels = _labels(table, manifest, s[f"{part}_ids"])
             row[f"{part}_counts"] = {c: labels.count(c) for c in order}
@@ -410,6 +452,7 @@ def _class_support(manifest, table, splits, evidence) -> DescriptiveResult:
         available=True,
         observed={
             "folds": folds,
+            "duplicate_fold_identifiers": sorted(duplicates),
             "splitter_minimum_requirements": (
                 "unavailable: not recorded by the recorder (SPEC §4.2)"
             ),

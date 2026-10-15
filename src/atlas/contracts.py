@@ -14,9 +14,13 @@ def _finite_number(value: Any) -> Any:
         raise ValueError(  # noqa: TRY004
             "must be a finite number (booleans and strings are not accepted)"
         )
-    if not math.isfinite(value):
+    try:
+        number = float(value)  # an int beyond float64 range raises OverflowError here
+    except OverflowError:
+        raise ValueError("must be finite (outside the float64 range)") from None
+    if not math.isfinite(number):
         raise ValueError("must be finite")
-    return value
+    return number
 
 
 Number = Annotated[float, BeforeValidator(_finite_number)]

@@ -195,3 +195,159 @@ def test_generator_reproduces_the_committed_tables(name, builder):
     regenerated = getattr(_generator(), builder)()
 
     pd.testing.assert_frame_equal(committed, regenerated, check_dtype=False)
+
+
+# --- Codex review of 487664e: full-evaluator regressions --------------------------------------
+# Each case executes the trusted s11b fixture, then changes copied evidence (manifest snapshot,
+# splits.json, table) and re-hashes it, so evaluator semantics are exercised rather than tamper
+# detection. Modified project code is never executed.
+
+CLEAN = FIXTURES / "s11b_future_time_clean"
+
+
+def _evaluate_changed(tmp_path, change):
+    from atlas.reports import sha256_file
+
+    run_dir = execute(CLEAN, tmp_path / "runs")
+    project = tmp_path / "project"
+    shutil.copytree(CLEAN, project)
+    manifest = json.loads(
+        (run_dir / "manifest.snapshot.json").read_text(encoding="utf-8")
+    )
+    splits = json.loads((run_dir / "splits.json").read_text(encoding="utf-8"))
+    table = pd.read_csv(project / "table.csv", dtype={"row_id": str})
+    changed = change(manifest, splits, table)
+    table = table if changed is None else changed
+    table.to_csv(project / "table.csv", index=False)
+    for path in (run_dir / "manifest.snapshot.json", project / "atlas_manifest.json"):
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+    (run_dir / "splits.json").write_text(json.dumps(splits), encoding="utf-8")
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    for name in ("manifest.snapshot.json", "splits.json"):
+        index["artifacts"][name] = sha256_file(run_dir / name)
+    index["table"]["sha256"] = sha256_file(project / "table.csv")
+    (run_dir / "index.json").write_text(json.dumps(index), encoding="utf-8")
+    return evaluate(project, run_dir), run_dir
+
+
+def _late_training_row(manifest, splits, table, pred_day, label_day, column=True):
+    """Fold 0's first training row gets the given prediction day and label day."""
+    manifest["label_availability"] = {"column": "label_day"}
+    if column:
+        table["label_day"] = (table["pred_day"] + 7).astype(float)
+    row = table["row_id"] == splits[0]["train_ids"][0]
+    table["pred_day"] = table["pred_day"].astype(float)
+    table.loc[row, "pred_day"] = pred_day
+    if column:
+        table.loc[row, "label_day"] = label_day
+    return table
+
+
+@pytest.mark.parametrize(
+    ("pred_day", "label_day", "column"),
+    [(61.0, None, True), (None, 61.0, True), (61.0, None, False)],
+    ids=[
+        "late_prediction_label_missing",
+        "late_label_prediction_missing",
+        "no_label_column",
+    ],
+)
+def test_known_cutoff_violation_with_a_missing_value_is_violation_found(
+    tmp_path, pred_day, label_day, column
+):
+    """Finding 1: fold 0's cutoff is 60; one known value of the row is after it."""
+
+    def change(manifest, splits, table):
+        return _late_training_row(manifest, splits, table, pred_day, label_day, column)
+
+    result, _ = _evaluate_changed(tmp_path, change)
+
+    labels = _by_id(result)["temporal.training_labels_available_by_cutoff"]
+    assert labels.status is F
+    assert result.outcome is Outcome.VIOLATION_FOUND
+
+
+@pytest.mark.parametrize(
+    "containment",
+    [
+        None,
+        {"within": "group_id", "source": "doc", "statement": "one stream per group"},
+    ],
+    ids=["undeclared", "declared"],
+)
+def test_shared_stream_group_column_writes_an_outcome(tmp_path, containment):
+    """Finding 2: stream_id and group_id name one column; route D is incomplete."""
+
+    def change(manifest, splits, table):
+        manifest["columns"].update(
+            stream_id="stream",
+            group_id="stream",
+            window_start="start",
+            window_end="end",
+        )
+        manifest["claim"]["dependence"].append({"kind": "overlapping_windows"})
+        if containment:
+            manifest["window_containment"] = containment
+        table["stream"] = "S"
+        table["start"] = float("nan")
+        table["end"] = 10
+        return table
+
+    result, run_dir = _evaluate_changed(tmp_path, change)
+
+    window = _by_id(result)["split.no_window_overlap"]
+    assert (window.status, window.reason) == (N, Reason.MISSING_METADATA)
+    assert (run_dir / "outcome.json").exists()
+
+
+def test_oversized_cutoff_is_recorded_and_a_supported_fail_is_preserved(tmp_path):
+    """Finding 3: fold 0's cutoff is beyond float64; fold 1's cutoff exposes a late label."""
+
+    def change(manifest, splits, table):
+        splits[0]["training_cutoff"] = 10**400
+        splits[1]["training_cutoff"] -= (
+            1  # its last training day's label now arrives late
+        )
+
+    result, run_dir = _evaluate_changed(tmp_path, change)
+
+    by_id = _by_id(result)
+    labels = by_id["temporal.training_labels_available_by_cutoff"]
+    assert labels.status is F and labels.observed["invalid_cutoff_folds"] == ["fold0"]
+    precedes = by_id["temporal.cutoff_precedes_evaluation"]
+    assert (precedes.status, precedes.reason) == (E, Reason.EVIDENCE_INVALID)
+    assert result.outcome is Outcome.VIOLATION_FOUND
+    assert (run_dir / "outcome.json").exists()
+
+
+def test_oversized_reported_value_is_not_supported_with_the_field_named(tmp_path):
+    copy = tmp_path / "s11b_huge"
+    shutil.copytree(CLEAN, copy)
+    manifest = copy / "atlas_manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["reported_metrics"][0]["value"] = 10**400
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    run = audit(copy, tmp_path / "runs")
+
+    assert run.outcome.outcome is Outcome.NOT_SUPPORTED
+    assert "reported_metrics.0.value" in run.outcome.reason
+    assert not (run.run_dir / "provenance.jsonl").exists()
+
+
+@pytest.mark.parametrize("order", ["invalid_first", "valid_first"])
+def test_duplicate_fold_identifier_is_an_evidence_error(tmp_path, order):
+    """Finding 4: a second 'fold3' whose evaluation rows are fold 2's (no matching predictions)."""
+
+    def change(manifest, splits, table):
+        duplicate = {**splits[3], "eval_ids": splits[2]["eval_ids"]}
+        splits.insert(3 if order == "invalid_first" else 4, duplicate)
+
+    result, _ = _evaluate_changed(tmp_path, change)
+
+    reported = _by_id(result)["metric.reported_matches_recomputed"]
+    assert (reported.status, reported.reason) == (E, Reason.EVIDENCE_INVALID)
+    assert reported.observed["duplicate_fold_identifiers"] == ["fold3"]
+    for entry in reported.observed["entries"]:
+        assert entry["recomputed"]["complete"] is False
+    assert result.outcome is not Outcome.NO_VIOLATION_FOUND

@@ -191,3 +191,42 @@ def test_intake_names_an_unsupported_schema_version(tmp_path):
     intake = load_project(tmp_path)
 
     assert not intake.supported and "schema_version" in intake.reason
+
+
+# --- Codex review of 487664e: an integer beyond the float64 range is a validation error ---
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "reported_metrics.0.value",
+        "temporal_gap",
+        "separation_rule.min_gap",
+        "label_availability.horizon",
+        "feature_availability.f0.offset",
+    ],
+)
+def test_integer_beyond_float64_is_rejected(path):
+    with pytest.raises(ValidationError, match="float64"):
+        Manifest.model_validate(_with(path, 10**400))
+
+
+def test_large_but_finite_values_stay_valid():
+    m = Manifest.model_validate(_with("temporal_gap", 10**300))
+
+    assert m.temporal_gap == 1e300
+
+
+@pytest.mark.parametrize("digits", [401, 5000])
+def test_intake_names_an_oversized_reported_value(tmp_path, digits):
+    big = str(10 ** (digits - 1)) if digits < 4000 else "1" + "0" * (digits - 1)
+    text = json.dumps(BASE).replace('"value": 0.7', f'"value": {big}')
+    (tmp_path / "atlas_manifest.json").write_text(text, encoding="utf-8")
+
+    intake = load_project(tmp_path)
+
+    assert not intake.supported
+    if digits == 401:  # parsed as an integer, then refused by field validation
+        assert "reported_metrics.0.value" in intake.reason
+    else:  # refused earlier by the JSON parser, which reports a position, not a field
+        assert "number out of range" in intake.reason

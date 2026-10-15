@@ -407,3 +407,73 @@ def test_invalid_evidence_gives_error_and_unavailable_descriptive_results():
 
     assert computed[REPORTED].status is E
     assert not any(d.available for d in descriptive)
+
+
+# --- Codex review of 487664e: regressions ------------------------------------------------------
+# Finding 4: a repeated fold identifier is ambiguous evidence; nothing may be overwritten.
+
+
+def _duplicated(order):
+    """Folds 'f' (unusable: no predictions for its rows), 'f' (usable) and 'g' (usable)."""
+    table, splits, preds = _fixture([E1, E2, E1])
+    bad, good, other = splits
+    bad["fold"] = good["fold"] = "f"
+    other["fold"] = "g"
+    preds = {
+        "f": preds["fold1"],
+        "g": preds["fold2"],
+    }  # 'f' predictions fit only `good`
+    ordered = [bad, good] if order == "invalid_first" else [good, bad]
+    return table, [*ordered, other], preds
+
+
+@pytest.mark.parametrize("order", ["invalid_first", "valid_first"])
+def test_duplicate_fold_identifiers_make_affected_entries_evidence_errors(order):
+    table, splits, preds = _duplicated(order)
+    e2_ba = balanced_accuracy(*map(_keys, E2), ORDER)
+    entries = [
+        _entry(e2_ba),  # mean over all folds: includes the ambiguous 'f' folds
+        _entry(e2_ba, aggregation="pooled"),
+        _entry(e2_ba, fold="f", aggregation="single_fold"),
+        _entry(5 / 9, fold="g", aggregation="single_fold"),  # unrelated fold
+    ]
+
+    result, descriptive = _reported(entries, table, splits, preds)
+
+    assert (result.status, result.reason) == (E, Reason.EVIDENCE_INVALID)
+    assert [e["status"] for e in result.observed["entries"]] == [E, E, E, P]
+    for entry in result.observed["entries"][:2]:
+        assert entry["recomputed"]["complete"] is False
+        unusable = entry["recomputed"]["unusable_folds"]
+        assert [u["fold"] for u in unusable] == ["f", "f"]
+    assert result.observed["duplicate_fold_identifiers"] == ["f"]
+    per_fold = descriptive[RECOMPUTED].observed["per_fold"]
+    assert [p["usable"] for p in per_fold] == [False, False, True]
+    assert per_fold[2]["balanced_accuracy"] is not None  # the unrelated fold is kept
+    mean = descriptive[RECOMPUTED].observed["aggregates"]["development_eval"]
+    assert mean["balanced_accuracy"]["mean_over_folds"]["complete"] is False
+
+
+@pytest.mark.parametrize("order", ["invalid_first", "valid_first"])
+def test_duplicate_fold_identifiers_are_flagged_in_baselines_and_class_support(order):
+    table, splits, preds = _duplicated(order)
+
+    _, descriptive = _reported([_entry(0.5)], table, splits, preds)
+
+    dummy = descriptive[BASELINES].observed["dummy"]["per_fold"]
+    assert [d["usable"] for d in dummy] == [False, False, True]
+    support = descriptive[CLASS_SUPPORT].observed
+    assert [f["ambiguous_fold_identifier"] for f in support["folds"]] == [
+        True,
+        True,
+        False,
+    ]
+    assert support["duplicate_fold_identifiers"] == ["f"]
+
+
+# Finding 3 (nearby path): a value beyond float64 or the int-to-str digit limit is no label.
+
+
+def test_oversized_numbers_are_not_labels():
+    assert canonical_label(Fraction(10**400, 1) + Fraction(1, 2), CLASSES) is None
+    assert canonical_label(10**5000, CLASSES) is None

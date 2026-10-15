@@ -26,9 +26,15 @@ def canonical_label(value, class_map: dict[str, str]) -> str | None:
     if isinstance(value, str):
         key = value
     elif isinstance(value, numbers.Integral):
-        key = str(int(value))
+        try:
+            key = str(int(value))
+        except ValueError:  # beyond Python's integer-to-string digit limit: not a key
+            return None
     elif isinstance(value, numbers.Real):
-        number = float(value)
+        try:
+            number = float(value)
+        except OverflowError:  # e.g. a Fraction outside the float64 range
+            return None
         if not math.isfinite(number) or not number.is_integer():
             return None
         key = str(int(number))

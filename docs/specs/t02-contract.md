@@ -1,6 +1,6 @@
 # T-02 contract
 
-Status: **contract decided by the lead (2026-10-15); implemented in T-02 (self-tested, awaiting Codex review); T-02 not accepted.** The lead reviewed the full proposal and approved it with corrections (DECISIONS.md, "T-02 contract dispositions"). This file is the detailed contract with worked examples. The normative summary is in `docs/SPEC.md` §3, §4.2, §5 and §8; if they disagree, SPEC wins. Implementation status is tracked in `TASKS.md` T-02.
+Status: **contract decided by the lead (2026-10-15); implemented in T-02. Codex review 1 found four defects; repair pass 1 is self-tested and awaiting independent verification; T-02 is not accepted.** The lead reviewed the full proposal and approved it with corrections (DECISIONS.md, "T-02 contract dispositions"). This file is the detailed contract with worked examples. The normative summary is in `docs/SPEC.md` §3, §4.2, §5 and §8; if they disagree, SPEC wins. Implementation status is tracked in `TASKS.md` T-02.
 
 Scheduling note: the T-03 hosting probe is due (playbook §11, Day two, 2026-10-15) and is independent of T-02.
 
@@ -32,7 +32,7 @@ V1 adds no rule beyond routes A and B of `split.repeated_measures_rule`. Other s
 | `primary_metric` | `"balanced_accuracy" \| "macro_f1"` | [R] |
 
 **Validation** [D]:
-- Every number is a finite `int`/`float`; booleans are rejected everywhere.
+- Every number is a finite `int`/`float`; booleans are rejected everywhere. An integer beyond the float64 range counts as nonfinite (repair pass 1).
 - A malformed, nonfinite, out-of-range or boolean value, or an unsupported `schema_version`, fails intake. That takes the existing `NOT_SUPPORTED` path ("manifest unparseable"), and the reason names the failing fields.
 - Missing or corrupt *runtime* evidence is a different case and gives ERROR.
 
@@ -93,7 +93,8 @@ The per-fold training cutoff comes from `declare_split(..., training_cutoff=...)
 
 **Rows and values** [C]:
 - Rows considered are the train and eval rows of every declared fold.
-- A null, non-numeric, boolean or nonfinite time makes that row unknown.
+- A null, non-numeric, boolean or nonfinite time (including an integer beyond float64) makes that row unknown.
+- Comparisons that must all hold are evaluated independently: in `training_labels_available_by_cutoff`, a known prediction time or a known label time after the cutoff is a witness even when the row's other value, or the label source, is missing (repair pass 1).
 - A witness among known rows gives FAIL, with unknown counts disclosed. Otherwise an unknown participating row gives NOT_ASSESSED `missing_metadata`. PASS needs every participating row known.
 - A null cutoff gives NOT_ASSESSED `missing_metadata`. A non-numeric, boolean or nonfinite cutoff is invalid candidate-produced evidence and gives ERROR `evidence_invalid`. A valid FAIL elsewhere stands.
 
@@ -180,6 +181,7 @@ s07 (committed table) passes through D, with basis `stream_membership_disjoint`:
 - `pooled`: the metric over the concatenated (fold, row) observations. A row evaluated in several folds counts once per evaluation occurrence; the number of such repeated rows is reported.
 
 **Completeness** [D]:
+- A fold identifier declared more than once is ambiguous evidence, because prediction artifacts are named by fold. Every fold with that identifier is unusable (ERROR `evidence_invalid`) and is never overwritten or counted twice. Unrelated folds keep their results (repair pass 1).
 - An empty, invalid or missing required fold is never silently omitted.
 - An incomplete aggregate cannot support PASS; its reason is reported. Missing or invalid evidence, or invalid labels or predictions, give ERROR `evidence_invalid`. An empty evaluation fold gives NOT_ASSESSED `empty_evaluation`.
 - Valid per-fold results are still shown separately.
