@@ -1,12 +1,12 @@
 # Understanding ATLAS, end to end
 
-Personal learning guide for Adnan · 15 October 2026 · last checked against T-02 repair pass 3 (the commit after `bb9bac8`)
+Personal learning guide for Adnan · 15 October 2026 · last checked against T-02 repair pass 4 (the commit after `5af1b6e`)
 
 ## How to use this guide
 
 This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
 
-**Evidence boundary:** last checked against the local repository at T-02 repair pass 3, the commit after `bb9bac8` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+**Evidence boundary:** last checked against the local repository at T-02 repair pass 4, the commit after `5af1b6e` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
 
 **Status words used here** (they are deliberately different):
 
@@ -41,7 +41,7 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
 | Candidate re-evaluation integration | Planned for T-06. The evaluator (`audit.py`) still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` | Not demonstrated by T-05 |
 | Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
-| T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). That last verification found two more decoding defects (provenance and run index). **Their repair (pass 3) is self-tested and awaits independent verification; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
+| T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). That last verification found two more decoding defects (provenance and run index). **Their repair (pass 3) and a follow-up structural check of the same evidence (pass 4) are self-tested and await independent verification; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
@@ -89,7 +89,7 @@ The three supported claim types are:
 
 Combined group-and-time claims are outside the selected V1 scope.
 
-In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.3). "Supported" means in scope, not fully checked. The accepted T-01 slice covers `unseen_group` fixtures. T-02 adds the time, window and metric checks that `future_time` and `same_population` need; it is implemented. The four defects found by its first review, and a later split-evidence decoding defect, are repaired and independently verified. Two further decoding repairs (provenance and run index) are self-tested and await verification. T-02 is not accepted. Under the older policy-v1.2 those checks were recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
+In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.3). "Supported" means in scope, not fully checked. The accepted T-01 slice covers `unseen_group` fixtures. T-02 adds the time, window and metric checks that `future_time` and `same_population` need; it is implemented. The four defects found by its first review, and a later split-evidence decoding defect, are repaired and independently verified. Later repairs to how the provenance log and run index are decoded and structurally checked (repair passes 3 and 4) are self-tested and await verification. T-02 is not accepted. Under the older policy-v1.2 those checks were recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
 
 ### Leakage and preprocessing
 
@@ -169,6 +169,7 @@ C++ connection: `double` behaves the same way, because it is the same IEEE 754 f
 - **One column, two roles.** A table may use the same column as both stream and group. Selecting it twice created a table with two columns of the same name, and pandas refused to group it. Now each role is selected separately.
 - **Numbers too big for a float.** Python integers have no size limit, but a float stops near 1.8 × 10^308. `float(10**400)` raises `OverflowError` instead of returning infinity. Inputs that large are now rejected or treated as invalid evidence instead of crashing.
   - The same idea has a second layer. Python refuses to turn a string of more than 4,300 digits into an `int` at all, which guards against slow conversions. Codex's verification found that a 5,000-digit number inside the run's `splits.json` stopped the evaluator before it could write any result. The fix, now independently verified, treats undecodable split evidence as invalid evidence: every assertion that depends on it becomes ERROR, and the outcome is written as INCONCLUSIVE. The digit limit itself is left unchanged.
+  - Decoding is only half the job: text can be perfectly valid JSON and still have the wrong *shape*, such as a list where an object belongs or a word where a number belongs. ATLAS now checks each provenance event's fields, and the run index's fields, against the types the recorder actually writes, before any check reads them. A wrong shape is treated exactly like undecodable text (repair awaiting verification).
   - The same applies to the provenance log and the run index (repairs awaiting verification). One bad line makes the *whole* provenance log invalid: ATLAS never trusts the lines that happened to decode before it. Only the fit checks that need provenance become ERROR, so a timing violation shown by the separate split and table evidence still stands. A run index that cannot be read leads to a fresh INCONCLUSIVE result rather than leaving the previous run's outcome in place.
 - **A name used as a key must be unique.** A Python dictionary keeps only the last value for a repeated key:
 

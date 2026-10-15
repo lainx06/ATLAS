@@ -496,3 +496,143 @@ def test_index_recursion_uses_the_index_unavailable_recovery_path(tmp_path):
     assert report["outcome"] == "INCONCLUSIVE"
     assert not (run_dir / "checks").exists()  # the stale check files were cleared
     assert (run_dir / "index.json").read_bytes() == deep
+
+
+# --- Repair pass 4: wrong-shape evidence (runs/t02r3/shape_probe.py) ----------------------------
+
+
+def _first_event(run_dir, kind):
+    lines = (run_dir / "provenance.jsonl").read_text(encoding="utf-8").splitlines()
+    return next(json.loads(x) for x in lines if x and json.loads(x)["type"] == kind)
+
+
+def _changed(event, **fields):
+    return {**event, **fields}
+
+
+# Each case: (event type to copy, or None) -> the wrong-shape event appended after the prefix.
+WRONG_EVENTS = {
+    "number": lambda run: 1,  # demonstrated: TypeError, no outcome
+    "list": lambda run: [],
+    "string": lambda run: "use",
+    "no_type": lambda run: {"fold": "fold0"},
+    "type_not_a_string": lambda run: {"type": 5},
+    "use_effective_deps_a_string": lambda run: _changed(
+        _first_event(run, "use"), effective_deps="r0001"
+    ),
+    "use_rows_a_number": lambda run: _changed(_first_event(run, "use"), rows=3),
+    "fit_version_a_string": lambda run: _changed(_first_event(run, "fit"), version="1"),
+    "fit_classifier_a_string": lambda run: _changed(
+        _first_event(run, "fit"), classifier="yes"
+    ),
+    "split_missing_hash": lambda run: {
+        k: v for k, v in _first_event(run, "split").items() if k != "train_sha256"
+    },
+    "predictions_token_a_list": lambda run: _changed(
+        _first_event(run, "predictions"), pred_token=["d1"]
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(WRONG_EVENTS))
+def test_wrong_shape_provenance_event_invalidates_the_whole_artifact(tmp_path, case):
+    from atlas.reports import sha256_file
+
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    assert control.outcome is Outcome.VIOLATION_FOUND
+    provenance = run_dir / "provenance.jsonl"
+    prefix = provenance.read_bytes()
+    bad = json.dumps(WRONG_EVENTS[case](run_dir)).encode("utf-8")
+    provenance.write_bytes(prefix + bad + b"\n")
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    index["artifacts"]["provenance.jsonl"] = sha256_file(provenance)
+    (run_dir / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+    result = evaluate(tmp_path / "project", run_dir)
+
+    by_id, before = _by_id(result), _by_id(control)
+    for aid in FIT:  # the valid prefix is not used
+        assert (by_id[aid].status, by_id[aid].reason) == (E, Reason.EVIDENCE_INVALID)
+    assert by_id[LABELS_ID].status is F and by_id[LABELS_ID].evidence_valid
+    for aid, a in by_id.items():
+        if aid not in FIT:
+            assert (a.status, a.reason) == (before[aid].status, before[aid].reason), aid
+    assert result.outcome is Outcome.VIOLATION_FOUND
+    assert "provenance.jsonl event" in result.reason
+    assert "invalid structure" in result.reason
+    outputs = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))[
+        "outputs"
+    ]
+    on_disk = {"outcome.json", "report.json"} | {
+        f"checks/{p.name}" for p in (run_dir / "checks").glob("*.json")
+    }
+    assert set(outputs) == on_disk
+    for name, digest in outputs.items():
+        assert sha256_file(run_dir / name) == digest, name
+
+
+def _wrong_index(case, index):
+    if case == "list":  # demonstrated: AttributeError, stale outcome
+        return [1]
+    if case == "artifacts_a_list":
+        return {**index, "artifacts": []}
+    if case == "artifact_hash_a_number":
+        return {**index, "artifacts": {**index["artifacts"], "splits.json": 5}}
+    if case == "table_a_list":
+        return {**index, "table": []}
+    return {**index, "table": {**index["table"], "sha256": 7}}  # table_hash_a_number
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "list",
+        "artifacts_a_list",
+        "artifact_hash_a_number",
+        "table_a_list",
+        "table_hash_a_number",
+    ],
+)
+def test_wrong_shape_index_uses_the_index_unavailable_recovery_path(tmp_path, case):
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    assert control.outcome is Outcome.VIOLATION_FOUND
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    wrong = json.dumps(_wrong_index(case, index)).encode("utf-8")
+    (run_dir / "index.json").write_bytes(wrong)
+
+    result = evaluate(tmp_path / "project", run_dir)
+
+    assert result.outcome is Outcome.INCONCLUSIVE
+    assert result.assertions == []
+    assert "run index missing or unparseable" in result.reason
+    written = json.loads((run_dir / "outcome.json").read_text(encoding="utf-8"))
+    assert written["outcome"] == "INCONCLUSIVE" and written["assertions"] == []
+    report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    assert report["outcome"] == "INCONCLUSIVE"
+    assert not (run_dir / "checks").exists()  # stale check files cleared
+    assert (run_dir / "index.json").read_bytes() == wrong  # not rebuilt
+
+
+@pytest.mark.parametrize(
+    ("root", "name"),
+    [
+        ("t02", "s11b_future_time_clean"),
+        ("t02", "s12a_same_population_random_windows"),
+        ("t01", "s01_faulty"),
+        ("t01", "s03b_inplace_mutation"),  # records gap events
+        ("t01", "s05a_contaminated_reuse"),
+    ],
+)
+def test_recorded_provenance_from_real_runs_passes_the_structure_check(
+    tmp_path, root, name
+):
+    """No requirement stricter than what the recorder and adapter actually write."""
+    from atlas.contracts import validate_provenance_event
+
+    run_dir = execute(FIXTURES.parent / root / name, tmp_path)
+    lines = (run_dir / "provenance.jsonl").read_text(encoding="utf-8").splitlines()
+    events = [json.loads(x) for x in lines if x]
+
+    for event in events:
+        validate_provenance_event(event)
+    assert {e["type"] for e in events} >= {"load", "split", "fit", "use", "predictions"}

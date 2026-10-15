@@ -280,3 +280,107 @@ class RuntimeRecord(BaseModel):
     project_dir_on_sys_path: bool
     cwd_on_sys_path: bool
     python: str
+
+
+# --- Structure of evidence the trusted evaluator consumes (T-02 repair pass 4) -----------------
+# Only fields the consumers actually read are checked, with the types the recorder and adapter
+# write; other fields are allowed (extra="allow"). Strict: no coercion of strings, booleans or
+# floats into other types. Recorded evidence is validated, never rewritten.
+
+
+class _IndexTable(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    sha256: str | None = None
+
+
+class RunIndex(BaseModel):
+    """index.json as read by audit: artifact name -> sha256, and the table record."""
+
+    model_config = ConfigDict(extra="allow", strict=True)
+    artifacts: dict[str, str]
+    table: _IndexTable | None = None
+
+
+class _Event(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    type: str
+
+
+class _LoadEvent(_Event):
+    token: str | None = None
+
+
+class _TakeEvent(_Event):
+    token: str | None = None
+    input_token: str | None
+    input_status: str | None = None
+
+
+class _FitEvent(_Event):
+    instance: str
+    version: int
+    fold: str
+    input_token: str | None
+    input_status: str | None = None
+    labels_token: str | None = None
+    classifier: bool
+    supported: bool
+    labels_supplied: bool
+    labels_used: bool
+    rows: list[str] | None
+    deps: list[str] | None
+    class_: str = Field(alias="class")
+
+
+class _UseEvent(_Event):
+    instance: str
+    version: int | None
+    state_fit_fold: str | None
+    method: str
+    fold: str
+    input_token: str | None
+    input_status: str | None = None
+    input_known: bool
+    output_token: str | None = None
+    rows: list[str] | None
+    effective_deps: list[str] | None
+    class_: str = Field(alias="class")
+
+
+class _SplitEvent(_Event):
+    fold: str
+    train_sha256: str
+    eval_sha256: str
+
+
+class _PredictionsEvent(_Event):
+    fold: str
+    pred_token: str | None
+    pred_status: str
+    rows: list[str] | None
+    artifact: str | None = None
+    artifact_sha256: str | None = None
+
+
+PROVENANCE_EVENTS: dict[str, type[_Event]] = {
+    "load": _LoadEvent,
+    "take": _TakeEvent,
+    "fit": _FitEvent,
+    "use": _UseEvent,
+    "split": _SplitEvent,
+    "predictions": _PredictionsEvent,
+}
+
+
+def validate_provenance_event(event: Any) -> None:
+    """Raise ValidationError (a ValueError) unless `event` has the structure its consumers read.
+
+    Event types the evaluator does not consume (e.g. "gap") need only a string `type`.
+    """
+    if not isinstance(event, dict):
+        # ValueError like pydantic's ValidationError, so the loader handles one error family.
+        raise ValueError(f"event is a {type(event).__name__}, not an object")  # noqa: TRY004
+    _Event.model_validate(event)
+    model = PROVENANCE_EVENTS.get(event["type"])
+    if model is not None:
+        model.model_validate(event)

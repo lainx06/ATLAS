@@ -11,7 +11,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
-| T-02 | 11 | **Codex verified repair passes 1 (`0cf955d`) and 2 (`bb9bac8`): the four review-1 findings and the split-decoding fix. Two more decoding P2s remained (provenance, index recursion). Repair pass 3 done and self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
+| T-02 | 11 | **Codex verified repair passes 1 (`0cf955d`) and 2 (`bb9bac8`): the four review-1 findings and the split-decoding fix. Two more decoding P2s remained (provenance, index recursion). Repair pass 3 done; wrong-shape evidence then repaired in pass 4. Both self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
@@ -498,7 +498,51 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - A `provenance.jsonl` line that decodes to a number raises `TypeError` in the fit check, and no outcome is written.
     - A `splits.json` that decodes to an object is handled (INCONCLUSIVE, no crash).
     - The smallest likely fix is a type check at each loader (index a dict; each provenance event a dict), routed through the same invalid-evidence or recovery paths.
-  - **Remaining limitations:** the repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of this repair and the lead's decision on the wrong-shape defects.
+  - **Remaining limitations:** the repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of this repair. The wrong-shape defects were repaired in repair pass 4 (below).
+- **REPAIR PASS 4 (Claude Code, Opus 5.5 high; follow-up to `5af1b6e` before independent verification): wrong-shape evidence.**
+  - **Evidence:** `runs/t02r3/shape_probe.py` and `shape-results.json`. An `index.json` that decodes to a list raised `AttributeError` in `_load_index` and left a stale outcome. A provenance line that decodes to a number raised `TypeError` in `fit_provenance`, and no outcome was written.
+  - **Checkpoints:** base `5af1b6e`; head = the local commit "Repair T-02 wrong-shape provenance and index evidence" (parent `5af1b6e`).
+  - **Cause:** both loaders checked decoding but not structure. `audit` and `fit_provenance` then indexed fields directly (`index["artifacts"]`, `index.get("table")`, `e["type"]`, `use["effective_deps"]`, …), so a wrong JSON type raised an error or, worse, was silently misread. For example, a string `effective_deps` became a set of characters, and a string `version` or `classifier` was used as recorded.
+  - **Consumed fields (from reading the consumers and the writers):**
+    - **index:** a JSON object; `artifacts` mapping names to sha256 strings (these become `EvidenceRef.sha256`); an optional `table` object with an optional string `sha256`. `outputs` is regenerated, so it is not checked.
+    - **provenance:** every event is an object with a string `type`. Per type, as written by `recorder.py` and `adapter.py`:
+      - **load:** `token`.
+      - **take:** `token`, `input_token`, `input_status`.
+      - **fit:** `instance`, `version` (int), `fold`, `class`, `classifier`, `supported`, `labels_supplied`, `labels_used` (bool), `input_token`, `input_status`, `labels_token`, `rows`/`deps` (string lists or null).
+      - **use:** `instance`, `version` (int or null), `state_fit_fold`, `class`, `method`, `fold`, `input_token`, `input_status`, `input_known`, `output_token`, `rows`/`effective_deps`.
+      - **split:** `fold`, `train_sha256`, `eval_sha256`.
+      - **predictions:** `fold`, `pred_token`, `pred_status`, `rows`, `artifact`, `artifact_sha256`.
+    - Fields read with `.get` are optional. Fields the consumers never read (`n_rows`, `object`, `role`, `kind`, gap details) are not checked, and extra fields are allowed. Event types the evaluator ignores, such as `gap`, need only a string `type`.
+  - **Repair:**
+    - `contracts.py` adds `RunIndex` and per-type provenance event models, next to the existing `ExecutionRecord`/`RuntimeRecord`. They are pydantic models with `strict=True` and `extra="allow"`; recorded values are validated, never coerced or rewritten. No existing event schema existed to reuse.
+    - `_load_index` validates the decoded index with `RunIndex`. A `ValidationError` takes the existing index-unavailable path: stale outputs are cleared, a fresh INCONCLUSIVE outcome is written, no assertion set is invented, and the index is not rebuilt. This replaces the earlier `isinstance(index.get("artifacts"), dict)` check, which itself raised on a list.
+    - `_read_events` validates every decoded event with `validate_provenance_event`. The first invalid event makes the whole artifact invalid ("provenance.jsonl event N has an invalid structure (…)"): no prefix is kept and nothing is skipped. Then `prov_ok` is false, the fit assertions are ERROR(`evidence_invalid`), and independent findings stand.
+    - Only `ValidationError`/`ValueError` from these validation calls is caught. `fit_provenance.py` (a mutation-check target) is unchanged, and policy, fixtures and existing assertions are unchanged.
+  - **Tests** (`tests/integration/test_t02_scenarios.py`, full evaluator, on the partial-label control with its independent temporal FAIL):
+    - **`test_wrong_shape_provenance_event_invalidates_the_whole_artifact`, 11 cases:**
+      - JSON-type cases: number (demonstrated), list, string, no `type`, non-string `type`;
+      - consumed fields with the wrong type, copied from real recorded events: `use.effective_deps` as a string, `use.rows` as a number, `fit.version` as a string, `fit.classifier` as a string, `split` missing `train_sha256`, `predictions.pred_token` as a list.
+
+      Each appends the bad event after the valid prefix and asserts: fit ERROR(`evidence_invalid`), so the prefix is rejected; the temporal FAIL stands with valid evidence; every other assertion is unchanged; VIOLATION_FOUND; the reason names the event; and current output hashes.
+    - **`test_wrong_shape_index_uses_the_index_unavailable_recovery_path`, 5 cases:** list (demonstrated), `artifacts` as a list, an artifact hash as a number, `table` as a list, `table.sha256` as a number. Each asserts a fresh INCONCLUSIVE outcome with no assertions, a fresh report, stale check files removed, and the index not rebuilt.
+    - **`test_recorded_provenance_from_real_runs_passes_the_structure_check`:** every event from executed s11b, s12a, s01, s03b and s05a validates. This guards against requirements stricter than real evidence.
+    - **RED at `5af1b6e`**, from a temporary `git archive` copy placed first on `PYTHONPATH`: **15 failed, 1 passed** (`runs/t02r4/red-at-base.log`). The pass, `artifacts_a_list`, was already handled. Failures were `TypeError`, `KeyError` and `AttributeError` crashes, and assertion failures where wrong types were silently accepted.
+  - **Actual results (2026-10-15):**
+    - The decoding, shape and recovery suites (T-01 scenarios, both T-01 review suites, T-02 scenarios, CLI, policy and manifest schema) → **206 passed** (`runs/t02r4/audit-tests.log`).
+    - A copy of `shape_probe.py` in `runs/t02r4/`:
+      - `index_is_a_list` → INCONCLUSIVE (recovery path);
+      - `provenance_line_is_a_number` → VIOLATION_FOUND, with the reason naming event 1;
+      - `splits_is_an_object` → INCONCLUSIVE (unchanged).
+    - A copy of Codex's `decoder_probes.py` in `runs/t02r4/probes/` gives results identical to repair pass 3.
+    - `ruff check .` and `ruff format --check .` → clean.
+    - **Not run:** the full suite, Docker and mutation. The changes are confined to `audit`'s two loaders and new models in `contracts.py`, and `fit_provenance.py`, the recorder and the runner are unchanged. 0 inference calls.
+  - **Evidence-handling correction:** while verifying, I mistakenly reran `runs/t02r3/shape_probe.py` in place. It overwrote `shape-results.json` and its `shape/` run copies.
+    - They were restored by rerunning the probe against a `git archive` copy of `5af1b6e`, which reproduced the two crash cases byte-identically. The `splits_is_an_object` case and `shape-results.json` were then regenerated with the original logic and recorded values.
+    - A comparison with the pre-repair hash manifest shows every file's hash, size and path identical. Only modification times differ.
+    - All later reruns used `runs/t02r4/`. `runs/review-t02/` and `runs/review-t02-pass2/` were never written.
+  - **Remaining limitations:**
+    - `splits.json` structure is still checked only by decoding. A JSON object instead of a list gives INCONCLUSIVE safely, as the shape probe shows, but other wrong field types in split entries were not probed in this pass.
+    - The repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of repair passes 3 and 4.
 
 ### T-03 Hosting and isolated-worker probe (early, per playbook §11 Day 2)
 - **OWNER:** Claude Code (research and documentation only); the lead decides.

@@ -2,13 +2,16 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-02 repair pass 3 is self-tested and awaits independent verification (not accepted).
+CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-02 repair passes 3 and 4 are self-tested and await independent verification (not accepted).
 - **T-02 (policy-v1.3, manifest schema 0.3):** implemented at `487664e`. **Codex review 1 found four P2 defects, and Codex verified all four fixed at `0cf955d` (repair pass 1). That verification found one more P2: a 5,000-digit integer in hash-matching `splits.json` raised an uncaught decoder `ValueError`, and no outcome was written. Codex verified the split repair at `bb9bac8` (repair pass 2) and found two more decoding P2s: undecodable hash-matching `provenance.jsonl` aborted evaluation, and a deeply nested `index.json` escaped, leaving a stale outcome. Repair pass 3 is done and self-tested; it awaits independent verification. Not accepted.**
   - Repair pass 3:
     - undecodable provenance is wholly invalid: no decoded prefix is used, the fit assertions are ERROR(evidence_invalid), and a temporal FAIL from separate valid split/table evidence still gives VIOLATION_FOUND;
     - index recursion takes the existing index-unavailable path and writes a fresh INCONCLUSIVE.
   - 5 new regressions failed at `bb9bac8` and pass now; evidence-error and recovery suites passed 113/113.
-  - Newly demonstrated, unrepaired and out of scope: well-formed JSON of the wrong shape (an `index.json` list, a non-object provenance line) still escapes. See TASKS.md.
+  - Repair pass 4 (follow-up to `5af1b6e`, before verification): wrong-shape evidence.
+    - `index.json` is checked against the structure audit reads (`RunIndex`); a wrong shape takes the index-unavailable recovery path and writes a fresh INCONCLUSIVE.
+    - Each provenance event is checked against the fields its consumers read (per-type schemas in `contracts.py`); one invalid event makes the whole artifact invalid, the fit assertions are ERROR(evidence_invalid), and the independent temporal FAIL stands.
+    - 15 of 16 new wrong-shape regressions failed at `5af1b6e` and pass now; recorded provenance from five real fixture runs still validates; the decoding, shape and recovery suites passed 206/206.
   - Repair pass 2: undecodable split evidence (an over-limit integer, malformed JSON, invalid UTF-8, or excessive nesting) is now invalid evidence. Every dependent assertion is ERROR(evidence_invalid), and the INCONCLUSIVE outcome, check files and index are written. 4 new regressions failed at `0cf955d` and pass now; the audit and evidence-error suites passed 108/108. Details: TASKS.md T-02 "CODEX VERIFICATION OF REPAIR PASS 1 … REPAIR PASS 2".
   - The four repairs:
     - a missing value no longer suppresses a known cutoff violation;
@@ -19,7 +22,7 @@ CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Da
   - The lead decided the contract on 2026-10-15: the repeated-measures scope and the T-02 contract dispositions (DECISIONS.md; `docs/specs/t02-contract.md`; SPEC §3, §4.2, §5, §8).
   - New: window-overlap routes D/C, two-sided separation, the three `temporal.*` checks, reported-versus-recomputed metrics with completeness rules, and descriptive recomputation, a dummy baseline and class support. There are 5 trusted fixtures in `benchmarks/t02/`.
   - First implementation's results (`487664e`): unit + integration 500 passed, 1 skipped; Docker contract suite 28/28; sensitivity probe 10/10 defects caught. s07 now PASSes the window check (`NO_VIOLATION_FOUND`), as approved; its policy-v1.2 result stays historical. Details and limitations: TASKS.md T-02 "RESULT".
-- **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **T-04 accepted by the user within its documented smoke-test scope** (2026-10-14; TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
+- **T-04 (Nebius):** **Credits (user-reported, 2026-10-15): an additional $25 Token Factory award, so $50 in total has been awarded.** The remaining balance and the expiry are not verified, and spending authorization is unchanged (no new calls). Earlier, the user reported the first $25 promo credits available and the key is in `.env` (checked set and non-placeholder; value never printed). **T-04 accepted by the user within its documented smoke-test scope** (2026-10-14; TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
 - **T-05:** **accepted by the lead at `eed73ee` within its documented scope (2026-10-15)**, based on Codex's independent verification of repair pass 2. Record: TASKS.md T-05 "CODEX VERIFICATION OF REPAIR PASS 2" and "ACCEPTANCE".
   - Codex verified both remaining parser findings (PAX padding, JSON encoding) fixed, with no remaining parser blocker. Its contract run: 28/28 with Docker required; 13 containers, all with removal confirmed. Unit tests: 261 passed, 1 skipped, after the path retry below.
   - **P3 Windows path length (pre-existing; documented, not fixed):** Codex's first unit run failed one test. A valid 150-character file name reached a 260-character absolute path under its longer temporary directory, and `open(target, "xb")` raised `FileNotFoundError`. The unchanged suite passed with a shorter temporary directory (253 characters). In a live run this would end `collection_failed`/`write_failed`, which is not a false success.
@@ -40,7 +43,7 @@ CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Da
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), `487664e` (T-02), `0cf955d` (T-02 repair pass 1), `bb9bac8` (T-02 repair pass 2), and the T-02 repair pass 3 commit containing this update). Nothing is pushed.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), `487664e` (T-02), `0cf955d` (T-02 repair pass 1), `bb9bac8` (T-02 repair pass 2), `5af1b6e` (T-02 repair pass 3), and the T-02 repair pass 4 commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-15
 
 ## What works (verified by running)
@@ -126,12 +129,17 @@ LAST UPDATED: 2026-10-15
     - an unchanged copy of Codex's `decoder_probes.py` (initial and siblings);
     - `runs/t02r3/shape_probe.py` (report only);
     - ruff.
+17. T-02 repair pass 4 (2026-10-15):
+    - the new wrong-shape regressions against a `git archive` copy of `5af1b6e` (15 failed, 1 passed);
+    - the decoding, shape and recovery suites (206 passed);
+    - copies of `shape_probe.py` and Codex's `decoder_probes.py` in `runs/t02r4/`;
+    - ruff.
 
 ## Blockers
-- **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
+- **Nebius:** none. $50 in Token Factory credits awarded in total (user-reported; balance and expiry not verified), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** none. Accepted at `eed73ee`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
-- **T-02:** none for implementation. Acceptance waits for Codex's verification of repair pass 3, and the lead's decision on the newly demonstrated wrong-shape evidence defects.
+- **T-02:** none for implementation. Acceptance waits for Codex's verification of repair passes 3 and 4.
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
 
@@ -192,10 +200,10 @@ LAST UPDATED: 2026-10-15
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-03 hosting probe: due now.** It was scheduled for playbook §11 Day two (2026-10-15), and the playbook says "Do not defer this discovery to recording week". It is not started. It is independent of T-02 and is docs/evidence only, with no purchases or deployment.
-2. **T-02 verification:** Codex verifies repair pass 3 (base `bb9bac8`): provenance and index decoding. Separately, the lead decides whether the wrong-shape evidence defects (TASKS.md T-02 repair pass 3) need a repair before acceptance. T-02 stays unaccepted until then.
+1. **T-03 hosting probe: due now.** Its promotional-credit expiry check now covers $50 in awarded Token Factory credits (user-reported; expiry unknown until checked). It was scheduled for playbook §11 Day two (2026-10-15), and the playbook says "Do not defer this discovery to recording week". It is not started. It is independent of T-02 and is docs/evidence only, with no purchases or deployment.
+2. **T-02 verification:** Codex verifies repair passes 3 and 4 together (base `bb9bac8`): provenance and index decoding, and structural validation. T-02 stays unaccepted until then.
 3. T-06 waits for T-02 acceptance (T-04 and T-05 are accepted). No further Nebius calls are planned before T-06.
 
 ## Unresolved questions
-- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the T-02 assertions (contract decided; repair pass 3 awaiting verification), synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
+- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the T-02 assertions (contract decided; repair passes 3 and 4 awaiting verification), synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+from pydantic import ValidationError
 
 from atlas.adapter import ADAPTER_VERSION
 from atlas.checks.fit_provenance import fit_assertions
@@ -26,9 +27,11 @@ from atlas.contracts import (
     Manifest,
     Outcome,
     Reason,
+    RunIndex,
     RunOutcome,
     RuntimeRecord,
     Status,
+    validate_provenance_event,
 )
 from atlas.intake import MANIFEST_NAME, load_project, read_table
 from atlas.policy import (
@@ -187,7 +190,12 @@ def _load_index(run_dir: Path) -> dict | None:
     # Unreadable or undecodable (including excessive nesting): the index is unavailable.
     except (OSError, ValueError, RecursionError):
         return None
-    return index if isinstance(index.get("artifacts"), dict) else None
+    try:
+        RunIndex.model_validate(index)
+    # Decodes, but not the structure audit reads (e.g. a list): the index is unavailable too.
+    except ValidationError:
+        return None
+    return index
 
 
 def _trusted_manifest(
@@ -355,6 +363,17 @@ def _read_events(path: Path) -> tuple[list[dict], str | None]:
         ]
     except (ValueError, RecursionError) as exc:
         return [], _decode_problem("provenance.jsonl", exc)
+    # Each decoded event must have the structure its consumers read; one invalid event makes
+    # the whole artifact invalid (no prefix is kept, nothing is skipped).
+    for number, event in enumerate(events, 1):
+        try:
+            validate_provenance_event(event)
+        except ValueError as exc:  # pydantic's ValidationError is a ValueError
+            detail = " ".join(str(exc).split())[:200]
+            return (
+                [],
+                f"provenance.jsonl event {number} has an invalid structure ({detail})",
+            )
     return events, None
 
 
