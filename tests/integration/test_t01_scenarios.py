@@ -50,10 +50,12 @@ EXPECTED = {
         {},
         Outcome.INCONCLUSIVE,
     ),
+    # policy-v1.3: the window assertion is implemented. Under policy-v1.2 this fixture was
+    # NOT_ASSESSED(unimplemented_assertion) and INCONCLUSIVE; that historical result stands.
     "s07_unimplemented_window": (
         (P, P, P, P, P, P, P, P),
-        {"split.no_window_overlap": (N, Reason.UNIMPLEMENTED_ASSERTION)},
-        Outcome.INCONCLUSIVE,
+        {"split.no_window_overlap": P},
+        Outcome.NO_VIOLATION_FOUND,
     ),
     "s10a_identical_values_with_ids": (
         (P, P, P, P, P, P, P, P),
@@ -186,7 +188,7 @@ def test_evidence_files_are_written_and_hashed(tmp_path):
     assert "provenance.jsonl" in index["artifacts"]
     outcome = json.loads((run_dir / "outcome.json").read_text(encoding="utf-8"))
     assert outcome["outcome"] == "NO_VIOLATION_FOUND"
-    assert outcome["policy_version"] == "policy-v1.2"
+    assert outcome["policy_version"] == "policy-v1.3"
 
 
 def test_modified_fixture_is_refused_before_execution(tmp_path):
@@ -215,3 +217,17 @@ def test_every_executed_scenario_has_nonempty_evaluation_folds(name, tmp_path):
         if a.assertion_id == "split.evaluation_folds_nonempty"
     )
     assert ef.status is Status.PASS
+
+
+def test_s07_window_pass_rests_on_disjoint_stream_membership(tmp_path):
+    """Route D without bounds: every stream lies in one partition of every fold (policy-v1.3)."""
+    result = audit(FIXTURES / "s07_unimplemented_window", tmp_path).outcome
+
+    window = next(
+        a for a in result.assertions if a.assertion_id == "split.no_window_overlap"
+    )
+    assert window.status is Status.PASS
+    assert set(window.observed["established_by"].values()) == {
+        "stream_membership_disjoint"
+    }
+    assert any("not proof of statistical independence" in x for x in window.limitations)

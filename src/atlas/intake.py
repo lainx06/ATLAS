@@ -51,11 +51,7 @@ def load_project(project: Path) -> Intake:
     try:
         manifest = Manifest.model_validate_json(path.read_text(encoding="utf-8"))
     except ValidationError as exc:
-        return Intake(
-            False,
-            f"manifest unparseable: {exc.error_count()} validation error(s)",
-            None,
-        )
+        return Intake(False, validation_reason(exc), None)
     reason = manifest_reason(manifest)
     if reason is not None:
         return Intake(False, reason, manifest)
@@ -71,6 +67,17 @@ def load_project(project: Path) -> Intake:
             manifest,
         )
     return Intake(True, None, manifest)
+
+
+def validation_reason(exc: ValidationError, limit: int = 5) -> str:
+    """'manifest unparseable', naming the failing fields (SPEC §3). Input values are not echoed."""
+    parts = [
+        f"{'.'.join(map(str, e['loc'])) or '<manifest>'}: {e['msg']}"
+        for e in exc.errors(include_input=False)[:limit]
+    ]
+    more = exc.error_count() - len(parts)
+    detail = "; ".join(parts) + (f"; and {more} more" if more > 0 else "")
+    return f"manifest unparseable: {exc.error_count()} validation error(s): {detail}"
 
 
 def manifest_reason(manifest: Manifest) -> str | None:

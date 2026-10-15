@@ -1,0 +1,59 @@
+{
+  "schema_version": "0.3",
+  "table": {
+    "path": "table.csv",
+    "format": "csv"
+  },
+  "columns": {
+    "row_id": "row_id",
+    "target": "outcome",
+    "class_map": {
+      "0": "no",
+      "1": "yes"
+    },
+    "features": [
+      "f0",
+      "f1",
+      "f2"
+    ],
+    "observation_id": "observation_id",
+    "prediction_time": "pred_day"
+  },
+  "claim": {
+    "type": "future_time",
+    "statement": "The classifier predicts each day's outcome for later days.",
+    "sampling_unit": "row",
+    "dependence": [
+      {
+        "kind": "temporal_order"
+      }
+    ]
+  },
+  "time_basis": {
+    "unit": "day",
+    "reference_time": "day 0 = the first prediction day (synthetic)",
+    "scope": "global"
+  },
+  "feature_availability": {
+    "f0": {
+      "offset": 0
+    },
+    "f1": {
+      "offset": -1
+    },
+    "f2": {
+      "column": "f2_known"
+    }
+  },
+  "label_availability": {
+    "horizon": 5,
+    "reporting_delay": 2
+  },
+  "temporal_gap": 0,
+  "primary_metric": "balanced_accuracy",
+  "development_seeds": [
+    0
+  ],
+  "entry_point": "evaluate.py",
+  "reported_metrics": []
+}

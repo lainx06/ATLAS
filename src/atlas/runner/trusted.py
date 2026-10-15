@@ -10,8 +10,8 @@ directory is on `sys.path`. The parent's resolved `atlas` package directory is i
 This is NOT a sandbox. A subprocess, isolated mode, timeout, cwd or reduced environment does not
 confine code; the runner's capability is reported as `trusted_pipeline_only`.
 
-Regenerate the allowlist only after reviewing fixture changes:
-  uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01
+Regenerate the allowlist only after reviewing fixture changes (every fixture root, in order):
+  uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01 benchmarks/t02
 """
 
 import hashlib
@@ -118,14 +118,18 @@ def run_trusted_fixture(project: Path, entry_point: str, out_dir: Path) -> dict:
     }
 
 
-def build_allowlist(root: Path) -> dict:
+def build_allowlist(*roots: Path) -> dict:
     entries = [
         {
             "fixture": manifest.parent.name,
             "inventory": fixture_inventory(manifest.parent),
         }
+        for root in roots
         for manifest in sorted(root.glob("*/atlas_manifest.json"))
     ]
+    names = [e["fixture"] for e in entries]
+    if len(names) != len(set(names)):
+        raise ValueError("fixture directory names must be unique across roots")
     return {
         "description": "Reviewed trusted fixtures (SPEC §10): complete file inventories, LF-normalized SHA-256.",
         "fixtures": entries,
@@ -133,11 +137,11 @@ def build_allowlist(root: Path) -> dict:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[1] != "allowlist":
+    if len(sys.argv) < 3 or sys.argv[1] != "allowlist":
         raise SystemExit(
-            "usage: python -m atlas.runner.trusted allowlist <fixtures-root>"
+            "usage: python -m atlas.runner.trusted allowlist <fixtures-root> [<fixtures-root> ...]"
         )
-    data = build_allowlist(Path(sys.argv[2]))
+    data = build_allowlist(*(Path(a) for a in sys.argv[2:]))
     ALLOWLIST_PATH.write_text(
         json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n"
     )

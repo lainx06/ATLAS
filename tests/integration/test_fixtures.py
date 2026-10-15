@@ -21,7 +21,9 @@ def _generator():
 
 
 def test_committed_allowlist_matches_current_fixture_hashes():
-    assert load_allowlist() == build_allowlist(FIXTURES)["fixtures"]
+    # Every reviewed fixture root, in order: T-01, then T-02 (policy-v1.3).
+    roots = (FIXTURES, FIXTURES.parent / "t02")
+    assert load_allowlist() == build_allowlist(*roots)["fixtures"]
 
 
 def test_generator_reproduces_the_committed_base_table():

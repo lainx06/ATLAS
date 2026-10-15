@@ -1,12 +1,12 @@
 # Understanding ATLAS, end to end
 
-Personal learning guide for Adnan · 15 October 2026 · last checked against the T-05 acceptance commit (the commit after `eed73ee`)
+Personal learning guide for Adnan · 15 October 2026 · last checked against the T-02 implementation commit (the commit after `52c99c8`)
 
 ## How to use this guide
 
 This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
 
-**Evidence boundary:** last checked against the local repository at the T-05 acceptance commit, the commit after `eed73ee` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+**Evidence boundary:** last checked against the local repository at the T-02 implementation commit, the commit after `52c99c8` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
 
 **Status words used here** (they are deliberately different):
 
@@ -35,13 +35,14 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 
 | Component | Status at this checkpoint | What this establishes |
 | --- | --- | --- |
-| Requirements and evaluation policy | Recorded; policy-v1.2 | Explicit rules and supported scope |
+| Requirements and evaluation policy | Recorded; policy-v1.3 (T-02 contract decided by the lead on 15 October 2026) | Explicit rules and supported scope |
 | T-01 deterministic audit | Accepted at `f5aa4dc`, after Codex's independent verification (165 tests passed) | Specified behavior on trusted synthetic fixtures and review cases |
 | T-04 model connection | Accepted within its smoke-test scope | Real NVIDIA text response and strict application-validated JSON response |
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
 | Candidate re-evaluation integration | Planned for T-06. The evaluator (`audit.py`) still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` | Not demonstrated by T-05 |
 | Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
-| Remaining checks (T-02), memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
+| T-02 time, window and metric checks | **Implemented (self-tested); awaiting Codex review; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
+| Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
 
@@ -88,7 +89,7 @@ The three supported claim types are:
 
 Combined group-and-time claims are outside the selected V1 scope.
 
-In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.2). "Supported" means in scope, not fully checked: the accepted T-01 slice covers `unseen_group` fixtures, and the temporal assertions that `future_time` needs belong to T-02 (planned). Until then they are recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
+In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.3). "Supported" means in scope, not fully checked. The accepted T-01 slice covers `unseen_group` fixtures. T-02 adds the time, window and metric checks that `future_time` and `same_population` need; it is implemented and self-tested, awaiting independent review. Under the older policy-v1.2 those checks were recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
 
 ### Leakage and preprocessing
 
@@ -118,6 +119,51 @@ A fold is one declared training/evaluation split. The same row may play differen
 Judge a fitted state against the training rows of the fold where it is used. A state fitted earlier is not automatically safe or unsafe: the contributing rows and current use matter.
 
 Exercise: a scaler learns from rows `{1, 2, 3}`. It is used in a fold with training rows `{1, 2}` and evaluation row `{3}`. Why is that a violation? Answer: row 3 influenced the scaler while being held out for this use.
+
+### Time, windows and honest metrics (T-02: implemented, self-tested, awaiting review)
+
+T-02 adds checks for evaluations where time matters. The rules were decided by the lead on 15 October 2026 (`DECISIONS.md`, "T-02 contract dispositions"). The code passes the builder's tests but has not been independently reviewed, so treat this as implemented, not verified.
+
+**A label you could not have known yet.** A row predicted on day 100 has an outcome that becomes known on day 150. If a model trained with a cutoff of day 120 used that label, it learned something it could not have known on day 120. ATLAS checks both sides of the cutoff:
+
+| Cutoff | Labels known by the cutoff? | Cutoff before the first evaluation day (120)? |
+| --- | --- | --- |
+| 120 | No (150 > 120): FAIL | Yes: PASS |
+| 150 | Yes: PASS | No (150 > 120): FAIL |
+| none | Unknown: NOT_ASSESSED | Unknown: NOT_ASSESSED |
+
+No cutoff passes both, which is the point: this evaluation cannot honestly support a "works on future days" claim. Fixture `benchmarks/t02/s11a_future_time_label_leak` shows the same leak in a real run.
+
+**Half-open windows.** A window `[0, 10)` contains 0 to 9.999… but not 10. Two windows overlap only if they share a positive span:
+
+```python
+def overlaps(a, b):
+    return max(a[0], b[0]) < min(a[1], b[1])
+
+
+print(overlaps((0, 10), (10, 20)))  # False: they only touch
+print(overlaps((0, 10), (5, 15)))  # True: they share [5, 10)
+```
+
+C++ connection: this is the same convention as `begin()`/`end()` iterators, where `end` is one past the last element. ATLAS also refuses to use a window whose start is not before its end. Such a window is unusable metadata, not evidence that the check passed.
+
+**One clock or many?** The manifest declares whether all times share one clock (`global`) or each stream has its own (`per_stream`). One row's feature time against that same row's prediction time is a comparison on one clock, so it can be checked either way. A single cutoff compared with every row needs one shared clock. ATLAS never guesses which applies from free text.
+
+**Documented is not verified.** If a dataset has no stream column, a project may declare in writing that each recording stays within one person. ATLAS records that declaration prominently and relies on it only together with a valid "no person in both partitions" result. It never claims to have verified the declaration, and it never fetches the cited source. A declaration the table visibly contradicts is not used at all.
+
+**Averages that hide a missing fold.** Suppose four folds were declared but one has no valid predictions. Averaging the three remaining folds would quietly report a different experiment. ATLAS therefore marks the aggregate incomplete and refuses to PASS it, while still showing each valid fold's value.
+
+**Floating-point at the edge.** The reported-metric rule is `abs(reported - recomputed) <= 1e-6`, applied literally to binary floats. Many decimals have no exact binary form, so a difference meant to be exactly 1e-6 can land just above it:
+
+```python
+print(abs((5 / 9 + 1e-6) - 5 / 9))  # 1.0000000000287557e-06, which fails
+```
+
+C++ connection: `double` behaves the same way, because it is the same IEEE 754 format.
+
+**What these checks do not prove.** Window-overlap and separation checks test declared rules. They are not proof that rows are statistically independent.
+
+Exercise: two windows from the same stream, `[0, 10)` for training and `[12, 22)` for evaluation, and a declared minimum separation of 5. Do they overlap? Do they meet the separation rule? Answer: no overlap. The gap is 12 − 10 = 2, which is less than 5, so the separation rule FAILs.
 
 ## 5. Why ATLAS needs more than true and false
 
@@ -348,6 +394,8 @@ These were bounded reproductions. The review did not demonstrate a container esc
 | `TASKS.md`, `STATUS.md` | What is complete, under review or pending? |
 | `src/atlas/policy.py` | Which assertions are required for a claim? |
 | `src/atlas/checks/split_integrity.py` | How do rows and identifiers become findings? |
+| `src/atlas/checks/temporal.py` | How are windows, separation and time availability checked (T-02)? |
+| `src/atlas/checks/independent_metrics.py`, `src/atlas/evaluator.py` | How does ATLAS recompute metrics and compare reported ones (T-02)? |
 | `GLOSSARY.md` | What do the project's terms mean exactly? |
 | `src/atlas/contracts.py` | Which statuses, outcomes and reason codes exist? |
 | `src/atlas/intake.py` | When is a project outside the supported scope? |
@@ -358,6 +406,7 @@ These were bounded reproductions. The review did not demonstrate a container esc
 | `src/atlas/runner/docker.py` | How does the host launch, collect and clean up? |
 | `src/atlas/runner/container_entry.py` | What happens inside the container? |
 | `scripts/nebius_smoke.py` | How does a bounded model request work? |
+| `benchmarks/t01/`, `benchmarks/t02/` | Which small synthetic fixtures demonstrate each rule? |
 | `tests/unit/`, `tests/integration/` | What behavior has executable evidence? |
 
 Do not start by reading every line. Trace one input to one output. For each function, identify its inputs, return value, side effects, callers, assumptions and failure cases.

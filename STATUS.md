@@ -2,7 +2,11 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 10 complete (T-04 and T-05 accepted); Step 11 next (T-02 not started).
+CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-02 is implemented and self-tested, awaiting Codex review (not accepted).
+- **T-02 (policy-v1.3, manifest schema 0.3):** implemented and self-tested; **awaiting Codex review; not accepted.**
+  - The lead decided the contract on 2026-10-15: the repeated-measures scope and the T-02 contract dispositions (DECISIONS.md; `docs/specs/t02-contract.md`; SPEC §3, §4.2, §5, §8).
+  - New: window-overlap routes D/C, two-sided separation, the three `temporal.*` checks, reported-versus-recomputed metrics with completeness rules, and descriptive recomputation, a dummy baseline and class support. There are 5 trusted fixtures in `benchmarks/t02/`.
+  - Results: unit + integration 500 passed, 1 skipped; Docker contract suite 28/28; sensitivity probe 10/10 defects caught. s07 now PASSes the window check (`NO_VIOLATION_FOUND`), as approved; its policy-v1.2 result stays historical. Details and limitations: TASKS.md T-02 "RESULT".
 - **T-04 (Nebius):** the user reports the $25 promo credits are available and the key is in `.env` (checked set and non-placeholder; value never printed). **T-04 accepted by the user within its documented smoke-test scope** (2026-10-14; TASKS.md T-04 "RESULT"). Model `nvidia/nemotron-3-super-120b-a12b` (DECISIONS.md "Initial model and response approach"; `ATLAS_MODEL_PRIMARY` set in the local `.env`). Responses use prompt-requested JSON with strict Pydantic validation: application-validated, not provider-enforced. Two capped smoke calls (2026-10-15 UTC), both successful; see "Nebius smoke".
 - **T-05:** **accepted by the lead at `eed73ee` within its documented scope (2026-10-15)**, based on Codex's independent verification of repair pass 2. Record: TASKS.md T-05 "CODEX VERIFICATION OF REPAIR PASS 2" and "ACCEPTANCE".
   - Codex verified both remaining parser findings (PAX padding, JSON encoding) fixed, with no remaining parser blocker. Its contract run: 28/28 with Docker required; 13 containers, all with removal confirmed. Unit tests: 261 passed, 1 skipped, after the path retry below.
@@ -17,14 +21,13 @@ CURRENT STEP: Start Here Step 10 complete (T-04 and T-05 accepted); Step 11 next
     - tested only on this host.
   - **Pending T-06:** candidate re-evaluation, and `audit.py` accepting Docker execution records. Audits stay `trusted_pipeline_only` until then.
   - All review evidence is preserved unchanged under `runs/review-t05/` (`session-f494c95-20261015/`, `repair1-44c5a84/`, `repair2-eed73ee/`).
-- T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
-- **Learning guide:** `docs/ATLAS_Learning_Guide.md` is the canonical guide (tracked since `44c5a84`; maintenance rule in AGENTS.md "Learning guide"). The acceptance update:
-  - marks the T-05 runner accepted and keeps it separate from the pending T-06 integration;
-  - lists the accepted-scope limitations;
-  - adds the Windows path-length example.
+- T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). **T-03 due, not started.**
+- **Learning guide:** `docs/ATLAS_Learning_Guide.md` is the canonical guide (tracked since `44c5a84`; maintenance rule in AGENTS.md "Learning guide"). The T-02 update:
+  - marks T-02 implemented, self-tested and awaiting review;
+  - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), and the T-05 acceptance commit containing this update). Nothing is pushed.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), and the T-02 commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-15
 
 ## What works (verified by running)
@@ -54,9 +57,10 @@ LAST UPDATED: 2026-10-15
   - Codex review 1 and its verification: findings, traced causes, dispositions and tests are recorded once in TASKS.md (T-01 "REVIEW 1" and "CODEX VERIFICATION OF REPAIR PASS 1"). The reproductions are preserved unchanged at `runs/review-t01/` and `runs/review-t01-repair/`.
 
 ## What does not exist yet
-- Not implemented: T-02 assertions (windows, temporal separation, `future_time`, reported-metric comparison, metric recomputation and baselines); `load_holdout_features()`; candidate re-evaluation of the required set after isolated execution (T-06); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. These are materialized as NOT_ASSESSED `unimplemented_assertion` where policy requires them.
+- T-02 assertions are implemented but self-tested only (Codex review pending; not accepted). The linear baseline is deferred; splitter minimum requirements are not recorded.
+- Not implemented: `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED); candidate re-evaluation of the required set after isolated execution (T-06); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. Under policy-v1.3 every required assertion is implemented.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
-- Planned paths not created yet, by design: `docs/specs/`. (`handoffs/` holds only the Step 8 packet.)
+- `docs/specs/` holds one spec, `t02-contract.md`. `handoffs/` holds only the Step 8 packet.
 - Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. No production model client, schemas or agent loop (T-06); diagnosis, tool-use and repair quality untested.
 - The Docker runner is accepted (T-05) but not integrated: `audit.py` still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` until T-06. No user-facing candidate approval step exists yet. Output writes have no Windows extended-length path handling (T-05 P3).
 
@@ -86,11 +90,19 @@ LAST UPDATED: 2026-10-15
     - copies of Codex's `parser_disagreement.py` and `lifecycle_matrix.py`;
     - the differential parser fuzz, 4 seeds (0 problems);
     - ruff.
+13. T-02 (2026-10-15):
+    - `uv run --locked python benchmarks/t02/generate.py` (byte-identical regeneration);
+    - `uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01 benchmarks/t02` (T-01 entries unchanged; 5 added);
+    - `uv run --locked pytest tests/unit tests/integration --deselect tests/integration/test_runner_contract.py` (500 passed, 1 skipped);
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` (28 passed);
+    - `uv run --locked python runs/t02/probe_mutations.py` (10/10 defects caught);
+    - ruff.
 
 ## Blockers
 - **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** none. Accepted at `eed73ee`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
+- **T-02:** none for implementation. Acceptance waits for Codex's review.
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
 
@@ -151,10 +163,10 @@ LAST UPDATED: 2026-10-15
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-02** (Start Here Step 11, first milestone): planning only, awaiting the lead's go-ahead. Its input state (T-01 accepted) is met. The lead's repeated-measures decision (SPEC §14) is needed before T-02 acceptance.
-2. T-03 (hosting probe) is independent of T-02 and was scheduled early (playbook §11, Day two).
-3. T-06 waits for T-02 (T-04 and T-05 are accepted). No further Nebius calls are planned before T-06.
+1. **T-03 hosting probe: due now.** It was scheduled for playbook §11 Day two (2026-10-15), and the playbook says "Do not defer this discovery to recording week". It is not started. It is independent of T-02 and is docs/evidence only, with no purchases or deployment.
+2. **T-02 review:** Codex reviews the T-02 commit (base `52c99c8`) against the decided contract. T-02 stays unaccepted until then.
+3. T-06 waits for T-02 acceptance (T-04 and T-05 are accepted). No further Nebius calls are planned before T-06.
 
 ## Unresolved questions
-- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
+- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the T-02 assertions (contract decided; implementation awaiting review), synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".

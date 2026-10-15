@@ -1,6 +1,6 @@
 """Deterministic audit: intake -> trusted execution -> trusted evaluation -> evidence (SPEC §6, §7).
 
-T-01 scope: audit mode only, trusted fixtures only, no model calls, no candidate execution.
+Scope (T-01, T-02): audit mode only, trusted fixtures only, no model calls, no candidate execution.
 """
 
 import hashlib
@@ -14,10 +14,13 @@ import pandas as pd
 
 from atlas.adapter import ADAPTER_VERSION
 from atlas.checks.fit_provenance import fit_assertions
+from atlas.checks.independent_metrics import metric_assertions
 from atlas.checks.metric_ids import prediction_id_assertions
 from atlas.checks.split_integrity import split_assertions
+from atlas.checks.temporal import temporal_assertions
 from atlas.contracts import (
     AssertionResult,
+    DescriptiveResult,
     EvidenceRef,
     ExecutionRecord,
     Manifest,
@@ -156,10 +159,18 @@ def _finalize(
     for a in outcome.assertions:
         check = CHECK_OF_PREFIX.get(a.assertion_id.split(".", 1)[0], "other")
         by_check.setdefault(check, []).append(a.model_dump(mode="json"))
-    for check, assertions in by_check.items():
+    descriptive: dict[str, list] = {}
+    for d in outcome.descriptive:
+        check = CHECK_OF_PREFIX.get(d.result_id.split(".", 1)[0], "other")
+        descriptive.setdefault(check, []).append(d.model_dump(mode="json"))
+    for check in [*by_check, *(c for c in descriptive if c not in by_check)]:
         write_json(
             run_dir / "checks" / f"{check}.json",
-            {"check_id": check, "assertions": assertions},
+            {
+                "check_id": check,
+                "assertions": by_check.get(check, []),
+                "descriptive": descriptive.get(check, []),
+            },
         )
         written.append(f"checks/{check}.json")
     write_json(run_dir / "outcome.json", outcome.model_dump(mode="json"))
@@ -296,20 +307,33 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
 
     required = required_assertions(manifest)
     execution, problem = _execution_trust(run_dir, index)
-    computed = _compute(project, run_dir, index, manifest)
+    computed, descriptive = _compute(project, run_dir, index, manifest)
     if snapshot_problem is not None:
         _degrade_unconfirmed(computed, snapshot_problem, completed=False)
     if problem is not None:
         _degrade_unconfirmed(
             computed, problem, completed=problem == "fixture execution did not complete"
         )
+    unconfirmed = "; ".join(p for p in (snapshot_problem, problem) if p)
+    if unconfirmed:
+        descriptive = [
+            d.model_copy(
+                update={
+                    "available": False,
+                    "reason": f"evidence not confirmed: {unconfirmed}",
+                    "observed": {},
+                }
+            )
+            for d in descriptive
+        ]
     results = materialize(required, computed)
     outcome = RunOutcome(
         outcome=derive_outcome(results),
         policy_version=POLICY_VERSION,
-        reason="; ".join(p for p in (snapshot_problem, problem) if p) or None,
+        reason=unconfirmed or None,
         assertions=results,
         incomplete_coverage=incomplete_coverage(results),
+        descriptive=descriptive,
     )
     _finalize(run_dir, index, outcome, _report(project, manifest, execution, outcome))
     return outcome
@@ -325,7 +349,7 @@ def _read_events(path: Path) -> list[dict]:
 
 def _compute(
     project: Path, run_dir: Path, index: dict, manifest: Manifest
-) -> dict[str, AssertionResult]:
+) -> tuple[dict[str, AssertionResult], list[DescriptiveResult]]:
     table_info = index.get("table") or {}
     table_path = project / manifest.table.path
     table_ok = table_path.exists() and sha256_file(table_path) == table_info.get(
@@ -351,13 +375,14 @@ def _compute(
         and e["fold"] in expected
         and e.get("artifact") != expected[e["fold"]]
     ]
-    pred_refs, by_fold, verified_artifacts = [], {}, {}
+    pred_refs, by_fold, frames, verified_artifacts = [], {}, {}, {}
     for fold, name in expected.items():
         path, recorded, ok = verified(run_dir, index, name)
         pred_refs.append(EvidenceRef(artifact=name, sha256=recorded))
         if ok:
             verified_artifacts[name] = recorded
-            by_fold[fold] = [str(r) for r in pd.read_parquet(path)["row_id"]]
+            frames[fold] = pd.read_parquet(path)
+            by_fold[fold] = [str(r) for r in frames[fold]["row_id"]]
         elif recorded is not None:
             by_fold[fold] = None  # present in the inventory but invalid
     # Unexpected paths stay separate from verified fold data; they are never read as rows.
@@ -400,7 +425,27 @@ def _compute(
             inventory_issues=inventory_issues,
         )
     )
-    return computed
+    # T-02 (policy-v1.3). Route C of the window check depends on the computed group result.
+    computed.update(
+        temporal_assertions(
+            manifest,
+            table,
+            splits,
+            [splits_ref, table_ref],
+            evidence_valid=splits_ok and table_ok,
+            group_result=computed.get("split.no_group_overlap"),
+        )
+    )
+    metrics, descriptive = metric_assertions(
+        manifest,
+        table,
+        splits,
+        frames,  # verified artifacts only; a missing or invalid one is absent
+        [splits_ref, table_ref, *pred_refs],
+        evidence_valid=splits_ok and table_ok,
+    )
+    computed.update(metrics)
+    return computed, descriptive
 
 
 def _report(project, manifest, execution, outcome: RunOutcome) -> dict:
@@ -415,8 +460,10 @@ def _report(project, manifest, execution, outcome: RunOutcome) -> dict:
         "execution": execution,
         "versions": versions(),
         "limitations": [
-            "T-01 audit mode: trusted repo-authored fixtures only; no isolation (trusted_pipeline_only).",
+            "Audit mode: trusted repo-authored fixtures only; no isolation (trusted_pipeline_only).",
             "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
             "Provenance begins at the supplied feature table.",
+            "Window-overlap and temporal-separation checks verify declared rules; they are not proof of statistical independence.",
+            "Training cutoffs and fold membership are declared by the evaluated code and are not verified independently.",
         ],
     }

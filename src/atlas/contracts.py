@@ -1,9 +1,36 @@
 """Data contracts shared by the trusted evaluator (SPEC §3, §5, §6, §7)."""
 
+import math
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+
+
+def _finite_number(value: Any) -> Any:
+    """A finite int or float. Booleans, strings and nonfinite values are refused (SPEC §3)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        # ValueError, not TypeError: pydantic reports only ValueError as a validation error.
+        raise ValueError(  # noqa: TRY004
+            "must be a finite number (booleans and strings are not accepted)"
+        )
+    if not math.isfinite(value):
+        raise ValueError("must be finite")
+    return value
+
+
+Number = Annotated[float, BeforeValidator(_finite_number)]
+NonNegative = Annotated[float, BeforeValidator(_finite_number), Field(ge=0)]
+UnitInterval = Annotated[float, BeforeValidator(_finite_number), Field(ge=0, le=1)]
+
+
+def _text(value: Any) -> Any:
+    if isinstance(value, str) and not value.strip():
+        raise ValueError("must not be empty")
+    return value
+
+
+Text = Annotated[str, BeforeValidator(_text)]
 
 
 class Status(StrEnum):
@@ -89,25 +116,133 @@ class Claim(BaseModel):
     dependence: list[Dependence] = Field(default_factory=list)
 
 
+class TimeBasis(BaseModel):
+    """All temporal values are numbers in `unit`. `reference_time` is documentation only.
+
+    `scope` says which values are comparable: `global` (any two) or `per_stream` (within a
+    stream). Required in schema 0.3; absent in legacy 0.2 means unspecified (SPEC §3).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    unit: Text
+    reference_time: Text
+    scope: Literal["global", "per_stream"] | None = None
+
+
+class AvailabilitySource(BaseModel):
+    """Exactly one of an availability-time column or an offset from prediction time."""
+
+    model_config = ConfigDict(extra="forbid")
+    column: Text | None = None
+    offset: Number | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self):
+        if (self.column is None) == (self.offset is None):
+            raise ValueError("give exactly one of 'column' or 'offset'")
+        return self
+
+
+class LabelAvailability(BaseModel):
+    """An availability-time column, or horizon + reporting delay after prediction time."""
+
+    model_config = ConfigDict(extra="forbid")
+    column: Text | None = None
+    horizon: NonNegative | None = None
+    reporting_delay: NonNegative | None = None
+
+    @model_validator(mode="after")
+    def _one_form(self):
+        offsets = (self.horizon, self.reporting_delay)
+        if self.column is not None and any(v is not None for v in offsets):
+            raise ValueError(
+                "give either 'column' or 'horizon' + 'reporting_delay', not both"
+            )
+        if self.column is None and any(v is None for v in offsets):
+            raise ValueError("give 'column', or both 'horizon' and 'reporting_delay'")
+        return self
+
+
+class SeparationRule(BaseModel):
+    """Declared separation for temporal_order. `times` is required in schema 0.3."""
+
+    model_config = ConfigDict(extra="forbid")
+    scope: Literal["global", "per_stream"]
+    min_gap: NonNegative
+    times: Literal["prediction_time", "window"] | None = None
+
+
+class WindowContainment(BaseModel):
+    """A documented declaration that streams lie within groups. Recorded, never verified."""
+
+    model_config = ConfigDict(extra="forbid")
+    within: Literal["group_id"]
+    source: Text
+    statement: Text
+
+
+class ReportedMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    metric_definition: Literal["balanced_accuracy", "macro_f1"]
+    partition: Literal["development_eval", "final_holdout"]
+    fold: Text
+    aggregation: Literal["single_fold", "mean_over_folds", "pooled"]
+    value: UnitInterval
+
+    @model_validator(mode="after")
+    def _fold_matches_aggregation(self):
+        if (self.fold == "all") != (self.aggregation != "single_fold"):
+            raise ValueError(
+                "fold 'all' goes with mean_over_folds or pooled; a named fold goes with single_fold"
+            )
+        return self
+
+
 class Manifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: str
+    schema_version: Literal["0.2", "0.3"]
     table: TableRef
     columns: Columns
     claim: Claim
-    primary_metric: str
+    primary_metric: Literal["balanced_accuracy", "macro_f1"]
     development_seeds: list[int]
     entry_point: str
     known_duplicates: list[list[str]] = Field(default_factory=list)
-    reported_metrics: list[dict[str, Any]] = Field(default_factory=list)
-    time_basis: dict[str, Any] | None = None
-    feature_availability: dict[str, Any] | None = None
-    label_availability: dict[str, Any] | None = None
-    temporal_gap: float | None = None
-    separation_rule: dict[str, Any] | None = None
+    reported_metrics: list[ReportedMetric] = Field(default_factory=list)
+    time_basis: TimeBasis | None = None
+    feature_availability: dict[str, AvailabilitySource] | None = None
+    label_availability: LabelAvailability | None = None
+    temporal_gap: Number | None = None
+    separation_rule: SeparationRule | None = None
+    window_containment: WindowContainment | None = None
+
+    @model_validator(mode="after")
+    def _version_and_references(self):
+        if self.schema_version == "0.3":
+            if self.time_basis is not None and self.time_basis.scope is None:
+                raise ValueError("time_basis.scope is required in schema 0.3")
+            if self.separation_rule is not None and self.separation_rule.times is None:
+                raise ValueError("separation_rule.times is required in schema 0.3")
+        unknown = set(self.feature_availability or {}) - set(self.columns.features)
+        if unknown:
+            raise ValueError(
+                f"feature_availability names undeclared features: {sorted(unknown)}"
+            )
+        return self
 
     def dependence_kinds(self) -> set[str]:
         return {d.kind for d in self.claim.dependence}
+
+
+class DescriptiveResult(BaseModel):
+    """A descriptive result (SPEC §5 'D'): reported, never part of outcome derivation."""
+
+    result_id: str
+    available: bool
+    reason: str | None = None
+    observed: dict[str, Any] = Field(default_factory=dict)
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
 
 
 class RunOutcome(BaseModel):
@@ -116,6 +251,7 @@ class RunOutcome(BaseModel):
     reason: str | None = None
     assertions: list[AssertionResult] = Field(default_factory=list)
     incomplete_coverage: list[str] = Field(default_factory=list)
+    descriptive: list[DescriptiveResult] = Field(default_factory=list)
 
 
 class ExecutionRecord(BaseModel):

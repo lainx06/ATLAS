@@ -2,6 +2,7 @@
 
 from atlas.contracts import AssertionResult, Manifest, Outcome, Reason, Status
 from atlas.policy import (
+    IMPLEMENTED,
     derive_outcome,
     materialize,
     required_assertions,
@@ -91,10 +92,13 @@ def test_combined_or_unknown_claim_type_is_not_supported():
 
 
 def test_materialize_marks_missing_required_result_unimplemented():
+    # Since policy-v1.3 every required assertion is implemented, so the unimplemented path is
+    # exercised with an explicit build that lacks one (as the policy-v1.2 build did).
     required = ["split.no_row_overlap", "split.no_window_overlap"]
     computed = {"split.no_row_overlap": _result("split.no_row_overlap", Status.PASS)}
+    build_without_windows = IMPLEMENTED - {"split.no_window_overlap"}
 
-    results = materialize(required, computed)
+    results = materialize(required, computed, implemented=build_without_windows)
 
     by_id = {r.assertion_id: r for r in results}
     assert by_id["split.no_window_overlap"].status is Status.NOT_ASSESSED

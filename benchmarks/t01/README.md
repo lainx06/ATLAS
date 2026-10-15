@@ -5,7 +5,7 @@ Repo-authored, reviewed **synthetic** fixtures for the T-01 acceptance scenarios
 Only these fixtures may execute on the host, under the fixture rule (docs/SPEC.md §10): each fixture's complete file inventory (every file in its directory, LF-normalized SHA-256) must match an entry in `src/atlas/runner/trusted_fixtures.json`, so an added or changed file is refused. The child runs in Python isolated mode with the trusted `atlas` package inserted explicitly; this is not a sandbox. After any reviewed fixture change, regenerate the allowlist:
 
 ```text
-uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01
+uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01 benchmarks/t02
 ```
 
 ## Generator settings (fixed before use)
@@ -36,7 +36,7 @@ Tables and manifests are written by `generate.py` (`uv run --locked python bench
 | `s05a_contaminated_reuse` | A selector fit in fold 0 is reused in later folds |
 | `s05b_benign_reuse` | A selector fit only on always-training subjects (S07, S08) is reused |
 | `s06_missing_metadata` | s02 code; the manifest omits the `group_id` and `unit_id` roles |
-| `s07_unimplemented_window` | s02 code; the manifest truthfully declares overlapping windows |
+| `s07_unimplemented_window` | s02 code; the manifest truthfully declares overlapping windows. Named for policy-v1.2, where the window assertion was unimplemented (INCONCLUSIVE). Under policy-v1.3 it PASSes through disjoint stream membership (NO_VIOLATION_FOUND) |
 | `s08a_combined_claim` | Claim type `unseen_group+future_time` (never executed) |
 | `s08b_no_adapter` | Plain scikit-learn script without the adapter (never executed) |
 | `s10a_identical_values_with_ids` | Planted identical-value pairs with distinct `observation_id` |

@@ -171,3 +171,42 @@ Lead decision, based on the free `GET /models?verbose=true` and two user-authori
 - **Application validation, not provider-enforced structured output:** no NVIDIA model on Nebius lists `json_mode` or `structured_outputs`, so no `response_format` is sent and nothing on the provider side constrains the format. This applies SPEC §11's "structured JSON output where supported".
 - **Invalid output:** invalid or incomplete output (failed validation, `finish_reason` other than `stop`, missing content, transport error or timeout) never authorizes an action and never counts as success; it is recorded as a schema failure or error (SPEC §11). Any future retry counts against the existing attempt and spending ceilings (SPEC §11: 1 retry per transient model call, 6 model calls per run); no retry may raise a cap.
 - **Not yet tested:** diagnosis quality, tool use (`tools` is advertised but unused) and repair quality. The smoke calls show only connectivity, pricing behavior and compliance with one fixed JSON object, once. Compliance rates and task quality need the T-06/T-10/T-11 measurements.
+
+## 2026-10-15 — Repeated-measures scope for V1 (SPEC §14; T-02 input)
+Lead scope decision, closing the SPEC §14 question "whether V1 adds a supported rule for repeated measures not covered by unit or group disjointness".
+- **No new rule:** V1 adds no repeated-measures rule beyond the existing routes of `split.repeated_measures_rule` (policy-v1.1): A, the sampling unit, and B, the contained group.
+- **Other dependence structures stay unsupported** under the existing policy. A declared repeated unit that neither route covers stays NOT_ASSESSED `no_supported_rule`, and the run cannot be `NO_VIOLATION_FOUND` (SPEC §6).
+- **Not independence:** `split.no_window_overlap` and `split.temporal_separation` verify declared stream/interval and separation rules. They must not be presented as proof of statistical independence, in reports, the UI or documentation (SPEC §15).
+- **Versioning:** no assertion's semantics change, so the policy stays `policy-v1.2`. The T-02 contract proposal (`docs/specs/t02-contract.md`, awaiting review) is separate from this decision.
+
+## 2026-10-15 — T-02 contract dispositions (policy-v1.3, manifest schema 0.3)
+Lead review of the complete proposal `docs/specs/t02-contract.md`. Approved with the corrections below; the contract text there and SPEC §3, §4.2, §5 and §8 now follow these dispositions. T-02 is authorized for implementation on trusted fixtures only (no inference calls, no Docker-runner integration). It is not accepted.
+1. **Time representation and scope (approved with corrections).**
+   - Times are finite numbers in one declared unit. There is no date parsing and no automatic unit conversion, and booleans are excluded.
+   - Schema 0.3 requires an explicit `time_basis.scope` (`global` or `per_stream`) whenever `time_basis` is supplied. In legacy 0.2, an absent scope means **unspecified**; it does not assert per-stream clocks.
+   - Global comparability is never inferred from `reference_time` prose.
+   - Missing or `per_stream` scope blocks only comparisons that need cross-stream comparability; it does not block comparisons within a known stream.
+   - Feature availability compares one row's availability with that same row's prediction time on its declared local clock, as do offsets, so it is not marked NOT_ASSESSED merely because the clock is per-stream or unspecified.
+   - The two single-cutoff-per-fold checks (`training_labels_available_by_cutoff`, `cutoff_precedes_evaluation`) keep the global-clock requirement.
+2. **Invalid reported metrics (approved).** Malformed, nonfinite, out-of-range or boolean manifest values are rejected at intake, through the existing `NOT_SUPPORTED` path, with a specific validation explanation. Missing or corrupted runtime evidence is different and gives ERROR.
+3. **Separation direction (approved).** Two-sided, within each fold, only for the applicable `same_population`/`unseen_group` rule. `future_time` stays directional and separate. A one-sided rule would exclude designs that train after evaluation; it would not fail every blocked-CV design.
+4. **Named separation times (approved).** The rule must declare its basis, `prediction_time` points or `window` intervals; it is never guessed. The point and interval distance formulas and the equality rules stand.
+5. **Window routes (approved with qualifications).**
+   - **Route D (direct)** may establish no overlap from complete stream identities and disjoint stream membership, without needing unused bounds. The evidence that established each PASS is recorded.
+   - **Route C (containment)** is conditional on *documented* containment; it is not independent verification. Its source, its statement, and its dependency on a valid `split.no_group_overlap` PASS are recorded prominently. Non-empty strings show only that a declaration was supplied, not that its source proves the claim. Sources are never fetched. Actual UCI HAR containment evidence still needs the T-09 review.
+   - A contradiction disables route C. It never suppresses a valid direct-route FAIL or an independently complete direct assessment.
+   - **Lead policy change:** any window whose bounds are needed must have `start < end`. Zero-length or reversed windows are unusable metadata, not evidence of a successful assessment.
+6. **Metrics (approved, with explicit completeness rules).**
+   - The per-fold class sets and formulas, the unweighted `mean_over_folds`, and pooled (fold, row) observations stand. Pooled repeated rows count once per evaluation occurrence, not once per unique row.
+   - An empty, invalid or missing required fold is never silently omitted from an aggregate. An incomplete aggregate cannot support PASS, and its reason is reported. Valid per-fold results may still be shown separately.
+   - Comparison is `abs(reported - recomputed) <= 1e-6` in float64, with no relative tolerance, no rounding and no undocumented epsilon.
+   - Equality and the adjacent representable values are tested, for example with `recomputed = 0`, as is `5/9 + 1e-6` under the literal rule. A decimal-intended equality may fall on either side after binary representation.
+7. **Baseline (approved).**
+   - The baseline predicts the most frequent training class, with ties broken by the declared `class_map` order. This tie rule is not claimed to match scikit-learn's.
+   - Empty or invalid training labels make the baseline unavailable; no prediction is invented. Baselines stay descriptive, and the linear baseline is explicitly deferred.
+   - Splitter minimum requirements are reported as unavailable, and SPEC §4.2's claim that they are recorded is corrected. Avoiding a mutation-check target is not a reason to leave documentation inaccurate.
+8. **Versions (approved).**
+   - Manifest schema 0.3, with 0.2 compatibility as qualified in item 1. Unsupported schema versions are rejected.
+   - The policy becomes `policy-v1.3`. Historical evidence is not rewritten.
+   - `policy_version` does not uniquely identify implementation code; task records keep the reviewed commit.
+9. **s07 (approved).** Its `split.no_window_overlap` may become PASS, and its outcome `NO_VIOLATION_FOUND`, once the implementation shows that every required assertion passes. Fixture bytes and the historical policy-v1.2 results are preserved, and required-but-unimplemented assertions keep independent test coverage.

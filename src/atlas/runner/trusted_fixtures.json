@@ -238,6 +238,91 @@
           "sha256": "6c6a05e6a2dc69d3917ab8dccd69642bc97218097a2e291a4a1ebaaad60a0b2c"
         }
       ]
+    },
+    {
+      "fixture": "s11a_future_time_label_leak",
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "949296da9a3d15837110446cfe860a6cdea4f6f035f212236f5c514d0f1e5e6a"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "24e19986bd0db1a76e516e00f72966d3f6a823e2c4ec22077a702bfb8bdb2c25"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "724c34d81f934cfff5e987b664ee9d48212c16ffdde2a27738e057c994da6f1b"
+        }
+      ]
+    },
+    {
+      "fixture": "s11b_future_time_clean",
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "5645c8581518d66ca6587b42306f69b090350e1774e7d6357304a7c4062d3eb4"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "23066afff00c64e59220132902789087969247e515455371c6c7fc12d91b7929"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "724c34d81f934cfff5e987b664ee9d48212c16ffdde2a27738e057c994da6f1b"
+        }
+      ]
+    },
+    {
+      "fixture": "s11c_reported_metric_mismatch",
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "be4285ca062c21c58a2a52442ce7361c5dfdffff0b0b3cbde9e959f68bd69c1f"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "d7714acd80916bd9861ffce13ba00b888f749cd1c3a0050fff7f729de5f9a011"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "724c34d81f934cfff5e987b664ee9d48212c16ffdde2a27738e057c994da6f1b"
+        }
+      ]
+    },
+    {
+      "fixture": "s12a_same_population_random_windows",
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "0c7bf8f02a15350dc776c8d227017ae9a2f000c3a6a623872aedf05bf9675b3b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "337d35630a642dd71500801e4e5f0cd9c6b4701e9645a7b595bc9ffd8e734c8b"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "ffda11ff686fab79234d544d39e33058e42a818ba196819702e083638afe7627"
+        }
+      ]
+    },
+    {
+      "fixture": "s12b_same_population_blocked_windows",
+      "inventory": [
+        {
+          "path": "atlas_manifest.json",
+          "sha256": "0c7bf8f02a15350dc776c8d227017ae9a2f000c3a6a623872aedf05bf9675b3b"
+        },
+        {
+          "path": "evaluate.py",
+          "sha256": "b7c473cd2b127359b5e56c01b3441b345718018e2dedd8a3fc0aa1175e81cb7d"
+        },
+        {
+          "path": "table.csv",
+          "sha256": "ffda11ff686fab79234d544d39e33058e42a818ba196819702e083638afe7627"
+        }
+      ]
     }
   ]
 }

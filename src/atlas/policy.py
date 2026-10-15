@@ -7,7 +7,10 @@ from atlas.contracts import AssertionResult, Manifest, Outcome, Reason, Status
 # v1.1 (2026-10-14): split.repeated_measures_rule clarified (explicit routes, same-fold
 # witnesses, no inherited aggregate statuses). Assertion IDs unchanged.
 # v1.2 (2026-10-14): adds split.evaluation_folds_nonempty, required for every claim type.
-POLICY_VERSION = "policy-v1.2"
+# v1.3 (2026-10-15): defines the T-02 window, separation, temporal and reported-metric rules
+# (DECISIONS.md "T-02 contract dispositions"). Required sets unchanged. The version names the
+# rules, not the implementation; task records keep the reviewed commit.
+POLICY_VERSION = "policy-v1.3"
 SUPPORTED_CLAIM_TYPES = ("same_population", "unseen_group", "future_time")
 
 # Assertions that this build computes. Every other required assertion is materialized as
@@ -20,11 +23,19 @@ IMPLEMENTED = frozenset(
         "split.no_group_overlap",
         "split.sampling_unit_disjoint",
         "split.repeated_measures_rule",
+        "split.no_window_overlap",
+        "split.temporal_separation",
         "fit.state_dependencies_within_fold_train",
         "fit.coverage_complete",
         "metric.prediction_ids_match_eval_ids",
+        "metric.reported_matches_recomputed",
+        "temporal.training_labels_available_by_cutoff",
+        "temporal.cutoff_precedes_evaluation",
+        "temporal.features_available_when_used",
     }
 )
+# Descriptive results (SPEC §5 'D'): always reported, never part of outcome derivation.
+DESCRIPTIVE = ("split.class_support", "metric.recomputed_primary", "metric.baselines")
 
 
 def supported_claim(claim_type: Any) -> bool:
@@ -71,14 +82,16 @@ def required_assertions(manifest: Manifest) -> list[str]:
 
 
 def materialize(
-    required: list[str], computed: dict[str, AssertionResult]
+    required: list[str],
+    computed: dict[str, AssertionResult],
+    implemented: frozenset[str] = IMPLEMENTED,
 ) -> list[AssertionResult]:
     """One result per required assertion, in policy order; missing ones become NOT_ASSESSED."""
     results = []
     for aid in required:
         if aid in computed:
             results.append(computed[aid])
-        elif aid in IMPLEMENTED:
+        elif aid in implemented:
             # Implemented but no result was produced: the evaluation never ran far enough.
             results.append(
                 AssertionResult(

@@ -11,8 +11,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
-| T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
-| T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
+| T-02 | 11 | **Implemented and self-tested (2026-10-15); awaiting Codex review; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3); see RESULT | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
+| T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | Proposed | Bounded live agent loop end to end |
@@ -294,7 +294,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **MODEL DECISION:** STAY. Evaluator logic is core scientific code.
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex Extra high for the review if offered.
 - **READ FIRST:** SPEC §5, §6, §8; T-01 evidence; DECISIONS.md F3, F5.
-- **INPUT STATE:** T-01 accepted and committed. The lead's decision on any extra repeated-measures rule (SPEC §14) is recorded before acceptance.
+- **INPUT STATE:** T-01 accepted and committed. The lead's decision on any extra repeated-measures rule (SPEC §14) is recorded before acceptance. **Recorded 2026-10-15:** no rule beyond routes A and B (DECISIONS.md, "Repeated-measures scope for V1").
+- **CONTRACT (decided by the lead 2026-10-15):** `docs/specs/t02-contract.md` was reviewed in full and approved with corrections (DECISIONS.md, "T-02 contract dispositions"; SPEC §3, §4.2, §5, §8; policy-v1.3, manifest schema 0.3). Implementation is authorized on trusted fixtures only, with no inference calls and no Docker-runner integration. The ACCEPTANCE tests below are unchanged; the decided contract adds tests for its corrections.
 - **CHANGE:**
   - `src/atlas/checks/{independent_metrics,temporal}.py`, `src/atlas/evaluator.py`;
   - `split.no_window_overlap` (stream identity, half-open intervals, containment-evidence pass-through);
@@ -320,6 +321,52 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** run JSON per fixture; test output.
 - **HANDOFF:** Codex review of the diff and evidence.
 - **RECOVERY:** preserve failing fixtures. Two focused repairs, then Codex diagnosis.
+- **RESULT (2026-10-15; self-tested, awaiting Codex review; NOT accepted):**
+  - **Checkpoints:** base `52c99c8` (T-05 acceptance); head = the local commit "T-02: time, window and metric checks (policy-v1.3)" (parent `52c99c8`). `policy_version` names the rules, not the code; this commit is the reviewed implementation.
+  - **Same commit, documents:** the lead's repeated-measures scope decision and the T-02 contract dispositions (DECISIONS.md), SPEC §3, §4.2, §5, §8 and §14, and `docs/specs/t02-contract.md` (the decided contract with worked examples).
+  - **Files:**
+    - New: `src/atlas/checks/temporal.py`, `src/atlas/checks/independent_metrics.py`, `src/atlas/evaluator.py`.
+    - Changed: `src/atlas/contracts.py`, `intake.py`, `policy.py`, `audit.py`, `runner/trusted.py`.
+    - New tests: `tests/unit/test_temporal.py`, `test_independent_metrics.py`, `test_manifest_schema.py`, `tests/integration/test_t02_scenarios.py`.
+    - New fixtures: `benchmarks/t02/` (generator, README, 5 fixtures); the allowlist was regenerated over both roots.
+    - Not changed: `split_integrity.py`, `fit_provenance.py`, `recorder.py` (the mutation-check targets), `adapter.py`, the Docker runner, and every T-01 fixture byte.
+  - **Implemented (policy-v1.3):**
+    - **Manifest schema 0.3:** typed temporal and metric fields. Booleans, strings, nonfinite and out-of-range values are rejected at intake as `NOT_SUPPORTED`, with the failing fields named. Legacy 0.2 is accepted with an unspecified scope; other versions are rejected.
+    - **`split.no_window_overlap`:** route D (stream membership or interval comparison, with the basis recorded) and route C (documented containment, conditional on a valid `split.no_group_overlap` PASS, with the declaration recorded verbatim). A contradiction gives `no_supported_rule`. Needed bounds must satisfy `start < end`.
+    - **`split.temporal_separation`:** two-sided, per fold, with a declared point or window basis.
+    - **The three `temporal.*` assertions:** the cutoff checks need a global clock; feature availability is checked row by row on any clock.
+    - **`metric.reported_matches_recomputed`:** per entry, worst-of, using the literal float64 rule.
+    - **Descriptive results** (`metric.recomputed_primary`, `metric.baselines` with the most-frequent dummy and the linear baseline deferred, `split.class_support`) are written to `outcome.json` and the check files, separately from required assertions. They never enter outcome derivation.
+  - **Tests and evidence** (logs git-ignored in `runs/t02/`):
+    - New unit tests:
+      - `test_temporal.py` (51): window routes; the start < end policy; contradictions; separation direction and basis; the 100/150/120 counterexample; global versus local clocks; invalid cutoffs; FAIL preservation.
+      - `test_independent_metrics.py` (38): E1–E3 by hand and against scikit-learn; label canonicalization; completeness of aggregates; the tolerance boundary and adjacent floats; the 5/9 + 1e-6 example; baselines and class support.
+      - `test_manifest_schema.py` (64): every field rule; booleans, nonfinite values and strings; intake explanations; all 19 committed manifests.
+    - `tests/integration/test_t02_scenarios.py` (14), on the 5 fixtures:
+      - s11a label leak → VIOLATION_FOUND (24 witnesses);
+      - s11b clean → NO_VIOLATION_FOUND, with the reported metrics equal to scikit-learn's own values;
+      - s11c misreported by 0.01 → VIOLATION_FOUND (the other entry still PASSes);
+      - s12a random windows → VIOLATION_FOUND;
+      - s12b blocked windows → NO_VIOLATION_FOUND, with the smallest gap exactly 5;
+      - also: descriptive results never decide the outcome; a corrupted prediction artifact → ERROR; a NaN reported value → NOT_SUPPORTED before execution; the generator reproduces the tables.
+    - **Approved expectation changes (DECISIONS items 8 and 9), not weakenings:**
+      - s07 → window PASS (basis `stream_membership_disjoint`) and `NO_VIOLATION_FOUND`. Its policy-v1.2 result, INCONCLUSIVE, remains the historical record. A new test checks the basis.
+      - The policy-version assertion now expects v1.3.
+      - The unimplemented-assertion test now models a build without the window check, so the unimplemented path keeps independent coverage.
+      - The allowlist test now covers both fixture roots, which is stricter.
+    - `uv run --locked pytest tests/unit tests/integration --deselect tests/integration/test_runner_contract.py` → **500 passed, 1 skipped** (the existing symlink-permission skip). Log: `runs/t02/unit-integration.log`.
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_runner_contract.py` → **28 passed**, rerun because `contracts.Manifest` (used by `candidates.py`) changed. Log: `runs/t02/contract.log`. No `atlas.runner=t05` containers remained.
+    - **Sensitivity probe** (ad hoc; not `scripts/mutation_check.py`): 10 defects applied to a temporary copy of the new code were each caught by the new unit tests (`runs/t02/probe_mutations.py`, `probe_mutations.log`). The defects were: adjacent windows as overlap, zero-length windows accepted, one-sided separation, a global clock demanded for feature availability, label equality failing, route C ignoring the group result, an aggregate dropping unusable folds, a strict `<` tolerance, balanced accuracy averaging absent classes, and baseline ties by sorted label.
+    - `ruff check .` and `ruff format --check .` → clean. Regenerating `benchmarks/t02` is byte-identical.
+    - **Not rerun:** `scripts/mutation_check.py`. Its targets (`fit_provenance.py`, `split_integrity.py`, `recorder.py`) and the script are unchanged, and the meaning of its must-fail tests (s01, s03a, the reuse rule) is unchanged. 0 inference calls; no Docker-runner integration.
+  - **Limitations:**
+    - Times are compared as float64: integers beyond 2^53 lose precision. There is no date parsing or unit conversion.
+    - Cutoffs and fold membership are declared by the evaluated code; the checks test the data against them, not the declarations themselves.
+    - Route C relies on a documented declaration that ATLAS neither verifies nor fetches. UCI HAR containment needs the T-09 review.
+    - `final_holdout` reported metrics are NOT_ASSESSED until the evaluator-only label store exists.
+    - Splitter minimum requirements are unavailable (not recorded), and the linear baseline is deferred.
+    - Window and separation checks compare all train × eval pairs per stream (chunked): fine at fixture scale, untested at large scale.
+    - The checks verify declared rules, not statistical independence. They run on trusted fixtures only (`trusted_pipeline_only`).
 
 ### T-03 Hosting and isolated-worker probe (early, per playbook §11 Day 2)
 - **OWNER:** Claude Code (research and documentation only); the lead decides.

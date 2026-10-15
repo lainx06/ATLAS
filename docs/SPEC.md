@@ -30,7 +30,7 @@ Status: **reviewed draft**. Step 8 scientific-review dispositions were applied o
 A supported project directory contains `atlas_manifest.json`, a table (`.csv`/`.parquet`) and an entry script (default `evaluate.py`).
 
 ```text
-ProjectManifest (schema_version "0.2", draft)
+ProjectManifest (schema_version "0.3"; legacy "0.2" accepted as qualified below; any other value is rejected)
   table: path, format (csv|parquet)
   columns:
     row_id              required, unique
@@ -42,11 +42,18 @@ ProjectManifest (schema_version "0.2", draft)
     stream_id           required when dependence includes overlapping_windows (source-stream identity; never guessed)
     window_start / window_end   required with overlapping_windows; half-open interval [start, end) in the time basis
     prediction_time     required for future_time
-  time_basis            required for future_time and for window/temporal rules: {unit, reference_time (documented)}
-  feature_availability  future_time: per feature, either an availability-time column or an offset from prediction_time
-  label_availability    future_time: an availability-time column, or {horizon, reporting_delay} added to prediction_time
-  temporal_gap          future_time: declared nonnegative gap (time-basis units)
-  separation_rule       optional: declared temporal separation rule for temporal_order dependence {scope: global|per_stream, min_gap}
+  time_basis            required for future_time and for window/temporal rules:
+                        {unit: non-empty text, reference_time: non-empty text (documentation, never parsed),
+                         scope: global | per_stream}  (scope required in 0.3; absent in 0.2 = unspecified)
+  feature_availability  future_time: object keyed by declared feature; each value exactly one of
+                        {column: <availability-time column>} or {offset: <number>} (availability = prediction_time + offset)
+  label_availability    future_time: exactly one of {column: <availability-time column>} or
+                        {horizon: <number ≥ 0>, reporting_delay: <number ≥ 0>} (availability = prediction_time + horizon + reporting_delay)
+  temporal_gap          future_time: declared gap (finite number; a negative gap FAILs cutoff_precedes_evaluation, §5)
+  separation_rule       optional, for temporal_order: {scope: global | per_stream, min_gap: <number ≥ 0>,
+                        times: prediction_time | window}  (times required in 0.3; absent in 0.2 → not assessable)
+  window_containment    optional, for overlapping_windows: {within: group_id, source: non-empty text, statement: non-empty text}
+                        (a documented declaration; recorded, never fetched or verified; §5)
   known_duplicates      optional: documented groups of row IDs that are the same source observation
   claim:
     type                same_population | unseen_group | future_time
@@ -56,8 +63,16 @@ ProjectManifest (schema_version "0.2", draft)
   primary_metric        balanced_accuracy | macro_f1
   development_seeds     predeclared list (robustness)
   entry_point           path relative to project root (allowed path for candidates)
-  reported_metrics      optional list of {metric_definition, partition, fold|all, aggregation, value} (canonical numeric; §8)
+  reported_metrics      optional list of {metric_definition: balanced_accuracy | macro_f1,
+                        partition: development_eval | final_holdout, fold: <declared fold> | "all",
+                        aggregation: single_fold | mean_over_folds | pooled, value: finite number in [0, 1]}
+                        (fold "all" exactly when aggregation is mean_over_folds or pooled; §8)
 ```
+
+**Values and validation (schema 0.3, T-02).**
+- Every temporal and metric number is a finite `int` or `float`; booleans are rejected. Times are numbers in the one declared `time_basis.unit`. ATLAS parses no dates and converts no units.
+- A manifest that is malformed, uses an unsupported `schema_version`, or carries a nonfinite, out-of-range or boolean value is rejected at intake. The run is `NOT_SUPPORTED` ("manifest unparseable"), and the reason names the failing fields. This is distinct from missing or corrupt runtime evidence, which gives ERROR (§6).
+- **Legacy 0.2:** it is validated with the same field shapes, except that `time_basis.scope` and `separation_rule.times` may be absent. An absent scope means *unspecified*. It is never read as per-stream or as global, and global comparability is never inferred from `reference_time` prose.
 
 **Supportedness (run-level).** The run outcome is `NOT_SUPPORTED` when any of these hold:
 - the claim type is not one of the three, or is combined;
@@ -90,7 +105,7 @@ In the last case, static suspicions may still be shown; they never change status
 - Unsupervised: `StandardScaler`, `SimpleImputer`.
 - Supervised selection: `SelectKBest(score_func=f_classif)`.
 - Classifiers: `LogisticRegression`, `RandomForestClassifier`, `DummyClassifier`.
-- Splitters (no fitting; they produce indices for `take`): `GroupKFold`, `KFold`, `StratifiedKFold`, `train_test_split`. Each records its minimum requirements (for example, `GroupKFold` needs `n_splits` ≤ number of groups).
+- Splitters (no fitting; they produce indices for `take`): `GroupKFold`, `KFold`, `StratifiedKFold`, `train_test_split`. Each has minimum requirements (for example, `GroupKFold` needs `n_splits` ≤ number of groups). **The recorder does not record them yet** (corrected 2026-10-15): `split.class_support` reports them as unavailable.
 
 An operation enters this list only with tests for identity, ancestry, label-use classification and state-dependency propagation. There is no promise to intercept every scikit-learn call, and no universal provenance coverage.
 
@@ -127,7 +142,12 @@ Each check returns `CheckResult`:
 
 A missing field never passes. A check's status is the worst of its required assertions (FAIL > ERROR > NOT_ASSESSED > PASS), and every assertion stays visible.
 
-**Evaluation policy `policy-v1.2` (draft, post-review).** v1.1 (2026-10-14) clarified `split.repeated_measures_rule` (DECISIONS.md, "Repeated-measures policy clarification"). v1.2 (2026-10-14) adds the required prerequisite `split.evaluation_folds_nonempty` (DECISIONS.md, "Evaluation-fold prerequisite"). Runs record the version they were evaluated under.
+**Evaluation policy `policy-v1.3` (draft, post-review).**
+- v1.1 (2026-10-14) clarified `split.repeated_measures_rule` (DECISIONS.md, "Repeated-measures policy clarification").
+- v1.2 (2026-10-14) added the required prerequisite `split.evaluation_folds_nonempty` (DECISIONS.md, "Evaluation-fold prerequisite").
+- v1.3 (2026-10-15) defined the T-02 assertions: the window, separation, temporal and reported-metric rules below and in §8 (DECISIONS.md, "T-02 contract dispositions"). Required sets are unchanged.
+
+Runs record the version they were evaluated under. `policy_version` names the rules, not the implementation; task records keep the reviewed commit, and earlier evidence keeps its recorded version.
 - R = required.
 - R† = required when `claim.sampling_unit` ≠ `row`.
 - R* = required when the claim declares the named dependence (or, for the metric row, declares reported metrics).
@@ -144,17 +164,17 @@ Applicability comes from the confirmed claim and declared dependence, **never** 
 | `split.no_group_overlap` | — | R | — | No `group_id` value is in both partitions of a fold. Applies to `group_id`, `unit_id`, `observation_id` and repeated-measures units alike: each rule is judged over known values first; a participating row with a missing (null) value gives NOT_ASSESSED `missing_metadata` only when no violation is already established among known values, and unknown counts are disclosed alongside any FAIL. |
 | `split.sampling_unit_disjoint` | R† | R† | R† | No `unit_id` value crosses partitions. Missing `unit_id` → NOT_ASSESSED `missing_metadata`. |
 | `split.repeated_measures_rule` | R* (repeated_measures) | R* | R* | v1.1: assessed through an explicit route over rows participating in the declared folds, from the route's own same-fold witnesses; aggregate group/unit statuses are never inherited. **A, sampling unit** (the repeated unit is the declared independent sampling unit): known train/eval unit overlap within each fold; group assignments not required. **B, contained group** (`unseen_group`): an observed unit spanning several groups → NOT_ASSESSED `no_supported_rule`; otherwise group intersections within each fold using only rows with both identifiers known (a `group_separation` witness records fold, row, unit and group IDs; it is not same-unit overlap or label leakage). Per route: a supported witness → FAIL (missing counts disclosed); no witness and missing assignments → NOT_ASSESSED `missing_metadata`; PASS only for a nonempty, complete assessment; no participating rows → NOT_ASSESSED `not_executed`; invalid evidence → ERROR. Known mappings support a witness but never complete containment while assignments are missing; identities are never combined across folds. Neither route → NOT_ASSESSED (`missing_metadata` if `unseen_group` lacks a group column, otherwise `no_supported_rule`). Several declared units: worst status, every unit listed. |
-| `split.no_window_overlap` | R* (overlapping_windows) | R* | R* | Windows are `[start, end)` within `stream_id`. Any positive shared span between a train window and an eval window in the same stream → FAIL. Missing stream identity or bounds → NOT_ASSESSED `missing_metadata` (never guessed). PASS via disjoint groups is allowed only with documented containment evidence that streams cannot cross groups; that evidence and the dependency on `no_group_overlap` PASS are recorded. |
-| `split.temporal_separation` | R* (temporal_order) | R* | — | Verifies the declared `separation_rule` (a minimum gap between train and eval times, globally or per stream). It is not a test of statistical independence. No declared rule → NOT_ASSESSED `no_declared_rule`. |
-| `split.class_support` | D | D | D | Per-fold class counts and the splitter/estimator minimum requirements. Missing class support is reported, never turned into a split violation. |
+| `split.no_window_overlap` | R* (overlapping_windows) | R* | R* | Windows are `[start, end)` within `stream_id`. Any positive shared span (`max(start) < min(end)`) between a train window and an eval window in the same stream → FAIL. v1.3 routes, per fold. **D, direct:** complete stream identities with no stream in both partitions establish no overlap without using bounds; a stream in both partitions needs usable bounds for its rows (v1.3 lead policy: `start < end`; zero-length or reversed windows are unusable metadata). The basis of each PASS is recorded. **C, documented containment**, used only where D is incomplete: a `window_containment` declaration (`within: group_id`) and a valid `split.no_group_overlap` PASS. Its source, statement and dependency are recorded; it is conditional on the declaration and not independently verified. An observed stream in several groups disables C (→ NOT_ASSESSED `no_supported_rule`) but never suppresses a valid D FAIL or a complete D assessment. Otherwise missing stream identity or bounds → NOT_ASSESSED `missing_metadata` (never guessed). Not proof of statistical independence. |
+| `split.temporal_separation` | R* (temporal_order) | R* | — | Verifies the declared `separation_rule` within each fold, two-sided: every train item and eval item in scope are at least `min_gap` apart (equality passes). `times: prediction_time` uses points, distance `abs(t_eval − t_train)`; `times: window` uses intervals, signed gap `max(start_eval − end_train, start_train − end_eval)` (negative = overlap, 0 = adjacent). `per_stream` compares within a known stream; `global` requires `time_basis.scope: global`. The basis is never guessed: an undeclared `times` or a missing named column → NOT_ASSESSED `missing_metadata`. No declared rule → NOT_ASSESSED `no_declared_rule`. It is not a test of statistical independence. |
+| `split.class_support` | D | D | D | Per-fold train/eval class counts over the `class_map` keys and absent classes. Splitter minimum requirements are reported as unavailable (not recorded; §4.2). Missing class support is reported, never turned into a split violation. |
 | `fit.state_dependencies_within_fold_train` | R | R | R | For every use event in fold *k* (transforms and predictions, on train or eval rows), the dependency rows of the used state version ⊆ train(*k*). Cross-fold reuse of an instance is allowed when this holds. Unknown ancestry → NOT_ASSESSED `unknown_ancestry`, never an invented FAIL. |
 | `fit.coverage_complete` | R | R | R | For every declared fold: (1) exactly one written prediction, bound to its actual recorded producer — a `predict` use in the same fold, on the same rows, from an observed supported classifier state — with an artifact hash matching the verified index; (2) fully traced ancestry; (3) no coverage gap on the path (§4.3). Fold inventories in `splits.json`, provenance split events, prediction events and use events must agree; orphaned or missing folds are coverage gaps. Zero recorded fits → NOT_ASSESSED `zero_fit`. A classifier-fit count alone is insufficient. Limit: consistency cannot prove the existence of a fold erased from every source (that needs an independent expected-fold contract). |
 | `metric.prediction_ids_match_eval_ids` | R | R | R | Predictions cover exactly the declared eval row IDs of each fold. The expected artifact inventory is exactly `predictions/<fold>.parquet` per declared fold: never inferred from the files that exist, and never remapped by candidate-produced events. A missing or invalid expected artifact, any unexpected prediction path (kept separate and never read as fold data), or an event naming another artifact → ERROR; a valid artifact with wrong row IDs → FAIL (which survives ERRORs elsewhere). |
 | `metric.reported_matches_recomputed` | R* (reported_metrics) | R* | R* | §8 comparison rule. |
-| `metric.recomputed_primary`, `metric.baselines` | D | D | D | Balanced accuracy / macro-F1; dummy baseline (linear where appropriate). |
-| `temporal.training_labels_available_by_cutoff` | — | — | R | Every training row in fold *k* has `prediction_time` ≤ cutoff(*k*) and label availability ≤ cutoff(*k*). |
-| `temporal.cutoff_precedes_evaluation` | — | — | R | `temporal_gap` ≥ 0 and cutoff(*k*) + gap ≤ the earliest eval `prediction_time` in fold *k*. |
-| `temporal.features_available_when_used` | — | — | R | For every row used and every feature, availability ≤ that row's `prediction_time`. |
+| `metric.recomputed_primary`, `metric.baselines` | D | D | D | Balanced accuracy / macro-F1 (§8); the most-frequent dummy baseline (§8). The linear baseline is deferred (not computed). |
+| `temporal.training_labels_available_by_cutoff` | — | — | R | Every training row in fold *k* has `prediction_time` ≤ cutoff(*k*) and label availability ≤ cutoff(*k*). Requires `time_basis.scope: global` (a single cutoff per fold). |
+| `temporal.cutoff_precedes_evaluation` | — | — | R | `temporal_gap` ≥ 0 and cutoff(*k*) + gap ≤ the earliest eval `prediction_time` in fold *k*. Requires `time_basis.scope: global`. |
+| `temporal.features_available_when_used` | — | — | R | For every row used and every feature, availability ≤ that row's `prediction_time`. A same-row comparison on the row's declared clock, so it is assessable under any scope (including an unspecified or per-stream one). A feature without an availability entry → NOT_ASSESSED `missing_metadata` unless a valid FAIL exists. |
 | `robustness.*` | D | D | D | Range across predeclared seeds/groups; per-group results. Descriptive in V1. |
 
 Notes:
@@ -163,6 +183,12 @@ Notes:
   - With cutoff ≥ 150: `cutoff_precedes_evaluation` FAILs.
   - With the cutoff missing: NOT_ASSESSED.
 - The time basis (unit and documented reference time) must be consistent across all temporal fields. Inconsistency or absence gives NOT_ASSESSED `missing_metadata` for the dependent assertions.
+- **Time values (v1.3):**
+  - Rows considered are the train and eval rows of every declared fold.
+  - A null, non-numeric, boolean or nonfinite time value makes that row unknown for the assertion. Known values decide first: a witness among known rows → FAIL, with the unknown counts disclosed. Otherwise any unknown participating row → NOT_ASSESSED `missing_metadata`. PASS needs every participating row known.
+  - A comparison that needs cross-stream comparability needs `time_basis.scope: global`. Comparisons within a known stream, or within one row, do not.
+  - A null fold `training_cutoff` → NOT_ASSESSED `missing_metadata`. A non-numeric, boolean or nonfinite one is invalid candidate-produced evidence → ERROR `evidence_invalid`. A valid FAIL elsewhere still stands.
+  - Cutoffs and fold membership are declared by the candidate's code. The checks test the data against those declarations; they do not verify them independently.
 - A repeated-measures declaration is not automatically treated as an unseen-group claim.
 - Undeclared dependence that exists in the data cannot be detected by policy. This is a stated limitation.
 - There is no blanket minimum group count. Overlap assertions can establish violations with any number of groups. Protocol feasibility and class support are reported separately (`split.class_support`).
@@ -210,6 +236,7 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 - **Run directory:** `runs/<run_id>/` (git-ignored). `run_id` derives from a hash of the project snapshot, the confirmed claim, the policy version and a timestamp.
 - **Artifacts:** `manifest.snapshot.json`, `claim.json`, `provenance.jsonl` (ancestry records, fitted-state versions, use events), `splits.json`, `predictions/<fold>.parquet`, `checks/<check_id>.json`, `outcome.json`, `agent_log.jsonl`, `report.json`, `report.md`. Each is hashed into `index.json`.
   - T-01 writes `manifest.snapshot.json`, `execution.json`, `runtime.json`, `provenance.jsonl`, `splits.json`, `predictions/<fold>.parquet`, `checks/<check_id>.json`, `outcome.json`, `report.json` and `index.json`. `claim.json`, `agent_log.jsonl` and `report.md` are not yet produced.
+  - From T-02 (policy-v1.3), `outcome.json` and the check files also list **descriptive** results (`split.class_support`, `metric.recomputed_primary`, `metric.baselines`), separately from required assertions. They never enter outcome derivation, and they are marked unavailable when the run's evidence is not confirmed.
   - Fitted-state violations report their **origins**: the fitted states on the recorded ancestry whose own fit rows fall outside the fold's training set (instance/version, class, fit scope, contributing rows, label use, affected folds and uses). Downstream mentions are listed under the one assertion, not counted as separate findings.
 - **Integrity:** a missing or hash-mismatched artifact makes dependent assertions ERROR. Assertions with independent evidence keep their valid results.
 - **Reproducibility:** the report records dependency versions (from `uv.lock`), the evaluator version, the policy version, the adapter version, the model ID and the seed list.
@@ -221,6 +248,17 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 - **Development-evaluation labels** are part of the project table and visible to the project. The evaluator still scores from its own snapshot copy.
 - **Final-holdout labels** and held-out answer keys live only in the evaluator's store. They are never mounted into candidates and never placed in model prompts. For the Q6 held-out cases, the store sits outside this repo and is referenced by path and hash at evaluation time only.
 - **Recomputation:** balanced accuracy, macro-F1 and the dummy baseline on identical partitions, with predictions matched by row ID. Never compare across different protocols as if they were identical.
+- **Metric definitions (policy-v1.3):**
+  - **Class universe:** the `class_map` keys. A true or predicted value maps to a key if it is a string equal to the key, an integer whose decimal form equals it, or an integral finite float (`1.0` → `"1"`). Anything else is invalid: other floats, booleans, null, or a class *name* instead of its key.
+  - **Balanced accuracy:** the mean of recall `TP_c/(TP_c+FN_c)` over the classes present in the evaluated true labels.
+  - **Macro-F1:** the mean of `2·TP_c/(2·TP_c+FP_c+FN_c)` over the classes present in the evaluated true labels or predictions.
+  - **Aggregation:** `single_fold` is one fold's value; `mean_over_folds` is the unweighted mean of per-fold values over every declared fold of the partition; `pooled` is the metric over the concatenated (fold, row) observations, so a row evaluated in several folds counts once per evaluation occurrence.
+  - **Completeness:** an empty, invalid or missing required fold is never silently omitted. An incomplete aggregate cannot support PASS: it gives ERROR `evidence_invalid` for invalid or missing evidence, and NOT_ASSESSED with the specific reason otherwise. Valid per-fold values are still shown separately. A `final_holdout` entry is NOT_ASSESSED `not_executed` until the evaluator-only holdout label store exists.
+  - **Comparison:** `abs(reported − recomputed) <= 1e-6` in float64 (below). A decimal-intended equality may land on either side after binary representation: `5/9 + 1e-6` differs from `5/9` by 1.0000000000287557e-06 and FAILs.
+- **Dummy baseline (descriptive):**
+  - Each fold's baseline predicts the most frequent class among that fold's training labels from the evaluator's copy, with ties broken by the declared `class_map` order (not claimed to match scikit-learn's tie rule).
+  - Empty or invalid training labels make the baseline unavailable for that fold; no prediction is invented.
+  - The linear baseline is deferred.
 - **Reported-versus-recomputed comparison** (`metric.reported_matches_recomputed`):
   - Each reported metric is a canonical numeric value with a named metric definition, partition, fold (or all) and aggregation.
   - Comparison uses a fixed, versioned **absolute tolerance of 1e-6**, with no relative tolerance.
@@ -326,8 +364,7 @@ Gemini findings F1–F5 and lead findings L1–L2 were recorded in DECISIONS.md 
 
 | Open item | Owner | Gate | Until resolved |
 | --- | --- | --- | --- |
-| Whether V1 adds a supported rule for repeated measures not covered by unit or group disjointness | Lead (Gemini consulted if needed) | Before T-02 acceptance | `split.repeated_measures_rule` → NOT_ASSESSED `no_supported_rule` |
-| Implementation of `split.no_window_overlap`, `split.temporal_separation`, the three `temporal.*` assertions and `metric.reported_matches_recomputed` | Claude (T-02) | T-02 acceptance | NOT_ASSESSED `unimplemented_assertion` |
+| Implementation of `split.no_window_overlap`, `split.temporal_separation`, the three `temporal.*` assertions and `metric.reported_matches_recomputed` (contract decided 2026-10-15: DECISIONS.md "T-02 contract dispositions"; policy-v1.3) | Claude (T-02) | T-02 acceptance | Under policy-v1.2: NOT_ASSESSED `unimplemented_assertion` |
 | Synthetic 2×2 generator settings (subjects, sessions, windows, signal and confounding strengths, seeds) | Claude proposes; lead approves | Fixed and recorded **before any benchmark measurement** (T-01 test fixtures excepted, which are recorded but not measurements) | No benchmark result is reported |
 | UCI HAR containment evidence for windows within subjects; attribution text | Claude (T-09); lead review | T-09 acceptance | `split.no_window_overlap` stays NOT_ASSESSED on that dataset |
 | Expected violated assertion IDs per labeled case (answer keys) for scoring | Lead/Codex (authors) | Before any scored measurement (T-10, T-11) | No precision/recall reported |
@@ -336,13 +373,15 @@ Gemini findings F1–F5 and lead findings L1–L2 were recorded in DECISIONS.md 
 
 Closed by Step 8: the T-01 outcome policy (no scoped clean outcome; §6); the instrumentation contract (§4.3); duplicate semantics; the window and `future_time` rules; the metric tolerance; procedure admission; no blanket group minimum; robustness descriptive in V1.
 
+Closed by the lead on 2026-10-15 (DECISIONS.md, "Repeated-measures scope for V1"): V1 adds no repeated-measures rule beyond routes A (sampling unit) and B (contained group) of `split.repeated_measures_rule`. Other repeated-measures structures stay NOT_ASSESSED `no_supported_rule`.
+
 ## 15 Known limitations (to be stated in the README and reports)
 
 - Fit provenance covers only the bounded supported path. The in-process recorder is not tamper-proof, fingerprints don't prove arbitrary preprocessing was observed, and missing traces don't prove absence.
 - Provenance begins at the supplied feature table; upstream feature extraction and normalization are not verified.
 - Policy cannot detect dependence the user did not declare. Some declared dependence has no supported rule in V1 and stays NOT_ASSESSED.
 - Duplicate detection without source-observation identity is an exact-value screen and can leave unresolved candidates.
-- Temporal assertions verify declared availability and separation rules, not statistical independence.
+- Temporal assertions verify declared availability and separation rules, and `split.no_window_overlap` verifies declared stream identity and window intervals. None of them is proof of statistical independence, and reports must not present them as such.
 - A green outcome means only that the listed assertions passed within the stated coverage.
 - Held-out evidence comes from two cases: limited and descriptive. Their separation is procedural, not access-enforced.
 - Container isolation reduces risk; it is not proof of safety, provenance integrity or scientific correctness.
