@@ -262,6 +262,29 @@ def _shared_observation(
     )
 
 
+def _containment(table: pd.DataFrame, splits: list[dict], col: str, group: str) -> str:
+    """Whether known, participating units of `col` are shown to lie within single groups.
+
+    Returns "contained" only with positive evidence: at least one known participating unit,
+    and every known unit has at least one known group and no more than one. An empty table or
+    a NaN aggregate is never evidence of containment.
+    """
+    participating = list(
+        dict.fromkeys(r for s in splits for r in [*s["train_ids"], *s["eval_ids"]])
+    )
+    known = table.loc[participating].dropna(subset=[col])
+    if known.empty:
+        return "no_evidence"
+    groups_per_unit = known.groupby(col)[group].nunique()
+    if (
+        groups_per_unit.empty
+        or groups_per_unit.isna().any()
+        or (groups_per_unit < 1).any()
+    ):
+        return "no_evidence"
+    return "spans_groups" if (groups_per_unit > 1).any() else "contained"
+
+
 def _repeated_measures(
     manifest: Manifest,
     table: pd.DataFrame,
@@ -307,10 +330,16 @@ def _repeated_measures(
                     (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None, unknown)
                 )
                 continue
-            known = table.dropna(subset=[col])
-            if known.groupby(col)[group].nunique().max() > 1:
+            containment = _containment(table, splits, col, group)
+            if containment == "spans_groups":
                 per_unit.append(
                     (col, Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE, None, unknown)
+                )
+                continue
+            if containment == "no_evidence":
+                # No known participating unit (or no known group for one): nothing to inherit.
+                per_unit.append(
+                    (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None, unknown)
                 )
                 continue
             # Containment among known units is shown from the table: follow group disjointness.

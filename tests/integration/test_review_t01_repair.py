@@ -8,7 +8,10 @@ import json
 from pathlib import Path
 
 from atlas.audit import audit, evaluate, execute
-from atlas.contracts import Outcome, Reason, Status
+from atlas.checks.split_integrity import split_assertions
+from atlas.contracts import Manifest, Outcome, Reason, Status
+from atlas.intake import read_table
+from atlas.policy import derive_outcome, required_assertions
 from atlas.reports import sha256_file, write_json
 
 FIXTURES = Path(__file__).resolve().parents[2] / "benchmarks" / "t01"
@@ -177,3 +180,40 @@ def test_rehashed_execution_record_claiming_another_capability_is_rejected(tmp_p
 
     assert result.outcome is Outcome.INCONCLUSIVE
     assert all(a.status is not Status.PASS for a in result.assertions)
+
+
+# --- Codex pass-2 verification: all-null repeated-measures unit (verify_pass2.py) -------------------
+
+
+def test_all_null_session_ids_with_shared_subjects_mirror_of_codex_reproduction():
+    manifest = Manifest.model_validate_json(
+        (CLEAN / "atlas_manifest.json").read_text(encoding="utf-8")
+    )
+    manifest.claim.dependence = [
+        d for d in manifest.claim.dependence if d.column == "session_id"
+    ]
+    table = read_table(CLEAN, manifest)
+    table["session_id"] = None
+    ids = list(table.index)
+    splits = [
+        {
+            "fold": "mixed",
+            "kind": "development_eval",
+            "train_ids": ids[::2],
+            "eval_ids": ids[1::2],
+        }
+    ]
+
+    results = split_assertions(manifest, table, splits, [])
+
+    rm = results["split.repeated_measures_rule"]
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+    assert results["split.no_group_overlap"].status is Status.FAIL
+    assert results["split.sampling_unit_disjoint"].status is Status.FAIL
+    split_required = [
+        a for a in required_assertions(manifest) if a.startswith("split.")
+    ]
+    assert (
+        derive_outcome([results[a] for a in split_required]) is Outcome.VIOLATION_FOUND
+    )

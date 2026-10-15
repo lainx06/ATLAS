@@ -10,7 +10,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
-| T-01 | 9 | Codex review 1 (7 findings) → repair pass 1 → Codex verification (5 remaining blockers) → repair pass 2 done (base `57506b1`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-01 | 9 | Codex review 1 (7 findings) → repair pass 1 → verification (5 blockers) → repair pass 2 → verification (1 regression) → targeted fix done (base `bdcf321`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
@@ -206,6 +206,26 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - Output integrity (every indexed output exists with a current hash; no unindexed outputs) → consistent for the three CLI runs and two recovery paths (hash-matching fallback → `INCONCLUSIVE`; unrecoverable manifest → `INCONCLUSIVE`, 2 indexed outputs).
     - `ruff check` / `ruff format --check` → clean; `sync_skills.py --check` → problems 0.
   - **Remaining limitations:** no isolation (`trusted_pipeline_only`); the in-process recorder is not tamper-proof; there is no independent expected-fold contract; the inventory binds fixture files, not the installed environment; T-01 scope only.
+- **CODEX VERIFICATION OF REPAIR PASS 2: one new regression, with a targeted fix (Claude Code, Opus 5.5 high):**
+  - **Evidence (preserved unchanged):** `runs/review-t01-pass2/verify_pass2.py` (sha256 `e5fae9ad…bede1`), `verification.json` (`3a44d97e…83f1`), case `all_null_repeated_unit`. The script was not re-run, so its results were not overwritten.
+  - **Checkpoints:** base `bdcf321`; head = the local commit "Require evidence before repeated-measures containment" (parent `bdcf321`).
+  - **Finding:** repeated measures were declared on `session_id`, with all 160 session IDs null and known subjects shared across partitions. The repeated-measures rule FAILed (inheriting `split.no_group_overlap`) with zero known session identities. The group and unit FAILs themselves were valid.
+  - **Cause:** repair pass 2 inverted the containment test to `known.groupby(col)[group].nunique().max() > 1` → `no_supported_rule`, else "contained". With every session ID null, the known-unit table is empty and `max()` is NaN; `NaN > 1` is `False`, so execution fell through to "contained" and inherited the group FAIL without supporting evidence. Absence of a counterexample was treated as proof of containment. (The pass-1 form `<= 1` failed closed only incidentally.)
+  - **Fix:** `_containment()` returns "contained" only with positive evidence from rows participating in the declared splits: at least one known unit, every known unit has at least one known group, and none has more than one. An empty table or NaN aggregate gives "no_evidence" → NOT_ASSESSED `missing_metadata`, with nothing inherited. Mixed known/null data still inherits a demonstrated group violation, as verified previously.
+  - **Scope details (deliberate):** containment is judged on participating rows only, the evidence relevant to the declared partitions. A unit whose group values are all unknown counts as no evidence.
+  - **Regressions** (both failed on `bdcf321` and pass now): `test_all_null_nested_unit_is_not_assessed_while_independent_fails_stand` (unit) and `test_all_null_session_ids_with_shared_subjects_mirror_of_codex_reproduction` (the fixture-table mirror of Codex's case).
+  - **Nearby cases**, focused tests with reasons and outcomes; these already held at base and still hold:
+    - all-null on a grouped split → NOT_ASSESSED `missing_metadata`, `INCONCLUSIVE`;
+    - partially null with a mixed split → FAIL via `split.no_group_overlap`, `VIOLATION_FOUND`;
+    - complete identities on a grouped split → PASS, `NO_VIOLATION_FOUND`;
+    - a null only on a non-participating row → PASS;
+    - all group values unknown → NOT_ASSESSED `missing_metadata`.
+  - **Results actually run:**
+    - affected tests (`tests/unit/test_split_integrity.py`, `tests/integration/test_review_t01_repair.py`) → 36 passed;
+    - `uv run --locked pytest tests/unit tests/integration -q` → **122 passed**;
+    - `ruff check .` → passed; `ruff format --check .` → 59 files formatted.
+    - **Mutation check not re-run.** The change alters no mutation target (the m2 line is byte-identical and present once) and not `scripts/mutation_check.py`; an optional re-run was declined by the user.
+  - **Remaining limitations:** unchanged from repair pass 2.
 
 ### T-02 Independent metrics, conditional split rules, temporal checks
 - **OWNER:** Claude Code (writer); Codex reviews.

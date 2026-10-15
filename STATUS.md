@@ -2,8 +2,8 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 9: Codex's verification of repair pass 1 found 5 remaining blockers; repair pass 2 is complete and self-tested. **Awaiting verification by the same Codex session**; T-01 is not accepted. T-02 not started.
-CHECKPOINT: repair base `57506b1` (repair pass 1); head = local commit "Repair remaining T-01 review blockers" (parent `57506b1`). Not pushed; no remote configured.
+CURRENT STEP: Start Here Step 9: Codex's verification of repair pass 2 found one regression (an all-null repeated-measures unit inheriting a group FAIL); the targeted fix is complete and self-tested. **Awaiting Codex verification**; T-01 is not accepted. T-02 not started.
+CHECKPOINT: base `bdcf321` (repair pass 2); head = local commit "Require evidence before repeated-measures containment" (parent `bdcf321`). Not pushed; no remote configured.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -19,7 +19,8 @@ LAST UPDATED: 2026-10-14
 - Step 8: Gemini reviewed `handoffs/science-01.md` (preserved unchanged as the reviewed snapshot). The lead's dispositions are applied. Documentation and reference checks only; no tests exist.
 
 - **T-01 after repair pass 2 (self-tested; awaiting Codex verification):** deterministic audit of trusted synthetic fixtures (`benchmarks/t01/`).
-  - `uv run --locked pytest tests/unit tests/integration -q` → 115 passed (exit 0).
+  - `uv run --locked pytest tests/unit tests/integration -q` → 122 passed (exit 0), after the all-null repeated-measures fix (+7 tests; 115 at repair pass 2).
+  - All-null repeated-measures fix: containment now requires positive evidence from known participating units. The mutation check was not re-run for this fix (no mutation target or script changed); its last run (repair pass 2) was clean.
   - `uv run --locked python scripts/mutation_check.py` → an unmutated temporary copy passes the full suite; m1/m2/m3 each caught with no unrelated runtime-origin failures (exit 0). The log is in `runs/mutation_check.log` (git-ignored). Repair pass 1's "3/3" had hidden an unrelated runtime-origin failure in every mutation run; that is now fixed and guarded.
   - Output integrity (every indexed output exists with a current hash; none unindexed): consistent for the s01/s02/s07 runs and two recovery paths (snapshot missing with hash-matching fallback → `INCONCLUSIVE`; unrecoverable manifest → `INCONCLUSIVE`).
   - CLI evidence (git-ignored `runs/`): `uv run --locked python -m atlas.cli audit benchmarks/t01/<s> --mode audit --runs-dir runs` →
@@ -55,7 +56,7 @@ LAST UPDATED: 2026-10-14
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
 ## Next task
-1. **The same local Codex session verifies repair pass 2:** the delta `57506b1..` (the repair commit), the regression tests and its `remaining_risks.py` reproductions.
+1. **The same local Codex session verifies the targeted fix:** the delta `bdcf321..` (the fix commit) against `runs/review-t01-pass2/` case `all_null_repeated_unit`, plus the nearby identity cases.
 2. If verified, the lead records T-01 acceptance. Otherwise Claude repairs the confirmed findings. These five blockers have now had their targeted repair, so any that recurs stops for diagnosis rather than another blind retry. Do not start T-02 before acceptance.
 
 ## Unresolved questions

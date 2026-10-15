@@ -3,7 +3,8 @@
 import pandas as pd
 
 from atlas.checks.split_integrity import split_assertions
-from atlas.contracts import EvidenceRef, Manifest, Reason, Status
+from atlas.contracts import EvidenceRef, Manifest, Outcome, Reason, Status
+from atlas.policy import derive_outcome
 
 EVIDENCE = [EvidenceRef(artifact="splits.json", sha256="x")]
 
@@ -315,6 +316,102 @@ def test_nested_unit_with_a_null_value_and_no_known_violation_is_not_assessed():
     table.loc["r1", "session"] = None
 
     rm = _run(m, table, GROUPED)["split.repeated_measures_rule"]
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+
+
+# --- Repeated measures: empty / partial / complete identity (Codex pass-2 'all_null_repeated_unit') --
+
+SESSION_RM = {"dependence": [{"kind": "repeated_measures", "column": "session"}]}
+
+
+def _outcome(results):
+    """Outcome over the split assertions this manifest requires (policy derivation)."""
+    required = [
+        "split.no_row_overlap",
+        "split.no_shared_source_observation",
+        "split.no_group_overlap",
+        "split.sampling_unit_disjoint",
+        "split.repeated_measures_rule",
+    ]
+    return derive_outcome([results[aid] for aid in required])
+
+
+def test_all_null_nested_unit_is_not_assessed_while_independent_fails_stand():
+    table = _table()
+    table["session"] = None
+
+    results = _run(_manifest(claim=SESSION_RM), table, MIXED)
+
+    rm = results["split.repeated_measures_rule"]
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+    assert rm.depends_on == []
+    assert rm.observed["units"][0]["rows_with_unknown_identity"] == {"f0": 8}
+    assert results["split.no_group_overlap"].status is Status.FAIL
+    assert results["split.sampling_unit_disjoint"].status is Status.FAIL
+    assert _outcome(results) is Outcome.VIOLATION_FOUND
+
+
+def test_all_null_nested_unit_without_other_violations_is_inconclusive():
+    table = _table()
+    table["session"] = None
+
+    results = _run(_manifest(claim=SESSION_RM), table, GROUPED)
+
+    rm = results["split.repeated_measures_rule"]
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+    assert _outcome(results) is Outcome.INCONCLUSIVE
+
+
+def test_partially_null_nested_unit_still_follows_a_demonstrated_group_violation():
+    table = _table()
+    table.loc[["r0", "r1"], "session"] = None  # session A1 unknown; A2, B1, B2 known
+
+    results = _run(_manifest(claim=SESSION_RM), table, MIXED)
+
+    rm = results["split.repeated_measures_rule"]
+    assert rm.status is Status.FAIL
+    assert rm.depends_on == ["split.no_group_overlap"]
+    assert rm.observed["units"][0]["rows_with_unknown_identity"] == {"f0": 2}
+    assert _outcome(results) is Outcome.VIOLATION_FOUND
+
+
+def test_complete_nested_unit_on_a_grouped_split_passes():
+    results = _run(_manifest(claim=SESSION_RM), _table(), GROUPED)
+
+    rm = results["split.repeated_measures_rule"]
+    assert rm.status is Status.PASS
+    assert rm.depends_on == ["split.no_group_overlap"]
+    assert _outcome(results) is Outcome.NO_VIOLATION_FOUND
+
+
+def test_nested_unit_null_only_on_a_non_participating_row_does_not_matter():
+    table = _table()
+    table.loc["r7", "session"] = None
+    splits = [
+        {
+            "fold": "f0",
+            "kind": "development_eval",
+            "train_ids": ["r0", "r1", "r2", "r3"],
+            "eval_ids": ["r4", "r5", "r6"],  # r7 does not participate
+        }
+    ]
+
+    rm = _run(_manifest(claim=SESSION_RM), table, splits)[
+        "split.repeated_measures_rule"
+    ]
+
+    assert rm.status is Status.PASS
+
+
+def test_nested_unit_whose_group_values_are_all_unknown_does_not_establish_containment():
+    table = _table()
+    table["subject"] = None  # groups unknown: containment cannot be shown
+
+    rm = _run(_manifest(claim=SESSION_RM), table, MIXED)["split.repeated_measures_rule"]
 
     assert rm.status is Status.NOT_ASSESSED
     assert rm.reason is Reason.MISSING_METADATA
