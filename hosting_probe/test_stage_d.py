@@ -54,7 +54,7 @@ def test_a_failed_connection_reports_only_the_error_type(monkeypatch):
     )
     at.run()
     at.button[0].click().run()
-    shown = str(at.main)
+    shown = str([e.value for e in at.json])
     assert "stopped:" in shown and "pw@" not in shown and "db.invalid" not in shown
 
 

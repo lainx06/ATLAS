@@ -123,7 +123,7 @@ Planning caps: judge pool $10 (about 196 worst-case runs); public pool at most $
 | Requirement | Neon Free | Label |
 | --- | --- | --- |
 | Free-tier limits | **No credit card required; the Free plan is permanent, not a trial** (neon.com/pricing). 1 GB storage per project; 100 compute-unit-hours (CU-hours) per project each month; 100 projects; 5 GB network transfer a month; 6-hour restore history. Storage-increasing operations fail at the cap; compute suspends if the monthly compute allowance is exhausted until the next period | **Documented** (neon.com/pricing and /docs/introduction/plans, 2026-10-15) |
-| Size of our need | **Fixed:** the pool and daily cap rows (a handful, plus about one daily row per day of judging) stay small. **Accumulating:** one reservation row per attempted request (up to 6 per run), plus any per-session cap rows, grow with traffic unless pruned. At an assumed 0.5 KB per reservation row including its index (not measured), 60,000 rows (10,000 runs) is about 30 MB, about 3% of 1 GB. Production must prune settled and released rows and old session rows; the 1 GB cap is then not expected to bind, but this is an estimate | need: **proposed**; row size **unknown** until measured |
+| Size of our need | **Fixed:** the pool and daily cap rows (a handful, plus about one daily row per day of judging) stay small. **Accumulating:** one reservation row per attempted request (up to 6 per run), plus any per-session cap rows, grow with traffic unless pruned. At an assumed 0.5 KB per reservation row including its index (not measured), 60,000 rows (10,000 runs) is about 30 MB, about 3% of 1 GB. Production may prune old rows only under the retention rule below; the 1 GB cap is then not expected to bind, but this is an estimate. **Retention rule (lead, 2026-10-15):** unresolved dispatched reservations must remain accounted for. Pruning old records must **never** release reserved funds or reset cumulative spending: only rows whose effect is already folded into the cap rows' `reserved` and `spent` totals (settled or released reservations) may be deleted, the cap rows' cumulative totals are never reduced by pruning, and a `dispatched` reservation is never pruned until it has been reconciled and settled. | need: **proposed**; row size **unknown** until measured |
 | Compute allowance | See the explanation below the table | **Documented**, usage **unknown** |
 | Atomic reservation | Ordinary Postgres transactions. A conditional `UPDATE ... WHERE reserved + spent + :amount <= cap RETURNING ...` is one atomic statement; the row lock serializes concurrent callers, so two requests cannot both take the last of a budget. Each cap (judge pool, public pool, daily key, session key) is one row | Standard Postgres behavior (**not tested here**); **proposed** design |
 | Restart behavior | All state is in the database, none in app memory. A Community Cloud restart, sleep or second process just reads the same rows. Neon suspends idle compute after 5 minutes (cannot be disabled on Free) and reactivates "within a few hundred milliseconds" on the next query. Free-plan data is not deleted for inactivity (storage, not compute, is what is kept) | **Documented**; first-query latency after suspension **not measured** |
@@ -220,12 +220,39 @@ It also reports the time of the first connection (cold-connection latency, which
 | --- | --- |
 | Real micro-dollar accounting, per-session and daily keys, the judge and public pools and judge access code | production implementation |
 | Lease handling for never-dispatched reservations, an owner reconciliation procedure and admin script for unknown-usage reservations | production implementation |
-| Pruning of old reservations and sessions; monitoring of the compute allowance and storage | production implementation |
+| Pruning under the retention rule (never release reserved funds or reset cumulative spending; never prune a dispatched reservation before reconciliation; session cap rows may be dropped only when nothing is reserved against them and their spend is already counted in the pool and daily rows); monitoring of the compute allowance and storage | production implementation |
 | Behavior at the Neon compute or storage limit, long outages and restore | not tested |
 | Integration with the agent loop, the Nebius usage record, and a security review of the whole budget path | review required before T-06 relies on it |
 | A statement that the SQL is correct beyond the five scenarios; concurrency is probed, not proven | limitation |
 
-**Local test status (2026-10-15):** the app's page tests pass offline (the budget section is skipped without a URL, nothing connects before the button is pressed, and the URL is never rendered). The five scenarios **have not been executed**: this machine has no PostgreSQL, and the SQL is **untested** until it runs against a real Postgres, locally or on Neon. A local run would need a throwaway Postgres container and a temporary driver install (no change to the project lock file) and has not been approved.
+### Local PostgreSQL results (2026-10-15)
+
+**These are results on a disposable local PostgreSQL. They do not establish Neon connectivity, Neon's durability guarantees, cold-connection latency, or concurrency behavior on the hosted service.**
+
+| Item | Value |
+| --- | --- |
+| Image | official `postgres:17-alpine`, resolved digest `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` (image created 2026-09-17) |
+| Server | PostgreSQL 17.11 (musl, x86_64) |
+| Driver | psycopg 3.3.6 (libpq 18.0.4), installed only in a disposable `uv run --locked --isolated --with "psycopg[binary]"` environment. `pyproject.toml` and `uv.lock` were byte-identical before and after |
+| Isolation | Port bound to `127.0.0.1:55432` only; throwaway random password; no bind mounts, volumes or Docker socket (`Mounts=[]`, not privileged); data on a 256 MB tmpfs; 512 MB memory and 200-process limits |
+| Timeouts | `connect_timeout=15`, `statement_timeout=10000`, `lock_timeout=10000`, `idle_in_transaction_session_timeout=20000` (milliseconds), plus a shell `timeout` on every run |
+| Run | The five scenarios passed in **3 of 3** full runs (about 1.3 s each). The probe tests also passed against the database (14 passed); offline they pass with the database tests skipped (12 passed, 2 skipped) |
+
+**Scenario results (shipped code, all three runs):** two concurrent requests for a budget admitting one, 20 rounds each, exactly one reserved and 60 units held every round; the refused multi-cap reservation left both caps unchanged and no reservation row; opposite cap orders produced no deadlock in 20 rounds; a duplicate request ID reserved once and settled once, including concurrent attempts; an uncertain dispatched cost survived a new connection (release refused, another request blocked, later settle freed the difference). The server log for the whole session shows 20 `deadlock detected` errors, all during the deliberate defect run below and none during the shipped-code runs.
+
+**The scenarios can fail.** Three deliberately defective variants of `reserve` were swapped in (the shipped file was not changed), and each was caught by its scenario:
+
+| Defect | Scenario that caught it |
+| --- | --- |
+| Check the headroom, then write (no conditional `UPDATE`) | Race: more than one request admitted |
+| Reservation row and cap updates in separate transactions | Multi-cap refusal left partial changes |
+| Caps updated in the caller's order | Opposite orders: `DeadlockDetected` in each of 20 rounds |
+
+**Defects found in the probe:** none in the shipped operations. One defect in a *test* was fixed: the failed-connection check read the rendered tree instead of the displayed values.
+
+**Cleanup:** the container was removed, the pulled image was removed, no volume or other container was left, and port 55432 no longer listens (only closed-connection residue). The Docker images that existed before (`atlas-runner:t05`, `python:3.11-slim`, `hello-world`) were not touched. Evidence (git-ignored): `runs/t03-pg/` (`scenario-results.json`, `run-scenarios.log`, `pytest-*.log`, `container-config.txt`, `cleanup.log`, `run_scenarios.py`).
+
+**Still not shown:** the scenarios are a probe, not a proof; they say nothing about Neon, TLS latency, scale-to-zero resumption, the compute allowance, restarts of the real service, or production accounting.
 
 ### First account step (owner; nothing created yet)
 
