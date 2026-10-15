@@ -156,3 +156,11 @@ Lead decision, accepted after Codex's containment probe (`runs/review-t01-contai
 - **No inheritance:** aggregate group/unit statuses are never substitutes for witnesses. A group-separation witness is not labeled same-session overlap or label leakage.
 - **Versioning:** policy `policy-v1` → `policy-v1.1` (assertion IDs unchanged), per SPEC §5's rule that policy changes are versioned code changes.
 
+## 2026-10-14 — Evaluation-fold prerequisite (policy-v1.2; T-01 review)
+Lead-approved rule, after Codex's `runs/review-t01-rm-v11/` boundary input (`empty_eval_evaluator_boundary`) showed empty evaluation partitions reaching `NO_VIOLATION_FOUND` with every assertion passing vacuously.
+- **Rule:** every declared evaluation fold must contain at least one evaluation row. It is an assessment prerequisite, not a claim that one row is scientifically adequate.
+- **Assertion:** `split.evaluation_folds_nonempty`, required for every claim type and enforced by the deterministic evaluator through the versioned policy.
+- **Statuses:** valid evidence of an empty evaluation partition → NOT_ASSESSED with reason `empty_evaluation`; zero declared folds → NOT_ASSESSED `not_executed`; missing or corrupt split evidence → ERROR; PASS only when every declared evaluation fold is nonempty. An independent valid FAIL still determines `VIOLATION_FOUND`.
+- **Versioning:** policy `policy-v1.1` → `policy-v1.2`. All T-01 fixtures truthfully declare nonempty evaluation folds and were not changed.
+- **Same review, also fixed:** with the repeated unit and the group on the same column, route B of `split.repeated_measures_rule` no longer raises. The two semantic roles are kept while physical column selection is deduplicated; policy-v1.1 semantics are unchanged.
+

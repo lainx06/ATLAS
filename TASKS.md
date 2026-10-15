@@ -10,7 +10,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
-| T-01 | 9 | Codex review 1 → repair 1 → verification (5 blockers) → repair 2 → verification (1 regression) → targeted fix → containment probe → repeated-measures repair under policy-v1.1 (base `6348767`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-01 | 9 | Codex review 1 → repair 1 → verification (5 blockers) → repair 2 → verification (1 regression) → targeted fix → containment probe → repeated-measures repair (v1.1) → rm-v11 review → same-column fix and evaluation-fold prerequisite (v1.2; base `58e4dee`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
@@ -53,12 +53,12 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 
   **Scope:**
   - Claim type `unseen_group` only.
-  - Policy `policy-v1` is loaded in full. These assertions are implemented: `split.no_row_overlap`, `split.no_shared_source_observation`, `split.no_group_overlap`, `split.sampling_unit_disjoint`, `split.repeated_measures_rule` (unit/group/containment rules only), `fit.state_dependencies_within_fold_train`, `fit.coverage_complete`, `metric.prediction_ids_match_eval_ids`.
+  - Policy `policy-v1` is loaded in full (now `policy-v1.2`). These assertions are implemented: `split.evaluation_folds_nonempty` (added in v1.2), `split.no_row_overlap`, `split.no_shared_source_observation`, `split.no_group_overlap`, `split.sampling_unit_disjoint`, `split.repeated_measures_rule` (unit/group/containment rules only), `fit.state_dependencies_within_fold_train`, `fit.coverage_complete`, `metric.prediction_ids_match_eval_ids`.
   - Also in scope: the bounded supported path and recorder (SPEC §4); scheduling and materialization of every other applicable required assertion as NOT_ASSESSED with a reason (SPEC §6); outcome derivation; evidence JSON (SPEC §7).
 - **Fixture declarations:** truthful, never trimmed to reach an outcome.
   - Base fixtures: claim `unseen_group`; `group_id` = `unit_id` = subject; `sampling_unit` = subject; dependence `repeated_measures(subject_id)` and `repeated_measures(session_id)` (sessions nested in subjects); `observation_id` declared.
   - The generator writes non-overlapping window rows, so `overlapping_windows` is not declared on base fixtures.
-  - For the base declarations, the full required set is exactly the eight implemented assertions. So a clean base fixture may reach `NO_VIOLATION_FOUND` only if all eight are implemented and pass.
+  - For the base declarations, the full required set is exactly the implemented assertions: eight under policy-v1, nine under policy-v1.2 with `split.evaluation_folds_nonempty`. So a clean base fixture may reach `NO_VIOLATION_FOUND` only if all of them are implemented and pass.
 - **ACCEPTANCE:** expected assertion statuses per scenario. These are **planned tests**; nothing is passing until they run.
 
   Columns: RO `no_row_overlap`, SO `no_shared_source_observation`, GO `no_group_overlap`, SU `sampling_unit_disjoint`, RM `repeated_measures_rule`, SD `state_dependencies_within_fold_train`, CC `coverage_complete`, PI `prediction_ids_match_eval_ids`. NA(reason) = NOT_ASSESSED with that reason.
@@ -85,6 +85,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   Further acceptance points:
   - Every assertion records which artifacts it depends on. A broken artifact makes exactly its dependent assertions ERROR (9a, 9b), and leaves independent valid results intact.
   - Every run lists every applicable required assertion; none is omitted.
+  - policy-v1.2: `split.evaluation_folds_nonempty` is PASS in every executed scenario (1–7, 10a–10c; 9a/9b keep valid split evidence). The fixtures truthfully declare nonempty evaluation folds.
   - NOT_ASSESSED always carries its reason, and no FAIL is invented from unknown ancestry.
   - **Mutation check** (each mutation applied to a copy, then restored; each must make at least one scenario test fail):
     - (m1) the dependency check uses the fold where a state was *fitted* instead of where it was *used*. Planned as "caught by 5a", but that was wrong: under m1, 5a still FAILs, because its classifier is refit in the use fold on the reused selector's output and the dependency propagates. It is caught by the added test `test_whole_model_fitted_in_one_fold_and_reused_to_predict_another_fails`;
@@ -247,6 +248,36 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Remaining limitations:**
     - No mutation targets the new route logic itself; it is covered by the focused tests.
     - Empty-participation handling was changed only for `split.repeated_measures_rule`. The other split assertions can still PASS a fold with no participating rows; this is outside this repair's scope and is noted for review.
+    - Otherwise unchanged from repair pass 2.
+- **CODEX rm-v11 REVIEW: two bounded corrections (Claude Code, Opus 5.5 high):**
+  - **Evidence (preserved unchanged):** `runs/review-t01-rm-v11/targeted.py` (sha256 `5aab69f4…69ea`), `targeted-results.json` (`69263ba8…7981`). The script was not re-run.
+  - **Checkpoints:** base `58e4dee`; head = the local commit "Same-column route B and evaluation-fold prerequisite (policy-v1.2)" (parent `58e4dee`).
+  - **1. Identical repeated-unit/group column.**
+    - *Finding:* `group_equals_repeated_row` and `group_equals_repeated_session` raised `ValueError("Grouper for 'subject_id' not 1-dimensional")`.
+    - *Cause:* `_contained_group_facts` selected `table[[col, group]]` four times (participating rows, per-fold parts, train, eval). With both roles on `subject_id`, that produced duplicate physical columns, breaking `groupby` and the per-column `isna`/`astype` calls.
+    - *Fix:* one role-preserving selector `_roles()` builds a frame with fixed `unit` and `group` columns from two separately selected Series; all four selections use it. Policy-v1.1 semantics are unchanged: a shared column maps each unit to itself.
+    - *Regressions (row and session sampling, 10 cases):* complete disjoint → PASS; known overlap → FAIL with witness; all missing → NOT_ASSESSED `missing_metadata`; partial missing with a witness → FAIL (missing counts disclosed); partial missing without a witness → NOT_ASSESSED `missing_metadata`. All raised at base.
+  - **2. Empty-evaluation policy gap (lead-approved; DECISIONS.md, SPEC §5/§6).**
+    - *Finding:* `empty_eval_evaluator_boundary` reached `NO_VIOLATION_FOUND` with every assertion PASSing over empty evaluation partitions.
+    - *Fix:* a new required assertion `split.evaluation_folds_nonempty` for every claim type, computed in `split_assertions` and therefore enforced by the deterministic evaluator through the versioned policy, with reason `empty_evaluation`. Policy `policy-v1.1` → `policy-v1.2`.
+    - *Regressions:*
+      - zero evaluation rows → NOT_ASSESSED `empty_evaluation`;
+      - mixed empty and nonempty folds → NOT_ASSESSED, `INCONCLUSIVE`;
+      - an independent valid FAIL is preserved → `VIOLATION_FOUND`;
+      - all nonempty → PASS;
+      - zero folds → `not_executed`;
+      - invalid evidence → ERROR;
+      - required for every claim type;
+      - through `evaluate()` on recorded evidence altered and rehashed to empty evaluation partitions (Codex's boundary input) → `INCONCLUSIVE`. At base this gave `NO_VIOLATION_FOUND` under policy-v1.1.
+    - *Reference updates:* required-set expectations (eight → nine) and the policy-version string (`policy-v1.2`). No test was weakened and no fixture changed. A new scenario test confirms the prerequisite is PASS for every executed fixture.
+  - **Results actually run:**
+    - focused (`test_split_integrity.py`, `test_policy.py`, `test_review_t01_repair.py`) → 80 passed;
+    - full T-01 suite → **165 passed**;
+    - `ruff check` → passed; `ruff format --check` → 59 files formatted.
+    - Mutation check (the required set changed): the unmutated baseline passes everything; m1, m2 and m3 are each CAUGHT, with no unrelated runtime-origin failures.
+  - **Remaining limitations:**
+    - The prerequisite covers evaluation partitions only; an empty *training* partition is not a separate assertion.
+    - Other assertions can still PASS vacuously on empty folds, though the run can no longer be `NO_VIOLATION_FOUND`.
     - Otherwise unchanged from repair pass 2.
 
 ### T-02 Independent metrics, conditional split rules, temporal checks

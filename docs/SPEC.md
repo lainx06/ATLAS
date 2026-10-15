@@ -127,7 +127,7 @@ Each check returns `CheckResult`:
 
 A missing field never passes. A check's status is the worst of its required assertions (FAIL > ERROR > NOT_ASSESSED > PASS), and every assertion stays visible.
 
-**Evaluation policy `policy-v1.1` (draft, post-review).** v1.1 (2026-10-14) clarifies `split.repeated_measures_rule` only (DECISIONS.md, "Repeated-measures policy clarification"); assertion IDs are unchanged. Runs record the version they were evaluated under.
+**Evaluation policy `policy-v1.2` (draft, post-review).** v1.1 (2026-10-14) clarified `split.repeated_measures_rule` (DECISIONS.md, "Repeated-measures policy clarification"). v1.2 (2026-10-14) adds the required prerequisite `split.evaluation_folds_nonempty` (DECISIONS.md, "Evaluation-fold prerequisite"). Runs record the version they were evaluated under.
 - R = required.
 - R† = required when `claim.sampling_unit` ≠ `row`.
 - R* = required when the claim declares the named dependence (or, for the metric row, declares reported metrics).
@@ -138,6 +138,7 @@ Applicability comes from the confirmed claim and declared dependence, **never** 
 
 | Assertion | same_population | unseen_group | future_time | Definition |
 | --- | --- | --- | --- | --- |
+| `split.evaluation_folds_nonempty` | R | R | R | Assessment prerequisite (v1.2): every declared evaluation fold contains at least one evaluation row. Valid evidence of an empty evaluation partition → NOT_ASSESSED `empty_evaluation`; zero declared folds → NOT_ASSESSED `not_executed`; missing or corrupt split evidence → ERROR; PASS only when every declared evaluation fold is nonempty. An independent valid FAIL still gives `VIOLATION_FOUND`. One row makes a fold assessable; it is not a claim of adequate sample size. |
 | `split.no_row_overlap` | R | R | R | No row ID is in both the train and eval partitions of a fold. |
 | `split.no_shared_source_observation` | R | R | R | Equal feature+target values identify **candidate** duplicates only. FAIL needs `observation_id` or `known_duplicates` evidence that a train row and an eval row are the same source observation. With identity declared, equal-valued rows with different IDs PASS (candidates reported). Without identity: no candidates → PASS, coverage "exact-value screen only"; unresolved candidates → NOT_ASSESSED `unresolved_duplicate_candidates`. |
 | `split.no_group_overlap` | — | R | — | No `group_id` value is in both partitions of a fold. Applies to `group_id`, `unit_id`, `observation_id` and repeated-measures units alike: each rule is judged over known values first; a participating row with a missing (null) value gives NOT_ASSESSED `missing_metadata` only when no violation is already established among known values, and unknown counts are disclosed alongside any FAIL. |
@@ -184,7 +185,8 @@ Notes:
 - `coverage_gap`;
 - `no_supported_rule`;
 - `no_declared_rule`;
-- `unresolved_duplicate_candidates`.
+- `unresolved_duplicate_candidates`;
+- `empty_evaluation` (v1.2: a declared evaluation fold has no evaluation rows).
 
 Invalid, missing or hash-mismatched evidence gives **ERROR**, not NOT_ASSESSED.
 

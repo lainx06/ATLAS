@@ -155,7 +155,7 @@ def test_missing_snapshot_reconstructs_the_required_set_without_crashing(tmp_pat
 
     assert result.outcome is Outcome.INCONCLUSIVE
     assert "reconstructed" in (result.reason or "")
-    assert len(result.assertions) == 8
+    assert len(result.assertions) == 9
 
 
 def test_unreconstructable_required_set_is_reported_and_replaces_a_stale_clean_outcome(

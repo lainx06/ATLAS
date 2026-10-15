@@ -10,6 +10,7 @@ import pandas as pd
 from atlas.contracts import AssertionResult, EvidenceRef, Manifest, Reason, Status
 
 ASSERTIONS = (
+    "split.evaluation_folds_nonempty",
     "split.no_row_overlap",
     "split.no_shared_source_observation",
     "split.no_group_overlap",
@@ -51,6 +52,7 @@ def split_assertions(
         }
 
     results = {
+        "split.evaluation_folds_nonempty": _evaluation_folds_nonempty(splits, evidence),
         "split.no_row_overlap": _row_overlap(splits, evidence),
         "split.no_shared_source_observation": _shared_observation(
             manifest, table, splits, evidence
@@ -107,6 +109,31 @@ def _unknown_identity(
         if n:
             found[s["fold"]] = n
     return found
+
+
+def _evaluation_folds_nonempty(
+    splits: list[dict], evidence: list[EvidenceRef]
+) -> AssertionResult:
+    """Assessment prerequisite (policy-v1.2): every declared evaluation fold has an evaluation row.
+
+    One row is not a claim of adequate sample size; it only makes the fold assessable.
+    """
+    empty = [s["fold"] for s in splits if not s["eval_ids"]]
+    observed = {"empty_evaluation_folds": empty, "folds": len(splits)}
+    if empty:
+        return AssertionResult(
+            assertion_id="split.evaluation_folds_nonempty",
+            status=Status.NOT_ASSESSED,
+            reason=Reason.EMPTY_EVALUATION,
+            observed=observed,
+            evidence=evidence,
+        )
+    return AssertionResult(
+        assertion_id="split.evaluation_folds_nonempty",
+        status=Status.PASS,
+        observed=observed,
+        evidence=evidence,
+    )
 
 
 def _row_overlap_by_fold(splits: list[dict]) -> dict[str, list]:
@@ -307,6 +334,18 @@ def _sampling_unit_facts(table: pd.DataFrame, splits: list[dict], col: str) -> d
     }
 
 
+def _roles(table: pd.DataFrame, ids: list[str], col: str, group: str) -> pd.DataFrame:
+    """The repeated-unit and group roles for `ids` as two named columns.
+
+    Each role is selected as its own Series, so both roles may reference the same physical
+    column (e.g. `subject_id`) without producing duplicate columns.
+    """
+    return pd.DataFrame(
+        {"unit": table.loc[ids, col], "group": table.loc[ids, group]},
+        index=pd.Index(ids, name=table.index.name),
+    )
+
+
 def _contained_group_facts(
     table: pd.DataFrame, splits: list[dict], col: str, group: str
 ) -> dict:
@@ -317,9 +356,9 @@ def _contained_group_facts(
     identifiers known. Consistent known mappings can support a witness; they never establish
     complete containment while assignments are missing.
     """
-    rows = table.loc[_participating(splits), [col, group]]
+    rows = _roles(table, _participating(splits), col, group)
     both = rows.dropna()
-    groups_of_unit = both.groupby(col)[group].unique()
+    groups_of_unit = both.groupby("unit")["group"].unique()
     contradictions = [
         {"unit_id": str(unit), "group_ids": _sorted_str(groups)}
         for unit, groups in groups_of_unit.items()
@@ -327,16 +366,16 @@ def _contained_group_facts(
     ]
     witnesses, missing_unit, missing_group = [], {}, {}
     for s in splits:
-        part = table.loc[[*s["train_ids"], *s["eval_ids"]], [col, group]]
-        if int(part[col].isna().sum()):
-            missing_unit[s["fold"]] = int(part[col].isna().sum())
-        if int(part[group].isna().sum()):
-            missing_group[s["fold"]] = int(part[group].isna().sum())
-        train = table.loc[s["train_ids"], [col, group]].dropna()
-        ev = table.loc[s["eval_ids"], [col, group]].dropna()
-        for g in _sorted_str(set(train[group]) & set(ev[group])):
-            tr_g = train[train[group].astype(str) == g]
-            ev_g = ev[ev[group].astype(str) == g]
+        part = _roles(table, [*s["train_ids"], *s["eval_ids"]], col, group)
+        if int(part["unit"].isna().sum()):
+            missing_unit[s["fold"]] = int(part["unit"].isna().sum())
+        if int(part["group"].isna().sum()):
+            missing_group[s["fold"]] = int(part["group"].isna().sum())
+        train = _roles(table, s["train_ids"], col, group).dropna()
+        ev = _roles(table, s["eval_ids"], col, group).dropna()
+        for g in _sorted_str(set(train["group"]) & set(ev["group"])):
+            tr_g = train[train["group"].astype(str) == g]
+            ev_g = ev[ev["group"].astype(str) == g]
             witnesses.append(
                 {
                     "kind": "group_separation",
@@ -344,8 +383,8 @@ def _contained_group_facts(
                     "group_id": g,
                     "train_row_ids": _sorted_str(tr_g.index),
                     "eval_row_ids": _sorted_str(ev_g.index),
-                    "train_unit_ids": _sorted_str(set(tr_g[col])),
-                    "eval_unit_ids": _sorted_str(set(ev_g[col])),
+                    "train_unit_ids": _sorted_str(set(tr_g["unit"])),
+                    "eval_unit_ids": _sorted_str(set(ev_g["unit"])),
                 }
             )
     return {

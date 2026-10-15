@@ -186,7 +186,7 @@ def test_evidence_files_are_written_and_hashed(tmp_path):
     assert "provenance.jsonl" in index["artifacts"]
     outcome = json.loads((run_dir / "outcome.json").read_text(encoding="utf-8"))
     assert outcome["outcome"] == "NO_VIOLATION_FOUND"
-    assert outcome["policy_version"] == "policy-v1.1"
+    assert outcome["policy_version"] == "policy-v1.2"
 
 
 def test_modified_fixture_is_refused_before_execution(tmp_path):
@@ -202,3 +202,16 @@ def test_modified_fixture_is_refused_before_execution(tmp_path):
     assert not (tmp_path / "runs").exists() or not any(
         (tmp_path / "runs").rglob("provenance.jsonl")
     )
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTED))
+def test_every_executed_scenario_has_nonempty_evaluation_folds(name, tmp_path):
+    """policy-v1.2 prerequisite: all T-01 fixtures truthfully declare nonempty evaluation folds."""
+    result = audit(FIXTURES / name, tmp_path).outcome
+
+    ef = next(
+        a
+        for a in result.assertions
+        if a.assertion_id == "split.evaluation_folds_nonempty"
+    )
+    assert ef.status is Status.PASS

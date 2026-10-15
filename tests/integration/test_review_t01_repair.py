@@ -294,3 +294,54 @@ def test_one_missing_group_never_yields_complete_containment_or_pass():
     assert rm.status is Status.NOT_ASSESSED
     assert rm.reason is Reason.MISSING_METADATA
     assert rm.observed["units"][0]["complete"] is False
+
+
+# --- rm-v11 'empty_eval_evaluator_boundary', through the deterministic evaluator -------------------
+
+
+def test_empty_evaluation_partitions_cannot_produce_a_clean_outcome(tmp_path):
+    """Recorded evidence altered (and rehashed) to empty evaluation partitions, as in Codex's
+    synthetic boundary input; this is not an executed empty-evaluation run."""
+    import pandas as pd
+
+    from atlas.reports import ids_sha256
+
+    run_dir = execute(CLEAN, tmp_path)
+    splits = json.loads((run_dir / "splits.json").read_text(encoding="utf-8"))
+    prov = run_dir / "provenance.jsonl"
+    events = [
+        json.loads(line) for line in prov.read_text(encoding="utf-8").splitlines()
+    ]
+    for s in splits:
+        old = set(s["eval_ids"])
+        s["eval_ids"] = []
+        for e in events:
+            if e.get("fold") == s["fold"] and e["type"] == "split":
+                e["eval_sha256"] = ids_sha256([])
+            if (
+                e.get("rows")
+                and set(e["rows"]).issubset(old)
+                and e["type"] in ("take", "use", "predictions")
+            ):
+                e["rows"] = []
+    for e in events:
+        if e["type"] == "predictions":
+            e["rows"] = []
+            path = run_dir / e["artifact"]
+            pd.DataFrame(
+                {"row_id": pd.Series(dtype=str), "y_pred": pd.Series(dtype=int)}
+            ).to_parquet(path, index=False)
+            e["artifact_sha256"] = sha256_file(path)
+            _rehash(run_dir, e["artifact"])
+    write_json(run_dir / "splits.json", splits)
+    prov.write_text("".join(json.dumps(e) + "\n" for e in events), encoding="utf-8")
+    _rehash(run_dir, "splits.json")
+    _rehash(run_dir, "provenance.jsonl")
+
+    result = evaluate(CLEAN, run_dir)
+
+    assert result.outcome is not Outcome.NO_VIOLATION_FOUND
+    assert result.outcome is Outcome.INCONCLUSIVE
+    ef = _by_id(result)["split.evaluation_folds_nonempty"]
+    assert ef.status is Status.NOT_ASSESSED
+    assert ef.reason is Reason.EMPTY_EVALUATION

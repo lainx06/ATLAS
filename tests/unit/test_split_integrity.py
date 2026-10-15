@@ -1,10 +1,11 @@
 """Split-integrity assertions on hand-built tables and splits (SPEC §5, F3, L2)."""
 
 import pandas as pd
+import pytest
 
 from atlas.checks.split_integrity import split_assertions
 from atlas.contracts import EvidenceRef, Manifest, Outcome, Reason, Status
-from atlas.policy import derive_outcome
+from atlas.policy import derive_outcome, required_assertions
 
 EVIDENCE = [EvidenceRef(artifact="splits.json", sha256="x")]
 
@@ -590,3 +591,157 @@ def test_multiple_declared_units_keep_a_valid_fail_and_disclose_incomplete_cover
         "subject": (Status.FAIL, None),
         "session": (Status.NOT_ASSESSED, Reason.MISSING_METADATA),
     }
+
+
+# --- Route B with the repeated unit and the group on the SAME column (rm-v11 'group_equals_repeated') -
+
+
+def _same_column_manifest(sampling):
+    """Repeated measures and group both reference `subject`; route B (unit is not the sampling unit)."""
+    return _manifest(
+        columns={"unit_id": None if sampling == "row" else "session"},
+        claim={
+            "sampling_unit": sampling,
+            "dependence": [{"kind": "repeated_measures", "column": "subject"}],
+        },
+    )
+
+
+@pytest.mark.parametrize("sampling", ["row", "session"])
+def test_same_column_complete_disjoint_values_pass(sampling):
+    rm = _rm(_same_column_manifest(sampling), _table(), GROUPED)
+
+    assert rm.status is Status.PASS
+    assert rm.observed["units"][0]["route"] == "contained_group"
+    assert rm.observed["units"][0]["mapping_contradictions"] == []
+
+
+@pytest.mark.parametrize("sampling", ["row", "session"])
+def test_same_column_known_overlap_fails_with_a_witness(sampling):
+    rm = _rm(_same_column_manifest(sampling), _table(), MIXED)
+
+    assert rm.status is Status.FAIL
+    witness = next(
+        w for w in rm.observed["units"][0]["witnesses"] if w["group_id"] == "A"
+    )
+    assert witness["train_unit_ids"] == ["A"] and witness["eval_unit_ids"] == ["A"]
+
+
+@pytest.mark.parametrize("sampling", ["row", "session"])
+def test_same_column_all_missing_is_not_assessed(sampling):
+    table = _table()
+    table["subject"] = None
+
+    rm = _rm(_same_column_manifest(sampling), table, MIXED)
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+
+
+@pytest.mark.parametrize("sampling", ["row", "session"])
+def test_same_column_partial_missing_with_a_witness_fails(sampling):
+    table = _table()
+    table.loc["r0", "subject"] = None
+
+    rm = _rm(_same_column_manifest(sampling), table, MIXED)
+
+    assert rm.status is Status.FAIL
+    assert rm.observed["units"][0]["rows_with_unknown_identity"] == {"f0": 1}
+    assert rm.observed["units"][0]["rows_missing_group"] == {"f0": 1}
+
+
+@pytest.mark.parametrize("sampling", ["row", "session"])
+def test_same_column_partial_missing_without_a_witness_is_not_assessed(sampling):
+    table = _table()
+    table.loc["r0", "subject"] = None
+
+    rm = _rm(_same_column_manifest(sampling), table, GROUPED)
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+
+
+# --- policy-v1.2: every declared evaluation fold must contain at least one evaluation row ----------
+
+EF = "split.evaluation_folds_nonempty"
+
+
+def test_zero_evaluation_rows_is_not_assessed_empty_evaluation():
+    splits = [
+        {
+            "fold": "f0",
+            "kind": "development_eval",
+            "train_ids": ["r0", "r1"],
+            "eval_ids": [],
+        }
+    ]
+
+    ef = _run(_manifest(), _table(), splits)[EF]
+
+    assert ef.status is Status.NOT_ASSESSED
+    assert ef.reason is Reason.EMPTY_EVALUATION
+    assert ef.observed["empty_evaluation_folds"] == ["f0"]
+
+
+def test_mix_of_empty_and_nonempty_evaluation_folds_is_not_assessed():
+    splits = [
+        GROUPED[0],
+        {"fold": "f1", "kind": "development_eval", "train_ids": ["r0"], "eval_ids": []},
+    ]
+
+    results = _run(_manifest(), _table(), splits)
+
+    assert results[EF].status is Status.NOT_ASSESSED
+    assert results[EF].reason is Reason.EMPTY_EVALUATION
+    assert results[EF].observed["empty_evaluation_folds"] == ["f1"]
+    assert _outcome_with_ef(results) is Outcome.INCONCLUSIVE
+
+
+def test_empty_evaluation_fold_does_not_hide_an_independent_valid_fail():
+    splits = [
+        MIXED[0],
+        {"fold": "f1", "kind": "development_eval", "train_ids": ["r0"], "eval_ids": []},
+    ]
+
+    results = _run(_manifest(), _table(), splits)
+
+    assert results[EF].status is Status.NOT_ASSESSED
+    assert results["split.no_group_overlap"].status is Status.FAIL
+    assert _outcome_with_ef(results) is Outcome.VIOLATION_FOUND
+
+
+def test_all_evaluation_folds_nonempty_passes():
+    assert _run(_manifest(), _table(), GROUPED)[EF].status is Status.PASS
+
+
+def test_zero_declared_folds_is_not_executed_for_the_prerequisite():
+    ef = _run(_manifest(), _table(), [])[EF]
+
+    assert ef.status is Status.NOT_ASSESSED
+    assert ef.reason is Reason.NOT_EXECUTED
+
+
+def test_invalid_split_evidence_makes_the_prerequisite_error():
+    ef = _run(_manifest(), _table(), GROUPED, valid=False)[EF]
+
+    assert ef.status is Status.ERROR
+
+
+def test_prerequisite_is_required_for_every_claim_type():
+    for claim_type in ("same_population", "unseen_group", "future_time"):
+        m = _manifest(
+            claim={"type": claim_type, "sampling_unit": "row", "dependence": []}
+        )
+        assert EF in required_assertions(m), claim_type
+
+
+def _outcome_with_ef(results):
+    required = [
+        "split.no_row_overlap",
+        "split.no_shared_source_observation",
+        "split.no_group_overlap",
+        "split.sampling_unit_disjoint",
+        "split.repeated_measures_rule",
+        EF,
+    ]
+    return derive_outcome([results[aid] for aid in required])

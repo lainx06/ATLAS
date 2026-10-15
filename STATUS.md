@@ -2,8 +2,8 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 9: Codex's containment probe showed `split.repeated_measures_rule` inheriting unsupported aggregate FAILs. The repeated-measures repair under the lead's policy-v1.1 clarification is complete and self-tested. **Awaiting Codex verification**; T-01 is not accepted. T-02 not started.
-CHECKPOINT: base `6348767`; head = local commit "Repeated measures: explicit routes and same-fold witnesses (policy-v1.1)" (parent `6348767`). Not pushed; no remote configured.
+CURRENT STEP: Start Here Step 9: two bounded corrections from Codex's rm-v11 review are complete and self-tested: same-column route B, and the evaluation-fold prerequisite (policy-v1.2). **Awaiting Codex verification**; T-01 is not accepted. T-02 not started.
+CHECKPOINT: base `58e4dee`; head = local commit "Same-column route B and evaluation-fold prerequisite (policy-v1.2)" (parent `58e4dee`). Not pushed; no remote configured.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -19,7 +19,8 @@ LAST UPDATED: 2026-10-14
 - Step 8: Gemini reviewed `handoffs/science-01.md` (preserved unchanged as the reviewed snapshot). The lead's dispositions are applied. Documentation and reference checks only; no tests exist.
 
 - **T-01 after repair pass 2 (self-tested; awaiting Codex verification):** deterministic audit of trusted synthetic fixtures (`benchmarks/t01/`).
-  - `uv run --locked pytest tests/unit tests/integration -q` → 135 passed (exit 0) under policy-v1.1 (122 after the all-null fix; 115 at repair pass 2).
+  - `uv run --locked pytest tests/unit tests/integration -q` → 165 passed (exit 0) under policy-v1.2 (135 under v1.1; 115 at repair pass 2).
+  - policy-v1.2 adds the required prerequisite `split.evaluation_folds_nonempty`; route B handles a shared unit/group column. Mutation check re-run (required set changed): baseline ALL PASS; m1/m2/m3 caught cleanly.
   - Repeated-measures repair (policy-v1.1): explicit sampling-unit and contained-group routes, same-fold witnesses, no inherited statuses. Mutation check re-run: baseline ALL PASS; m1/m2/m3 caught cleanly.
   - All-null repeated-measures fix: containment now requires positive evidence from known participating units. The mutation check was not re-run for this fix (no mutation target or script changed); its last run (repair pass 2) was clean.
   - `uv run --locked python scripts/mutation_check.py` → an unmutated temporary copy passes the full suite; m1/m2/m3 each caught with no unrelated runtime-origin failures (exit 0). The log is in `runs/mutation_check.log` (git-ignored). Repair pass 1's "3/3" had hidden an unrelated runtime-origin failure in every mutation run; that is now fixed and guarded.
@@ -57,7 +58,7 @@ LAST UPDATED: 2026-10-14
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
 ## Next task
-1. **The same local Codex session verifies the repeated-measures repair:** the delta `6348767..` against `runs/review-t01-containment/` (not re-run in place) and the lead's policy-v1.1 clarification.
+1. **The same local Codex session verifies the two corrections:** the delta `58e4dee..` against `runs/review-t01-rm-v11/` (not re-run in place), the same-column cases and the evaluation-fold prerequisite.
 2. If verified, the lead records T-01 acceptance. Otherwise Claude repairs the confirmed findings. These five blockers have now had their targeted repair, so any that recurs stops for diagnosis rather than another blind retry. Do not start T-02 before acceptance.
 
 ## Unresolved questions

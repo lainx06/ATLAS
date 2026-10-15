@@ -32,6 +32,7 @@ class Reason(StrEnum):
     NO_SUPPORTED_RULE = "no_supported_rule"
     NO_DECLARED_RULE = "no_declared_rule"
     UNRESOLVED_DUPLICATE_CANDIDATES = "unresolved_duplicate_candidates"
+    EMPTY_EVALUATION = "empty_evaluation"
     EVIDENCE_INVALID = "evidence_invalid"
 
 

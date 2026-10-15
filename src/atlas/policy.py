@@ -6,13 +6,15 @@ from atlas.contracts import AssertionResult, Manifest, Outcome, Reason, Status
 
 # v1.1 (2026-10-14): split.repeated_measures_rule clarified (explicit routes, same-fold
 # witnesses, no inherited aggregate statuses). Assertion IDs unchanged.
-POLICY_VERSION = "policy-v1.1"
+# v1.2 (2026-10-14): adds split.evaluation_folds_nonempty, required for every claim type.
+POLICY_VERSION = "policy-v1.2"
 SUPPORTED_CLAIM_TYPES = ("same_population", "unseen_group", "future_time")
 
 # Assertions that this build computes. Every other required assertion is materialized as
 # NOT_ASSESSED(unimplemented_assertion); none is dropped (F1, T-01).
 IMPLEMENTED = frozenset(
     {
+        "split.evaluation_folds_nonempty",
         "split.no_row_overlap",
         "split.no_shared_source_observation",
         "split.no_group_overlap",
@@ -38,6 +40,7 @@ def required_assertions(manifest: Manifest) -> list[str]:
     claim_type = manifest.claim.type
     kinds = manifest.dependence_kinds()
     required = [
+        "split.evaluation_folds_nonempty",
         "split.no_row_overlap",
         "split.no_shared_source_observation",
     ]

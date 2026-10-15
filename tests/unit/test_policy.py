@@ -43,10 +43,11 @@ def _result(aid, status, reason=None, valid=True):
     )
 
 
-def test_unseen_group_subject_unit_with_repeated_measures_requires_eight_assertions():
+def test_unseen_group_subject_unit_with_repeated_measures_requires_nine_assertions():
     required = required_assertions(_manifest())
 
     assert set(required) == {
+        "split.evaluation_folds_nonempty",
         "split.no_row_overlap",
         "split.no_shared_source_observation",
         "split.no_group_overlap",
