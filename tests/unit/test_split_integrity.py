@@ -141,7 +141,9 @@ def test_repeated_measures_nested_in_groups_follows_group_overlap():
 
     rm = results["split.repeated_measures_rule"]
     assert rm.status is Status.FAIL
-    assert "split.no_group_overlap" in rm.depends_on
+    assert rm.observed["units"][0]["route"] == "contained_group"
+    assert rm.observed["units"][0]["witnesses"]
+    assert rm.depends_on == []  # computed from its own witnesses, never inherited
 
 
 def test_repeated_measures_not_contained_in_groups_has_no_supported_rule():
@@ -292,7 +294,8 @@ def test_repeated_measures_rule_keeps_a_known_violation_despite_a_null_unit_valu
 
     assert rm.status is Status.FAIL
     assert rm.observed["units"][0]["rows_with_unknown_identity"] == {"f0": 1}
-    assert "split.sampling_unit_disjoint" in rm.depends_on
+    assert rm.observed["units"][0]["route"] == "sampling_unit"
+    assert rm.observed["units"][0]["witnesses"]
 
 
 def test_nested_unit_with_a_null_value_follows_a_known_group_violation():
@@ -374,7 +377,8 @@ def test_partially_null_nested_unit_still_follows_a_demonstrated_group_violation
 
     rm = results["split.repeated_measures_rule"]
     assert rm.status is Status.FAIL
-    assert rm.depends_on == ["split.no_group_overlap"]
+    assert rm.observed["units"][0]["route"] == "contained_group"
+    assert rm.observed["units"][0]["witnesses"]
     assert rm.observed["units"][0]["rows_with_unknown_identity"] == {"f0": 2}
     assert _outcome(results) is Outcome.VIOLATION_FOUND
 
@@ -384,7 +388,8 @@ def test_complete_nested_unit_on_a_grouped_split_passes():
 
     rm = results["split.repeated_measures_rule"]
     assert rm.status is Status.PASS
-    assert rm.depends_on == ["split.no_group_overlap"]
+    assert rm.observed["units"][0]["route"] == "contained_group"
+    assert rm.observed["units"][0]["complete"] is True
     assert _outcome(results) is Outcome.NO_VIOLATION_FOUND
 
 
@@ -415,3 +420,173 @@ def test_nested_unit_whose_group_values_are_all_unknown_does_not_establish_conta
 
     assert rm.status is Status.NOT_ASSESSED
     assert rm.reason is Reason.MISSING_METADATA
+
+
+# --- policy-v1.1: explicit routes and witnesses for repeated measures ------------------------------
+
+
+def _rm(manifest, table, splits):
+    return _run(manifest, table, splits)["split.repeated_measures_rule"]
+
+
+def test_overlap_only_through_unknown_unit_rows_has_no_witness():
+    """Codex containment probe 'partly_null_unrelated_overlap' (unit level)."""
+    table = _table()
+    table["session"] = None
+    table.loc[["r0", "r1"], "session"] = (
+        "A1"  # known sessions only for subject A in train
+    )
+    table.loc[["r6", "r7"], "session"] = "B2"  # and subject B in eval
+    splits = [
+        {
+            "fold": "f0",
+            "kind": "development_eval",
+            "train_ids": ["r0", "r1", "r4", "r5"],
+            "eval_ids": ["r2", "r3", "r6", "r7"],
+        }
+    ]
+
+    results = _run(_manifest(claim=SESSION_RM), table, splits)
+
+    rm = results["split.repeated_measures_rule"]
+    assert (
+        results["split.no_group_overlap"].status is Status.FAIL
+    )  # via unknown-session rows
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+    assert rm.observed["units"][0]["witnesses"] == []
+    assert _outcome(results) is Outcome.VIOLATION_FOUND
+
+
+def test_group_overlap_with_different_session_ids_is_a_group_separation_witness():
+    rm = _rm(_manifest(claim=SESSION_RM), _table(), MIXED)
+
+    assert rm.status is Status.FAIL
+    witness = next(
+        w for w in rm.observed["units"][0]["witnesses"] if w["group_id"] == "A"
+    )
+    assert witness["kind"] == "group_separation"
+    assert witness["fold"] == "f0"
+    assert witness["train_row_ids"] == ["r0", "r1"]
+    assert witness["eval_row_ids"] == ["r2", "r3"]
+    assert witness["train_unit_ids"] == ["A1"]
+    assert witness["eval_unit_ids"] == [
+        "A2"
+    ]  # different sessions: not same-session overlap
+
+
+def test_known_plus_missing_group_assignments_with_a_valid_witness_fail():
+    table = _table()
+    table.loc["r0", "subject"] = None
+
+    rm = _rm(_manifest(claim=SESSION_RM), table, MIXED)
+
+    assert rm.status is Status.FAIL
+    assert rm.observed["units"][0]["rows_missing_group"] == {"f0": 1}
+    assert rm.observed["units"][0]["complete"] is False
+
+
+def test_known_plus_missing_group_assignments_without_a_witness_are_not_assessed():
+    table = _table()
+    table.loc["r0", "subject"] = None
+
+    rm = _rm(_manifest(claim=SESSION_RM), table, GROUPED)
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+
+
+def test_complete_overlapping_sampling_units_fail_with_unit_witnesses():
+    rm = _rm(_manifest(), _table(), MIXED)
+
+    assert rm.status is Status.FAIL
+    unit = rm.observed["units"][0]
+    assert unit["route"] == "sampling_unit"
+    assert {w["unit_id"] for w in unit["witnesses"]} == {"A", "B"}
+    assert all(w["kind"] == "sampling_unit_overlap" for w in unit["witnesses"])
+
+
+def test_complete_disjoint_sampling_units_pass():
+    rm = _rm(_manifest(), _table(), GROUPED)
+
+    assert rm.status is Status.PASS
+    assert rm.observed["units"][0]["complete"] is True
+
+
+def test_empty_participation_is_not_executed_never_pass():
+    splits = [
+        {"fold": "f0", "kind": "development_eval", "train_ids": [], "eval_ids": []}
+    ]
+
+    rm = _rm(_manifest(claim=SESSION_RM), _table(), splits)
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.NOT_EXECUTED
+
+
+def test_cross_fold_only_overlap_is_not_combined_into_a_witness():
+    splits = [
+        {
+            "fold": "f0",
+            "kind": "development_eval",
+            "train_ids": ["r0", "r1", "r2", "r3"],
+            "eval_ids": ["r4", "r5", "r6", "r7"],
+        },
+        {
+            "fold": "f1",
+            "kind": "development_eval",
+            "train_ids": ["r4", "r5", "r6", "r7"],
+            "eval_ids": ["r0", "r1", "r2", "r3"],
+        },
+    ]
+
+    for manifest in (_manifest(), _manifest(claim=SESSION_RM)):
+        rm = _rm(manifest, _table(), splits)
+        assert rm.status is Status.PASS
+        assert rm.observed["units"][0]["witnesses"] == []
+
+
+def test_observed_multi_group_mapping_blocks_the_contained_group_route_even_with_a_witness():
+    table = _table()
+    table.loc["r4", "session"] = "A1"  # session A1 now observed in subjects A and B
+
+    rm = _rm(_manifest(claim=SESSION_RM), table, MIXED)
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.NO_SUPPORTED_RULE
+    assert rm.observed["units"][0]["mapping_contradictions"] == [
+        {"unit_id": "A1", "group_ids": ["A", "B"]}
+    ]
+
+
+def test_sampling_unit_route_does_not_need_group_assignments():
+    table = _table()
+    table["site"] = None  # declared group column, entirely unknown
+    manifest = _manifest(columns={"group_id": "site"})
+
+    assert _rm(manifest, table, MIXED).status is Status.FAIL
+    passing = _rm(manifest, table, GROUPED)
+    assert passing.status is Status.PASS
+    assert passing.observed["units"][0]["route"] == "sampling_unit"
+
+
+def test_multiple_declared_units_keep_a_valid_fail_and_disclose_incomplete_coverage():
+    table = _table()
+    table["session"] = None
+    m = _manifest(
+        claim={
+            "dependence": [
+                {"kind": "repeated_measures", "column": "subject"},
+                {"kind": "repeated_measures", "column": "session"},
+            ]
+        }
+    )
+
+    rm = _rm(m, table, MIXED)
+
+    assert rm.status is Status.FAIL
+    statuses = {u["column"]: (u["status"], u["reason"]) for u in rm.observed["units"]}
+    assert statuses == {
+        "subject": (Status.FAIL, None),
+        "session": (Status.NOT_ASSESSED, Reason.MISSING_METADATA),
+    }

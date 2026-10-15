@@ -146,3 +146,13 @@ Gemini reviewed `handoffs/science-01.md` (commit `698ffd8`; preserved unchanged 
   - Added: `split.sampling_unit_disjoint`, `split.repeated_measures_rule`, `split.class_support` (descriptive).
   - The five-check product scope is unchanged.
 
+## 2026-10-14 — Repeated-measures policy clarification (policy-v1.1; T-01 review)
+Lead decision, accepted after Codex's containment probe (`runs/review-t01-containment/`) showed `split.repeated_measures_rule` FAILing by inheriting an aggregate group FAIL that only unknown-session rows supported.
+- **Scope:** containment is assessed over rows participating in the declared folds.
+- **Known mappings:** consistent known mappings may support a same-fold group-overlap witness for FAIL, but never establish complete containment when assignments are missing. Both witness rows must have known repeated-unit and group IDs. An observed mapping contradiction prevents the contained-group route; missing assignments alone don't erase an otherwise supported witness.
+- **Route A, sampling unit:** when the repeated unit is the declared independent sampling unit, its known train/eval overlap is computed within each fold; group assignments are not required.
+- **Route B, contained group** (`unseen_group`): a unit observed in several groups → NOT_ASSESSED `no_supported_rule`; otherwise group intersections within each fold from rows with both identifiers known, preserving row, unit and group IDs and the fold.
+- **Statuses, either route:** a supported witness → FAIL, with missing counts disclosed; no witness plus missing assignments → NOT_ASSESSED `missing_metadata`; PASS needs a nonempty, complete, supported assessment; no folds or no participating rows → NOT_ASSESSED `not_executed`; invalid evidence → ERROR. Identities are never combined across folds. Multiple declared units aggregate without hiding valid FAILs or incomplete coverage.
+- **No inheritance:** aggregate group/unit statuses are never substitutes for witnesses. A group-separation witness is not labeled same-session overlap or label leakage.
+- **Versioning:** policy `policy-v1` → `policy-v1.1` (assertion IDs unchanged), per SPEC §5's rule that policy changes are versioned code changes.
+

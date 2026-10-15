@@ -4,7 +4,9 @@ from typing import Any
 
 from atlas.contracts import AssertionResult, Manifest, Outcome, Reason, Status
 
-POLICY_VERSION = "policy-v1"
+# v1.1 (2026-10-14): split.repeated_measures_rule clarified (explicit routes, same-fold
+# witnesses, no inherited aggregate statuses). Assertion IDs unchanged.
+POLICY_VERSION = "policy-v1.1"
 SUPPORTED_CLAIM_TYPES = ("same_population", "unseen_group", "future_time")
 
 # Assertions that this build computes. Every other required assertion is materialized as

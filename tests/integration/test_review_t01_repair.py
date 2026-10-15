@@ -217,3 +217,80 @@ def test_all_null_session_ids_with_shared_subjects_mirror_of_codex_reproduction(
     assert (
         derive_outcome([results[a] for a in split_required]) is Outcome.VIOLATION_FOUND
     )
+
+
+# --- Codex containment probe (runs/review-t01-containment/probe.py) ---------------------------------
+
+
+def _session_only_manifest():
+    manifest = Manifest.model_validate_json(
+        (CLEAN / "atlas_manifest.json").read_text(encoding="utf-8")
+    )
+    manifest.claim.dependence = [
+        d for d in manifest.claim.dependence if d.column == "session_id"
+    ]
+    return manifest
+
+
+def test_partly_null_unrelated_overlap_mirror_of_codex_containment_probe():
+    """Known sessions only in disjoint groups across partitions; overlap only via unknown sessions."""
+    manifest = _session_only_manifest()
+    base = read_table(CLEAN, manifest)
+    ids = list(base.index)
+    mixed = [
+        {
+            "fold": "mixed",
+            "kind": "development_eval",
+            "train_ids": ids[::2],
+            "eval_ids": ids[1::2],
+        }
+    ]
+    table = base.copy()
+    table["session_id"] = None
+    known_train = [
+        r for r in mixed[0]["train_ids"] if base.loc[r, "subject_id"] == "S01"
+    ]
+    known_eval = [r for r in mixed[0]["eval_ids"] if base.loc[r, "subject_id"] == "S02"]
+    known = known_train + known_eval
+    table.loc[known, "session_id"] = base.loc[known, "session_id"]
+
+    results = split_assertions(manifest, table, mixed, [])
+
+    rm = results["split.repeated_measures_rule"]
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+    assert rm.observed["units"][0]["witnesses"] == []
+    split_required = [
+        a for a in required_assertions(manifest) if a.startswith("split.")
+    ]
+    assert (
+        derive_outcome([results[a] for a in split_required]) is Outcome.VIOLATION_FOUND
+    )
+
+
+def test_one_missing_group_never_yields_complete_containment_or_pass():
+    """Codex boundary 'one_unknown_group_with_known_group_for_same_unit' on grouped folds."""
+    manifest = _session_only_manifest()
+    table = read_table(CLEAN, manifest)
+    run_dir_splits = []
+    subjects = sorted(table["subject_id"].unique())
+    for k, ev_subjects in enumerate([subjects[:4], subjects[4:]]):
+        ev = list(table.index[table["subject_id"].isin(ev_subjects)])
+        tr = [r for r in table.index if r not in set(ev)]
+        run_dir_splits.append(
+            {
+                "fold": f"fold{k}",
+                "kind": "development_eval",
+                "train_ids": tr,
+                "eval_ids": ev,
+            }
+        )
+    table.loc[table.index[0], "subject_id"] = None
+
+    rm = split_assertions(manifest, table, run_dir_splits, [])[
+        "split.repeated_measures_rule"
+    ]
+
+    assert rm.status is Status.NOT_ASSESSED
+    assert rm.reason is Reason.MISSING_METADATA
+    assert rm.observed["units"][0]["complete"] is False

@@ -74,7 +74,7 @@ def split_assertions(
         evidence,
     )
     results["split.repeated_measures_rule"] = _repeated_measures(
-        manifest, table, splits, results, evidence
+        manifest, table, splits, evidence
     )
     return results
 
@@ -262,131 +262,189 @@ def _shared_observation(
     )
 
 
-def _containment(table: pd.DataFrame, splits: list[dict], col: str, group: str) -> str:
-    """Whether known, participating units of `col` are shown to lie within single groups.
-
-    Returns "contained" only with positive evidence: at least one known participating unit,
-    and every known unit has at least one known group and no more than one. An empty table or
-    a NaN aggregate is never evidence of containment.
-    """
-    participating = list(
+def _participating(splits: list[dict]) -> list[str]:
+    return list(
         dict.fromkeys(r for s in splits for r in [*s["train_ids"], *s["eval_ids"]])
     )
-    known = table.loc[participating].dropna(subset=[col])
-    if known.empty:
-        return "no_evidence"
-    groups_per_unit = known.groupby(col)[group].nunique()
-    if (
-        groups_per_unit.empty
-        or groups_per_unit.isna().any()
-        or (groups_per_unit < 1).any()
-    ):
-        return "no_evidence"
-    return "spans_groups" if (groups_per_unit > 1).any() else "contained"
+
+
+def _sorted_str(values) -> list[str]:
+    return sorted(map(str, values))
+
+
+def _sampling_unit_facts(table: pd.DataFrame, splits: list[dict], col: str) -> dict:
+    """Route A: the repeated unit is the declared independent sampling unit.
+
+    Known train/evaluation overlap is computed separately within each fold; group assignments
+    are not needed.
+    """
+    witnesses, missing = [], {}
+    for s in splits:
+        train, ev = table.loc[s["train_ids"], col], table.loc[s["eval_ids"], col]
+        n_missing = int(train.isna().sum() + ev.isna().sum())
+        if n_missing:
+            missing[s["fold"]] = n_missing
+        train, ev = train.dropna(), ev.dropna()
+        for unit in _sorted_str(set(train) & set(ev)):
+            witnesses.append(
+                {
+                    "kind": "sampling_unit_overlap",
+                    "fold": s["fold"],
+                    "unit_id": unit,
+                    "train_row_ids": _sorted_str(
+                        train.index[train.astype(str) == unit]
+                    ),
+                    "eval_row_ids": _sorted_str(ev.index[ev.astype(str) == unit]),
+                }
+            )
+    return {
+        "route": "sampling_unit",
+        "participating_rows": len(_participating(splits)),
+        "rows_with_unknown_identity": missing,
+        "mapping_contradictions": [],
+        "witnesses": witnesses,
+        "complete": not missing,
+    }
+
+
+def _contained_group_facts(
+    table: pd.DataFrame, splits: list[dict], col: str, group: str
+) -> dict:
+    """Route B (unseen_group): repeated units contained in groups.
+
+    Facts over participating rows: observed unit->group mapping contradictions, missing unit and
+    group assignments, and same-fold group-separation witnesses built only from rows with BOTH
+    identifiers known. Consistent known mappings can support a witness; they never establish
+    complete containment while assignments are missing.
+    """
+    rows = table.loc[_participating(splits), [col, group]]
+    both = rows.dropna()
+    groups_of_unit = both.groupby(col)[group].unique()
+    contradictions = [
+        {"unit_id": str(unit), "group_ids": _sorted_str(groups)}
+        for unit, groups in groups_of_unit.items()
+        if len(groups) > 1
+    ]
+    witnesses, missing_unit, missing_group = [], {}, {}
+    for s in splits:
+        part = table.loc[[*s["train_ids"], *s["eval_ids"]], [col, group]]
+        if int(part[col].isna().sum()):
+            missing_unit[s["fold"]] = int(part[col].isna().sum())
+        if int(part[group].isna().sum()):
+            missing_group[s["fold"]] = int(part[group].isna().sum())
+        train = table.loc[s["train_ids"], [col, group]].dropna()
+        ev = table.loc[s["eval_ids"], [col, group]].dropna()
+        for g in _sorted_str(set(train[group]) & set(ev[group])):
+            tr_g = train[train[group].astype(str) == g]
+            ev_g = ev[ev[group].astype(str) == g]
+            witnesses.append(
+                {
+                    "kind": "group_separation",
+                    "fold": s["fold"],
+                    "group_id": g,
+                    "train_row_ids": _sorted_str(tr_g.index),
+                    "eval_row_ids": _sorted_str(ev_g.index),
+                    "train_unit_ids": _sorted_str(set(tr_g[col])),
+                    "eval_unit_ids": _sorted_str(set(ev_g[col])),
+                }
+            )
+    return {
+        "route": "contained_group",
+        "participating_rows": len(rows),
+        "rows_with_unknown_identity": missing_unit,
+        "rows_missing_group": missing_group,
+        "mapping_contradictions": contradictions,
+        "witnesses": witnesses,
+        "complete": not missing_unit and not missing_group,
+        "note": "A group-separation witness shows a group crossing partitions; it is not "
+        "same-unit overlap and not label leakage.",
+    }
+
+
+def _route_status(facts: dict) -> tuple[Status, Reason | None]:
+    if facts["participating_rows"] == 0:
+        return Status.NOT_ASSESSED, Reason.NOT_EXECUTED
+    if facts["mapping_contradictions"]:
+        return Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE
+    if facts["witnesses"]:
+        return Status.FAIL, None  # missing counts stay disclosed in the facts
+    if not facts["complete"]:
+        return Status.NOT_ASSESSED, Reason.MISSING_METADATA
+    return Status.PASS, None
 
 
 def _repeated_measures(
     manifest: Manifest,
     table: pd.DataFrame,
     splits: list[dict],
-    results: dict[str, AssertionResult],
     evidence: list[EvidenceRef],
 ) -> AssertionResult:
-    """Assess each declared repeated-measures unit only through a supported rule (F3).
-
-    The rule is judged over known values first. Unknown (null) unit values on participating rows
-    are disclosed per unit and give NOT_ASSESSED only when no violation is already established
-    among known identities.
+    """Assess each declared repeated-measures unit through an explicit supported route
+    (policy-v1.1). Results are computed from the route's own same-fold witnesses and facts;
+    aggregate group/unit statuses are never inherited.
     """
     aid = "split.repeated_measures_rule"
     cols = manifest.columns
-    per_unit = []  # (column, status, reason, followed assertion, unknown rows per fold)
+    units = []
     for dep in manifest.claim.dependence:
         if dep.kind != "repeated_measures":
             continue
         col = dep.column
         if col is None or col not in table.columns:
-            per_unit.append(
-                (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None, {})
+            units.append(
+                {
+                    "column": col,
+                    "route": None,
+                    "status": Status.NOT_ASSESSED,
+                    "reason": Reason.MISSING_METADATA,
+                }
             )
             continue
-        unknown = _unknown_identity(col, table, splits)
-        if cols.unit_id is not None and col == cols.unit_id:
-            # The sampling-unit assertion judges this same column, nulls included.
-            follow = results["split.sampling_unit_disjoint"]
-            per_unit.append(
-                (
-                    col,
-                    follow.status,
-                    follow.reason,
-                    "split.sampling_unit_disjoint",
-                    unknown,
-                )
-            )
+        if (
+            cols.unit_id is not None
+            and col == cols.unit_id
+            and manifest.claim.sampling_unit != "row"
+        ):
+            facts = _sampling_unit_facts(table, splits, col)
         elif manifest.claim.type == "unseen_group":
             group = cols.group_id
             if group is None or group not in table.columns:
-                per_unit.append(
-                    (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None, unknown)
+                units.append(
+                    {
+                        "column": col,
+                        "route": "contained_group",
+                        "status": Status.NOT_ASSESSED,
+                        "reason": Reason.MISSING_METADATA,
+                    }
                 )
                 continue
-            containment = _containment(table, splits, col, group)
-            if containment == "spans_groups":
-                per_unit.append(
-                    (col, Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE, None, unknown)
-                )
-                continue
-            if containment == "no_evidence":
-                # No known participating unit (or no known group for one): nothing to inherit.
-                per_unit.append(
-                    (col, Status.NOT_ASSESSED, Reason.MISSING_METADATA, None, unknown)
-                )
-                continue
-            # Containment among known units is shown from the table: follow group disjointness.
-            follow = results["split.no_group_overlap"]
-            if follow.status is Status.FAIL or not unknown:
-                per_unit.append(
-                    (
-                        col,
-                        follow.status,
-                        follow.reason,
-                        "split.no_group_overlap",
-                        unknown,
-                    )
-                )
-            else:
-                per_unit.append(
-                    (
-                        col,
-                        Status.NOT_ASSESSED,
-                        Reason.MISSING_METADATA,
-                        "split.no_group_overlap",
-                        unknown,
-                    )
-                )
+            facts = _contained_group_facts(table, splits, col, group)
         else:
-            per_unit.append(
-                (col, Status.NOT_ASSESSED, Reason.NO_SUPPORTED_RULE, None, unknown)
+            units.append(
+                {
+                    "column": col,
+                    "route": None,
+                    "status": Status.NOT_ASSESSED,
+                    "reason": Reason.NO_SUPPORTED_RULE,
+                }
             )
+            continue
+        status, reason = _route_status(facts)
+        units.append({"column": col, "status": status, "reason": reason, **facts})
 
-    if not per_unit:
+    if not units:
         return AssertionResult(
             assertion_id=aid,
             status=Status.NOT_ASSESSED,
             reason=Reason.MISSING_METADATA,
             evidence=evidence,
         )
-    worst = max(per_unit, key=lambda u: _SEVERITY[u[1]])
+    # Aggregate without hiding an independent valid FAIL or any incomplete unit (all listed).
+    worst = max(units, key=lambda u: _SEVERITY[u["status"]])
     return AssertionResult(
         assertion_id=aid,
-        status=worst[1],
-        reason=worst[2] if worst[1] is Status.NOT_ASSESSED else None,
-        observed={
-            "units": [
-                {"column": c, "status": st, "rule": d, "rows_with_unknown_identity": u}
-                for c, st, _, d, u in per_unit
-            ]
-        },
+        status=worst["status"],
+        reason=worst["reason"] if worst["status"] is Status.NOT_ASSESSED else None,
+        observed={"units": units},
         evidence=evidence,
-        depends_on=sorted({d for _, _, _, d, _ in per_unit if d}),
     )

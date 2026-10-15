@@ -10,7 +10,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
-| T-01 | 9 | Codex review 1 (7 findings) → repair pass 1 → verification (5 blockers) → repair pass 2 → verification (1 regression) → targeted fix done (base `bdcf321`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-01 | 9 | Codex review 1 → repair 1 → verification (5 blockers) → repair 2 → verification (1 regression) → targeted fix → containment probe → repeated-measures repair under policy-v1.1 (base `6348767`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
@@ -65,8 +65,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 
   | # | Scenario | RO | SO | GO | SU | RM | SD | CC | PI | Other | Outcome |
   | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-  | 1 | Faulty: random-row split + global `SelectKBest(f_classif)` fit on all rows, used in every fold | PASS | PASS | FAIL | FAIL | FAIL (via GO) | FAIL (labels_used=true) | PASS | PASS | — | VIOLATION_FOUND |
-  | 2 | Clean: `GroupKFold`, `take`, `Pipeline` fit per fold, fully observed | PASS | PASS | PASS | PASS | PASS (via GO, session⊂subject containment) | PASS | PASS | PASS | — | NO_VIOLATION_FOUND |
+  | 1 | Faulty: random-row split + global `SelectKBest(f_classif)` fit on all rows, used in every fold | PASS | PASS | FAIL | FAIL | FAIL (v1.1 own witnesses: subject overlap, group separation) | FAIL (labels_used=true) | PASS | PASS | — | VIOLATION_FOUND |
+  | 2 | Clean: `GroupKFold`, `take`, `Pipeline` fit per fold, fully observed | PASS | PASS | PASS | PASS | PASS (v1.1: complete, no same-fold witness) | PASS | PASS | PASS | — | NO_VIOLATION_FOUND |
   | 3a | Unknown ancestry: like 2, but the training frame is rebuilt with the same valid index before fitting | PASS | PASS | PASS | PASS | PASS | NA(unknown_ancestry) | NA(coverage_gap) | PASS | — | INCONCLUSIVE |
   | 3b | Unexplained mutation: like 2, but a tracked frame is modified in place | PASS | PASS | PASS | PASS | PASS | NA(unknown_ancestry) | NA(coverage_gap) | PASS | — | INCONCLUSIVE |
   | 4 | Zero fit: predictions written without any observed supported classifier fit | PASS | PASS | PASS | PASS | PASS | NA(zero_fit) | NA(zero_fit) | PASS | — | INCONCLUSIVE |
@@ -226,6 +226,28 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - `ruff check .` → passed; `ruff format --check .` → 59 files formatted.
     - **Mutation check not re-run.** The change alters no mutation target (the m2 line is byte-identical and present once) and not `scripts/mutation_check.py`; an optional re-run was declined by the user.
   - **Remaining limitations:** unchanged from repair pass 2.
+- **CODEX CONTAINMENT PROBE, and the REPEATED-MEASURES REPAIR under policy-v1.1 (Claude Code, Opus 5.5 high):**
+  - **Evidence (preserved unchanged):** `runs/review-t01-containment/probe.py` (sha256 `20a00a70…d899`), `results.json` (`ba45cd63…696c`). The probe was not re-run.
+  - **Checkpoints:** base `6348767`; head = the local commit "Repeated measures: explicit routes and same-fold witnesses (policy-v1.1)" (parent `6348767`).
+  - **Demonstrated defect:** in `partly_null_unrelated_overlap`, known session IDs existed only in disjoint groups across the partitions (known-participating group overlap: 0), yet `split.repeated_measures_rule` FAILed. Boundary `one_unknown_group_with_known_group_for_same_unit` reported "contained" (complete containment) despite a missing group assignment.
+  - **Cause:** `_repeated_measures` inherited the aggregate `split.no_group_overlap` (or `split.sampling_unit_disjoint`) status instead of finding its own witness, and `_containment` collapsed completeness, missing assignments and contradictions into one label. The aggregate group FAIL was supported only by rows whose session was unknown.
+  - **Repair, per the lead's clarification (DECISIONS.md, SPEC §5; policy `policy-v1` → `policy-v1.1`):**
+    - Two explicit routes: A, sampling unit (per-fold known unit overlap, no group needed); B, contained group (participating-row mapping contradictions, missing unit and group counts, and per-fold group intersections from rows with both IDs known).
+    - Witnesses record fold, row IDs, unit IDs and group IDs; route B witnesses are labeled `group_separation`.
+    - One status rule per route. Nothing is inherited (`depends_on` is empty). The lossy `_containment` label is replaced by explicit facts: `complete`, `rows_with_unknown_identity`, `rows_missing_group`, `mapping_contradictions`, `witnesses`. The unused `results` parameter was removed.
+  - **Tests:**
+    - The defect fails on behavior at base (FAIL instead of NOT_ASSESSED), as does empty participation (`missing_metadata` instead of `not_executed`). Both pass now.
+    - New coverage includes `test_partly_null_unrelated_overlap_mirror_of_codex_containment_probe`, `test_one_missing_group_never_yields_complete_containment_or_pass`, `test_overlap_only_through_unknown_unit_rows_has_no_witness`, group overlap with different session IDs, known plus missing group assignments with and without a witness, complete overlapping and complete disjoint cases, empty participation, cross-fold-only overlap, observed multi-group mapping, the sampling-unit route with an all-unknown group column, and multiple declared units.
+    - Four earlier tests asserted inherited `depends_on`; those assertions now check the route and witness facts instead (a policy change, not a weakening). All-null cases from the previous fix still give NOT_ASSESSED `missing_metadata` with `VIOLATION_FOUND` from the independent FAILs.
+  - **Results actually run:**
+    - focused (`tests/unit/test_split_integrity.py`, `tests/integration/test_review_t01_repair.py`) → 49 passed;
+    - full T-01 suite `uv run --locked pytest tests/unit tests/integration -q` → **135 passed**;
+    - `ruff check` → passed; `ruff format --check` → 59 files formatted.
+    - **Mutation check re-run** (repeated measures no longer inherits group status, so m2's detection assumptions changed): the unmutated baseline passes everything; m1, m2 and m3 are each CAUGHT with no unrelated runtime-origin failures. m2's ten failures are group/unit-dependent tests, and the repeated-measures tests no longer fail under m2, which confirms the decoupling.
+  - **Remaining limitations:**
+    - No mutation targets the new route logic itself; it is covered by the focused tests.
+    - Empty-participation handling was changed only for `split.repeated_measures_rule`. The other split assertions can still PASS a fold with no participating rows; this is outside this repair's scope and is noted for review.
+    - Otherwise unchanged from repair pass 2.
 
 ### T-02 Independent metrics, conditional split rules, temporal checks
 - **OWNER:** Claude Code (writer); Codex reviews.

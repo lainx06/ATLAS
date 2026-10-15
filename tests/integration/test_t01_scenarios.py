@@ -186,7 +186,7 @@ def test_evidence_files_are_written_and_hashed(tmp_path):
     assert "provenance.jsonl" in index["artifacts"]
     outcome = json.loads((run_dir / "outcome.json").read_text(encoding="utf-8"))
     assert outcome["outcome"] == "NO_VIOLATION_FOUND"
-    assert outcome["policy_version"] == "policy-v1"
+    assert outcome["policy_version"] == "policy-v1.1"
 
 
 def test_modified_fixture_is_refused_before_execution(tmp_path):
