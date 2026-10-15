@@ -2,7 +2,7 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-01, T-02, T-04 and T-05 are accepted.
+CURRENT STEP: Start Here Step 11. **T-03 hosting probe: research and local design done (2026-10-15); not accepted, because feasibility evidence is missing** (`docs/HOSTING_PROBE.md`; TASKS.md T-03 "RESULT"). T-01, T-02, T-04 and T-05 are accepted.
 - **T-02 (policy-v1.3, manifest schema 0.3):** **accepted by the lead at `75a98f4` within its documented trusted-fixture scope (2026-10-15)**. The decision rests on Codex's final verification (`runs/t02-verification-final/review.md`) and the earlier independent verification records. Record: TASKS.md T-02 "ACCEPTANCE".
   - **Path to acceptance:**
     - implemented at `487664e`;
@@ -42,7 +42,7 @@ CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Da
     - tested only on this host.
   - **Pending T-06:** candidate re-evaluation, and `audit.py` accepting Docker execution records. Audits stay `trusted_pipeline_only` until then.
   - All review evidence is preserved unchanged under `runs/review-t05/` (`session-f494c95-20261015/`, `repair1-44c5a84/`, `repair2-eed73ee/`).
-- T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). **T-03 due, not started.**
+- T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). **T-03: research done, not accepted.**
 - **Learning guide:** `docs/ATLAS_Learning_Guide.md` is the canonical guide (tracked since `44c5a84`; maintenance rule in AGENTS.md "Learning guide"). It marks T-02 accepted at `75a98f4` within its documented scope; explains the decoding and structure boundaries; corrects the overstated aggregate-completeness claim (duplicate fold names had defeated it);
   - explains the four review findings as beginner lessons;
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
@@ -145,6 +145,7 @@ LAST UPDATED: 2026-10-15
     - the evidence-error and recovery suites (228 passed);
     - copies of Codex's `consumer_shapes.py` and a report-only `referential_probe.py` in `runs/t02r5/`;
     - ruff.
+19. T-03 research (2026-10-15): public documentation read (Streamlit, Hugging Face, Nebius); `hosting_probe/cost_calc.py`; the stub's 4 local AppTest tests (`uv run --locked python -m pytest hosting_probe/test_stub.py`); ruff. No deployment, account, secret or API call.
 
 ## Blockers
 - **Nebius:** none. $50 in Token Factory credits awarded in total (user-reported; balance and expiry not verified), key set, text and JSON-validation smoke calls succeeded.
@@ -211,7 +212,7 @@ LAST UPDATED: 2026-10-15
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-03 hosting probe: due now.** Its promotional-credit expiry check now covers $50 in awarded Token Factory credits (user-reported; expiry unknown until checked). It was scheduled for playbook §11 Day two (2026-10-15), and the playbook says "Do not defer this discovery to recording week". It is not started. It is independent of T-02 and is docs/evidence only, with no purchases or deployment.
+1. **T-03 hosting probe: awaiting the lead's decision.** The recommendation is Streamlit Community Cloud (fallback: a Hugging Face protected Docker Space, PRO $9/month) in limited hosted mode. The exact minimal deployment action needing approval (a new public stub repository, a Streamlit sign-in, a deployment and a canary secret) is in `docs/HOSTING_PROBE.md` §8. Credit facts: Nebius Builder terms say credits expire 90 days after issuance, but the user's issue dates, balance and expiry are unverified. It was scheduled for playbook §11 Day two (2026-10-15), and the playbook says "Do not defer this discovery to recording week". It is not started. It is independent of T-02 and is docs/evidence only, with no purchases or deployment.
 2. T-06 (bounded live agent loop): its inputs T-02, T-04 and T-05 are accepted, but it waits until T-03 is done. No further Nebius calls are planned before T-06.
 
 ## Unresolved questions

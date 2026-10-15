@@ -12,7 +12,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope (2026-10-15), on Codex's independent verification of every repair pass. Contract policy-v1.3, manifest schema 0.3. Limitations stand (see ACCEPTANCE) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
-| T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
+| T-03 | 11 (early) | **Research and local design done (2026-10-15); NOT accepted: feasibility evidence missing.** Recommended: Streamlit Community Cloud; fallback Hugging Face protected Docker Space (PRO $9/month); limited hosted mode. `docs/HOSTING_PROBE.md`. Awaiting the lead's decision and approval of probe stage A | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | Proposed | Bounded live agent loop end to end |
@@ -650,6 +650,57 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** dated sources and observations.
 - **HANDOFF:** the lead decides; record it in DECISIONS.md.
 - **RECOVERY:** stay with the limited hosted baseline.
+- **RESULT (2026-10-15; research and local design only; NOT accepted):** `docs/HOSTING_PROBE.md`. Sonnet 5.5 medium. No deployment, account linking, repository creation, secret change or API call.
+  - **Hosts, documented 2026-10-15:**
+    - **Streamlit Community Cloud:**
+      - free;
+      - honors `uv.lock` first among dependency files;
+      - has a Secrets field;
+      - an app from a private repository is private by default, but its privacy is set independently and can be made public without making the repository public;
+      - private repos need a deploy key, the `repo` OAuth scope and admin rights, with one private app at a time;
+      - apps sleep after 12 hours without traffic;
+      - resource figures are dated Feb 2024.
+    - **Hugging Face Spaces:**
+      - creating a Docker or Gradio Space needs PRO ($9/month);
+      - "protected" visibility keeps source private with a public app;
+      - free CPU Basic sleeps;
+      - the container runs as user 1000, and secrets are environment variables.
+  - **Recommendation (proposed):** Streamlit Community Cloud for a limited hosted demo; fallback HF protected Docker Space; last resort recorded examples plus the local build.
+  - **Execution:**
+    - limited hosted stays the default;
+    - running candidates in the Community Cloud app is unsupported by that host (documented absence, untested);
+    - an HF Docker Space launching sibling containers is not demonstrated;
+    - a separate Linux worker running the T-05 runner is not demonstrated, its cost is unknown, and T-05 was accepted only on this Windows/Docker Desktop host.
+    - None of these is "infeasible"; none was shown.
+  - **Costs:**
+    - price $0.30 / $0.90 per 1M tokens, observed 2026-10-14;
+    - observed smoke cost about $0.00005 per call;
+    - estimated normal run about $0.021;
+    - proposed worst case $0.051 per run at 59,000 in / 37,000 out tokens over 6 calls;
+    - up to about $0.102 if retries were extra requests, which is why the retry rule needs fixing in DECISIONS.md.
+
+    Calculation: `hosting_probe/cost_calc.py`. The smoke script's 1,024-token cap is not a production cap.
+  - **Credits:**
+    - Nebius Builder terms (documented): promotional credits "expire 90 days from the date of issuance", must not be used for production workloads, and the account may be auto-paused if monthly use exceeds the allocation by more than 30%.
+    - Whether the user's credits fall under these terms, their issue dates, balance and expiry are unknown. If issued on 2026-10-14, 90 days ends about 2027-01-12 (illustration only).
+    - A negative balance leads to an automatic card charge (documented), so no payment method should be added without a decision.
+  - **Judge access (proposed):**
+    - live, recorded-example and unavailable modes;
+    - budgets reserved atomically before each call and settled afterwards, with leases;
+    - separate judge and public pools;
+    - a private judge access code checked server-side (a hidden URL is not access control);
+    - all counters in one external durable store with atomic updates, failing closed to recorded mode.
+
+    The store is not chosen, and Community Cloud memory is cleared on restart.
+  - **Probe stub (local only):** `hosting_probe/` (`app.py`, `requirements.txt`, `test_stub.py`, `cost_calc.py`). It runs no ATLAS code. Three checks are kept apart: build/import, secret canary, optional `GET /models`. 4 local AppTest tests passed in the locked environment, with the Nebius call mocked. The stub's `requirements.txt` installs Streamlit only, so a host deployment would not verify the full locked environment.
+  - **Missing, so T-03 stays unaccepted:**
+    - no deployed build, cold start or outbound-network observation;
+    - secret store untested on a host;
+    - credit balance and expiry unknown;
+    - zero-balance behavior unknown;
+    - durable store not chosen;
+    - availability through 15 December not established.
+  - **Approval needed (stage A):** a new, separate public repository with the two stub files, a Streamlit sign-in via GitHub, a deployment, a harmless `CANARY` secret entered by the owner, and deletion afterwards. No spending, no API call. Stage B (one free `GET /models`) and stage C (full locked build) need separate approvals.
 
 ### T-04 Nebius access smoke (Start Here Step 10)
 - **OWNER:** Claude Code (writer); the user enters the key privately.
