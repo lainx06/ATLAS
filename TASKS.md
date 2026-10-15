@@ -683,7 +683,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Credits:**
     - Nebius Builder terms (documented): promotional credits "expire 90 days from the date of issuance", must not be used for production workloads, and the account may be auto-paused if monthly use exceeds the allocation by more than 30%.
     - Whether the user's credits fall under these terms, their issue dates, balance and expiry are unknown. If issued on 2026-10-14, 90 days ends about 2027-01-12 (illustration only).
-    - A negative balance leads to an automatic card charge (documented), so no payment method should be added without a decision.
+    - A negative balance leads to an automatic card charge (documented). The lead recorded that payment information is already on the account and billing settings stay unchanged, so the credit balance is not a hard ceiling and in-application caps are the control.
   - **Judge access (proposed):**
     - live, recorded-example and unavailable modes;
     - budgets reserved atomically before each call and settled afterwards, with leases;
@@ -700,7 +700,16 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - zero-balance behavior unknown;
     - durable store not chosen;
     - availability through 15 December not established.
-  - **Approval needed (stage A):** a new, separate public repository with the two stub files, a Streamlit sign-in via GitHub, a deployment, a harmless `CANARY` secret entered by the owner, and deletion afterwards. No spending, no API call. Stage B (one free `GET /models`) and stage C (full locked build) need separate approvals.
+  - **Approval needed (stage A):** a new, separate public repository with the two stage A files, a Streamlit sign-in via GitHub, a deployment and a harmless `CANARY` secret entered by the owner. No spending, no API call. Stage B (one free `GET /models`) and stage C (full locked build) need separate approvals.
+  - **Lead decisions, 2026-10-15 (DECISIONS.md "Hosting probe decisions"):**
+    - the six-call limit counts every attempted request, retries included;
+    - a dispatched request's reservation is not released by lease expiry, and unknown usage stays conservatively reserved until reconciled;
+    - billing is unchanged (payment information already present);
+    - the deployed probe is kept until initial and sleep/wake observations are recorded, and deletion is a later explicit action.
+  - **Stage A publication set prepared locally (2026-10-15; nothing created or published):** `hosting_probe/stage_a/app.py` (1,362 bytes) and `requirements.txt` (10 bytes, `streamlit`).
+    - `hosting_probe/check_publication.py` confirms the set is exactly those two files with no ATLAS source, personal documentation, credential, key-shaped string, email, local path, Nebius reference or network import.
+    - `hosting_probe/test_stage_a.py` renders the app with every non-loopback connection and lookup blocked (the guard has a self-test) and checks that only a hash prefix of the canary is shown. The first stub (with the optional Nebius check) is not published in stage A.
+    - 9 local probe tests passed. T-03 stays unaccepted.
 
 ### T-04 Nebius access smoke (Start Here Step 10)
 - **OWNER:** Claude Code (writer); the user enters the key privately.

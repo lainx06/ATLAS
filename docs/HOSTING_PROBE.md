@@ -1,6 +1,6 @@
 # T-03 hosting probe: research and local design
 
-Status: **research and local design complete (2026-10-15); T-03 is NOT accepted.** Required feasibility evidence is missing (see §9). Nothing was deployed, no account was linked, no repository or secret was created, and no API call was made. Written under TASKS.md T-03 (Sonnet 5.5, medium effort); the lead decides, and the decision goes in DECISIONS.md.
+Status: **research and local design complete (2026-10-15); stage A publication set prepared locally; T-03 is NOT accepted.** Lead decisions of 2026-10-15 (DECISIONS.md "Hosting probe decisions") are applied below. Required feasibility evidence is missing (see §9). Nothing was deployed, no account was linked, no repository or secret was created, and no API call was made. Written under TASKS.md T-03 (Sonnet 5.5, medium effort); the lead decides, and the decision goes in DECISIONS.md.
 
 **Evidence labels** used on every conclusion:
 
@@ -82,7 +82,7 @@ Per-run estimates use the SPEC §11 ceiling of **6 model calls** per run. The ce
 | **Estimated normal run** | about **$0.021** (calculation: `hosting_probe/cost_calc.py`) | proposed |
 | **Configured worst case per run** | **$0.051** at the ceilings above | proposed |
 
-**Retries without double-counting.** SPEC §11 gives "6 model calls" and "1 retry per transient model call" but does not say whether a retry counts toward the six. This document **proposes** that every request sent, including a retry, counts toward the six; then the worst case is $0.051. If retries were extra calls, the worst case could reach 12 requests, about **$0.102**, so the rule should be fixed in DECISIONS.md before T-06. Failed requests with no usage cost nothing, but are counted against the cap for safety.
+**Retries without double-counting. Decided (DECISIONS.md, 2026-10-15):** the six-call limit counts every attempted inference request, retries included, so the worst case is 6 requests, **$0.051** per run. (Had retries been extra calls, 12 requests would have cost about $0.102.) A dispatched request counts even if it fails with no usage.
 
 Capacity at these figures (arithmetic only): $50 of awarded credits is about **2,400 normal runs** or **980 worst-case runs**; the $30 inference allowance is about 590 worst-case runs. The remaining balance is unverified (§6), so this is an upper bound on what the credits could fund, not a promise.
 
@@ -104,7 +104,7 @@ Requirement: a free working path through **15 December 2026** (docs/SUBMISSION_C
 
 1. Estimate the call's ceiling cost; atomically add it to the relevant counters (judge pool or public pool; per-session; daily). If any would exceed its cap, refuse and serve a recorded example.
 2. Make the call; after it returns, replace the reservation with the actual usage.
-3. A reservation carries a short lease, so a crash or timeout releases it instead of leaking budget.
+3. **Decided:** a reservation for a request that was *dispatched* is not released because a lease expires. If its usage is unknown (crash, timeout, lost response), the ceiling-cost reservation stays reserved until reconciled with the actual usage (for example from the logged response usage or the Nebius Usage tab). Only a reservation that was never dispatched may expire. Unreconciled reservations therefore reduce capacity conservatively, and reconciliation needs a durable store and an owner procedure.
 
 Planning caps: judge pool $10 (about 196 worst-case runs); public pool at most $0.30 per day (about 5 worst-case runs a day), about $16 over about 53 days; 2 live runs per public session. Public and judge pools draw on separate counters, so public traffic cannot spend judge capacity. These are **proposed**, to be tuned with measurements.
 
@@ -112,7 +112,7 @@ Planning caps: judge pool $10 (about 196 worst-case runs); public pool at most $
 
 **Judge access control.** A hidden URL is not access control. A long random **judge access code** is given privately in the Devpost testing instructions; the app compares it server-side against a stored hash, charges the judge pool, and never exposes it to the browser, prompts, Git or logs. If the public pool is exhausted, judges with the code still reach live mode until the judge pool is exhausted. If both are exhausted, the restoration procedure is: the owner raises the cap in the store (or tops up credits) and the app returns to live mode with no redeploy.
 
-**Last backstop.** Nebius documents no per-key spending limit (not found; **unknown**); the awarded credit balance is the real ceiling. What happens when credits run out is **unknown**: the billing page says a negative balance leads to an automatic card charge (**documented**), so **do not add a payment method** unless the lead decides otherwise, and verify the account's behavior in the console first.
+**Backstop.** Nebius documents no per-key spending limit (not found; **unknown**). **Payment information is already on the account (lead, 2026-10-15) and billing settings are not changed.** Because the billing page says a negative balance leads to an automatic card charge (**documented**), the credit balance is **not** a hard ceiling: usage beyond the credits could be charged to the card. The in-application caps above are therefore the real spending control, they fail closed, and the $30 inference allowance is a planning figure, not an authorization. Whether an account with a payment method is auto-paused or charged at zero balance is **unknown**.
 
 ## 6. Credits and the 15 December requirement
 
@@ -128,40 +128,51 @@ Planning caps: judge pool $10 (about 196 worst-case runs); public pool at most $
 
 ## 7. The smallest probe
 
-A stub exists locally: `hosting_probe/app.py` (about 70 lines), `requirements.txt` (`streamlit` only) and `test_stub.py`. It runs **no ATLAS code**. Three checks are kept apart:
+Two sets of files exist locally. **Stage A publishes only `hosting_probe/stage_a/`.** The first stub (`hosting_probe/app.py`) contains the optional Nebius check and is **not** published in stage A.
 
 | Check | What it shows | Status |
 | --- | --- | --- |
-| **1. Build / import** | The page renders, so the host built the environment and started Streamlit; reports Python and Streamlit versions and process uptime | **Locally tested** with Streamlit's `AppTest` in the locked environment (4 tests passed). **Not tested on any host.** |
-| **2. Secret store** | A harmless random **canary** secret `CANARY` is read through `st.secrets`; the page shows only "present" and the first 8 hex digits of its SHA-256, never any real key | Locally tested with a fake secret; **not tested on a host** |
-| **3. Nebius connectivity (optional)** | A button runs one `GET /models` using a `NEBIUS_API_KEY` secret and prints only the HTTP status and model count. No inference, no cost | Locally tested with a **mocked** response only; **no real request has been made** |
+| **1. Build / import** | The page renders, so the host built the environment and started Streamlit; Python and Streamlit versions, process uptime, render time | **Locally tested** (Streamlit `AppTest`, locked environment). **Not tested on any host.** |
+| **2. Secret store** | A harmless random `CANARY` secret is read through `st.secrets`; only presence and the first 8 hex digits of its SHA-256 are shown | Locally tested with a fake canary. **Not tested on a host.** |
+| 3. Nebius connectivity | Not part of stage A. Exists only in the unpublished first stub | Locally tested with a **mocked** response only; no real request has been made |
 
-**Reduced-dependency label:** the stub's `requirements.txt` installs only Streamlit. A successful deployment therefore verifies *the host, its secret store and its network*; it does **not** verify the full locked environment (61 packages), nor that ATLAS's dependencies install on the host. That needs a separate, later step (stage C below). The local 4 tests ran in the full locked environment, but that tests the stub on this machine only.
+**Stage A makes no Nebius request and holds no key.** Its `app.py` imports no network module, and a local test blocks any non-loopback connection or name lookup while the page renders (the guard has its own self-test). No Nebius key is requested for the canary test.
 
-Local commands (no deployment): `uv run --locked python -m pytest hosting_probe/test_stub.py -q` and `uv run --locked streamlit run hosting_probe/app.py`.
+**Exact publication set** (checked by `hosting_probe/check_publication.py`, 2026-10-15):
+
+| File (local path) | Bytes | SHA-256 |
+| --- | --- | --- |
+| `C:\Users\Lain\source\atlas\hosting_probe\stage_a\app.py` | 1,362 | `2527fc07d812dc94561f900c97ef941392cfa8644bab3a8e49e817f30fce7303` |
+| `C:\Users\Lain\source\atlas\hosting_probe\stage_a\requirements.txt` | 10 | `57716129b9bb1b62e7474b384b2b5abeb8c83cd221bdcb001977d81c0c2d433c` |
+
+The checker confirms the set is exactly these two files with no sub-directories; no Nebius, credential, key-shaped, email, `.env`, local-path or project-document wording; no `atlas`, `dotenv`, `openai`, `requests`, `urllib`, `http`, `socket` or similar imports; and `requirements.txt` equals `streamlit`. It states what it checks; it cannot prove the absence of every possible secret, so the files are also small enough to read in full (47 lines for `app.py`).
+
+**Reduced-dependency label:** `requirements.txt` installs only Streamlit. A successful deployment verifies the host, its secret store and its build for a minimal environment. It does **not** verify the locked environment of 61 packages (stage C).
+
+Local commands (no deployment): `uv run --locked python hosting_probe/check_publication.py` and `uv run --locked python -m pytest hosting_probe -q`.
 
 ### Probe stages
 
 | Stage | What | Needs |
 | --- | --- | --- |
-| A | Deploy the stub; check 1 (build) and 2 (canary). Record build time, URL behavior, and cold start after the documented 12-hour sleep (needs a second look the next day) | Approval below |
-| B | Check 3: add the real Nebius key as a secret and press the button once | Separate approval (secret entry by the owner, one free API call) |
-| C | Full locked-environment build: deploy a minimal copy that installs from `uv.lock` | Separate approval; the `atlas` repository or a derived one (`repo` scope if private) |
+| A | Deploy the two files; check 1 (build) and 2 (canary). Record build time and the page. The probe is **kept** until a sleep/wake observation is also recorded (about 12 hours after the last visit, documented) | Approval (§8) |
+| B | Optional `GET /models` from the host (the first stub's button) | Separate approval; a real key entered by the owner |
+| C | Full locked-environment build | Separate approval |
 
 ## 8. Approvals needed
 
-**The one minimal deployment action for stage A (requires explicit approval; not requested of anyone yet):**
+**The one minimal deployment action for stage A (explicit approval given for local preparation only; nothing has been created or published):**
 
-1. The owner creates a **new, separate public GitHub repository** (for example `atlas-hosting-probe`) containing only `hosting_probe/app.py` and `requirements.txt` (a copy; no ATLAS code, history or personal content), so the `atlas` repository and the `repo` OAuth scope are not involved. (**Proposed**: whether a public repo needs a lesser scope is **unknown**.)
+1. The owner creates a **new, separate public GitHub repository** `lainx06/atlas-hosting-probe` and adds exactly the two files above at its root (copies; no ATLAS code, history or personal content). The `atlas` repository and the `repo` OAuth scope are not involved. (Whether a public repository needs a lesser scope is **unknown**.)
 2. The owner signs in to Streamlit Community Cloud with GitHub and deploys that repository's `app.py`, selecting Python 3.11 if offered.
 3. The owner pastes `CANARY = "<a random harmless string>"` into the app's Secrets field. No real key.
-4. After the observations are recorded, the owner deletes the app and the repository.
+4. The observations are recorded (build, canary, page; later a sleep/wake observation). **The app and repository are kept until then; deleting them is a later explicit action.**
 
 | Item | Needed from the lead |
 | --- | --- |
 | Account access | A Streamlit Community Cloud sign-in via the owner's GitHub account (an OAuth grant) |
 | Publication | A new public repo with the two stub files (step 1). **Not** making `atlas` public |
-| Spending | None for stage A. HF PRO ($9/month) only if the fallback is chosen. Any inference beyond awarded credits needs separate approval. **No payment method should be added** |
+| Spending | None for stage A. HF PRO ($9/month) only if the fallback is chosen. Any inference beyond awarded credits needs separate approval. Billing settings stay unchanged |
 | API calls | None for stage A. Stage B is one free `GET /models`; no inference |
 | Secrets | The owner enters all secrets personally; the builder never sees or prints a value |
 | Credits | Someone reading the Nebius console for balance and expiry |
