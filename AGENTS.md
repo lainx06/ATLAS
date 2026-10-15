@@ -36,6 +36,14 @@ ATLAS checks whether a small Python/scikit-learn tabular classification experime
 - Do not edit `docs/handoff/`. Do not install third-party skills/hooks outside playbook Section 22.
 - One writer at a time (see WRITER in STATUS.md). Reviewers do not edit implementation files.
 
+## Learning guide
+- `docs/ATLAS_Learning_Guide.md` explains ATLAS to the user. The builder updates it at task boundaries when architecture, implemented behavior, setup, acceptance status or important limitations change.
+- Write for someone who knows basic Python and is learning C++ fundamentals; connect concepts to actual code and small examples.
+- Keep planned, implemented (self-tested), independently verified and accepted behavior clearly separate.
+- Reviewers flag material inaccuracies introduced by the reviewed change; read-only reviews do not edit the guide.
+- The guide is explanatory and has no authority over `docs/SPEC.md`, `DECISIONS.md` or this file.
+- Never include secrets or sealed held-out material.
+
 ## Agent skills
 
 ### Issue tracker

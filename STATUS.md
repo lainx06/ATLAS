@@ -11,7 +11,8 @@ CURRENT STEP: Start Here Step 10.
   - The review evidence at `runs/review-t05/session-f494c95-20261015/` is preserved unchanged.
   - The runner does not re-evaluate candidates; that is T-06.
 - T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). T-02 not started.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), and the T-05 repair commit containing this update). Nothing is pushed.
+- **Learning guide (documentation only, 2026-10-15):** `docs/ATLAS_Learning_Guide.md` is the canonical guide, now tracked and checked against `2e58280` (T-05 repair self-tested; verification and acceptance pending). AGENTS.md "Learning guide" sets its maintenance rule. An identical untracked copy at the repository root is the user's and is left alone.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), and the learning-guide documentation commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-15
 
 ## What works (verified by running)
@@ -131,7 +132,7 @@ LAST UPDATED: 2026-10-15
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-05 verification:** Codex verifies repair pass 1 (base `f494c95`, head = the repair commit) against its three findings. T-05 stays unaccepted until then.
+1. **T-05 verification:** Codex verifies repair pass 1 (base `f494c95`, head `2e58280`) against its three findings. T-05 stays unaccepted until then.
 2. T-02 and T-06 are not started. No further Nebius calls are planned before T-06.
 
 ## Unresolved questions

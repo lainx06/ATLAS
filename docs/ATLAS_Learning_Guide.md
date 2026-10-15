@@ -1,0 +1,391 @@
+# Understanding ATLAS, end to end
+
+Personal learning guide for Adnan · 15 October 2026 · last checked against commit `2e58280`
+
+## How to use this guide
+
+This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
+
+**Evidence boundary:** last checked against the local repository at commit `2e58280` (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+
+**Status words used here** (they are deliberately different):
+
+| Word | Meaning |
+| --- | --- |
+| Planned | Designed or listed as a task; no code yet |
+| Implemented (self-tested) | Code exists and the builder's own tests pass |
+| Independently verified | A separate reviewer (Codex) reran the evidence and found no remaining blocker |
+| Accepted | The lead accepted the task within its documented scope |
+
+## 1. The problem in one minute
+
+A machine-learning project reports high accuracy. Does that evaluation actually support the intended use?
+
+Imagine a wearable recognizing gestures. If recordings from the same person appear in training and testing, the model may recognize person-specific patterns. Good scores on those recordings do not establish performance on a new person. That connects directly to your experience with sEMG placement and session drift, although ATLAS itself is currently a tabular classification project, not a wearable application.
+
+ATLAS compares an evaluation with a confirmed deployment claim. It checks evidence for specific violations and reports what it could and could not assess.
+
+**Planned complete workflow:** inspect an evaluation, diagnose an evidence-backed problem, propose a constrained code change, obtain approval, run it in a restricted container, and evaluate the new evidence. A model proposes; explicit evaluation rules determine the result.
+
+ATLAS cannot prove that a model is universally valid, that its data represent reality, or that every possible leakage route has been excluded.
+
+**Say it yourself:** “ATLAS checks whether a machine-learning evaluation supports its stated use, and is being built to propose and verify constrained repairs.”
+
+## 2. What exists today
+
+| Component | Status at this checkpoint | What this establishes |
+| --- | --- | --- |
+| Requirements and evaluation policy | Recorded; policy-v1.2 | Explicit rules and supported scope |
+| T-01 deterministic audit | Accepted at `f5aa4dc`, after Codex's independent verification (165 tests passed) | Specified behavior on trusted synthetic fixtures and review cases |
+| T-04 model connection | Accepted within its smoke-test scope | Real NVIDIA text response and strict application-validated JSON response |
+| T-05 restricted runner | Implemented (self-tested). Codex review 1 of `f494c95` found three P2 defects; repair commit `2e58280` addresses them and passes the builder's tests. **Independent verification and acceptance are still pending** | Contract tests passed on this host (28/28 with Docker required); the repair has not yet been checked by Codex |
+| Candidate re-evaluation integration | Planned for T-06 | Not demonstrated by T-05 |
+| Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
+| Remaining checks (T-02), memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
+
+The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
+
+## 3. Follow the data through the intended system
+
+```mermaid
+flowchart TD
+    A[Table, manifest and evaluation script] --> B[Confirmed claim and policy]
+    B --> C[Run evaluation and collect evidence]
+    C --> D[Deterministic checks and outcome]
+    D --> E[Model proposes a constrained revision]
+    E --> F[Validate revision and obtain approval]
+    F --> G[Execute in restricted Docker container]
+    G --> H[Evaluate fresh evidence]
+    H --> I[Report outcome and limitations]
+```
+
+This diagram describes the target workflow. Today the trusted fixture audit, model smoke calls, and restricted runner are separate pieces; the integrated revision workflow is not complete.
+
+| Item | Meaning |
+| --- | --- |
+| Table | Rows of observations, features, target labels and identifiers |
+| Manifest | Declares what columns mean and how evaluation should be interpreted |
+| `evaluate.py` | The project's evaluation code: splits, preprocessing, fitting and predicting |
+| Adapter | Small API through which project code declares splits and writes predictions |
+| Recorder | Captures supported fit/use operations and their observed ancestry |
+| Evidence | Files describing what happened, including identifiers, predictions and execution records |
+| Evaluator | Checks that evidence against explicit rules |
+| Candidate | A proposed replacement of the permitted evaluation code |
+
+An important distinction: candidate-produced evidence is untrusted input. Read-only recorder files do not make an in-process recorder tamper-proof.
+
+## 4. The machine-learning ideas you need
+
+### Training, evaluation and claims
+
+Training is when the model learns parameters. Evaluation measures predictions on selected rows. A deployment claim describes where you want those results to apply.
+
+The three supported claim types are:
+
+- `same_population`: the declared population and dependence assumptions must justify the assessment. This does not make every random split acceptable.
+- `unseen_group`: the evaluation must respect separation of the relevant groups, such as people absent from training.
+- `future_time`: evaluation must respect temporal order and when information would actually be available.
+
+Combined group-and-time claims are outside the selected V1 scope.
+
+In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.2). "Supported" means in scope, not fully checked: the accepted T-01 slice covers `unseen_group` fixtures, and the temporal assertions that `future_time` needs belong to T-02 (planned). Until then they are recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
+
+### Leakage and preprocessing
+
+A scaler learns means and variances. A feature selector may learn which inputs best predict the label. These are learned operations even though they happen before the classifier.
+
+If preprocessing learns from test rows, information has crossed the evaluation boundary. A model can inherit that contamination from an earlier operation.
+
+### Tiny Python example: a group-overlap check
+
+```python
+train_subjects = {"S01", "S02"}
+eval_subjects = {"S02", "S03"}
+overlap = train_subjects & eval_subjects
+
+if overlap:
+    print("Known overlap:", overlap)
+```
+
+The intersection contains `S02`. This is a set operation, not an AI judgment. The applicable claim determines what the overlap means.
+
+This example deliberately omits production validation. What if the subject column is missing? What if identifiers are null? What if the split file is corrupted? Those cases require different results; they cannot all become an empty set and PASS.
+
+### Fold and provenance
+
+A fold is one declared training/evaluation split. The same row may play different roles in different folds. Fit provenance asks which rows contributed to learned state and where that state was later used.
+
+Judge a fitted state against the training rows of the fold where it is used. A state fitted earlier is not automatically safe or unsafe: the contributing rows and current use matter.
+
+Exercise: a scaler learns from rows `{1, 2, 3}`. It is used in a fold with training rows `{1, 2}` and evaluation row `{3}`. Why is that a violation? Answer: row 3 influenced the scaler while being held out for this use.
+
+## 5. Why ATLAS needs more than true and false
+
+| Check result | Meaning |
+| --- | --- |
+| PASS | The assertion was assessed and satisfied within its recorded coverage |
+| FAIL | Valid evidence demonstrates a violation of the assertion |
+| NOT_ASSESSED | Applicable assessment could not be completed, for example missing metadata or an unimplemented check |
+| ERROR | Required evidence or execution failed in a way that prevents a valid assessment |
+
+Applicability is separate: a check not relevant to a claim is different from a relevant check whose metadata are missing.
+
+Run-level outcomes summarize required applicable checks:
+
+1. Outside supported scope: `NOT_SUPPORTED`.
+2. An independently supported required FAIL: `VIOLATION_FOUND`.
+3. No valid FAIL, but required gaps or errors: `INCONCLUSIVE`.
+4. Every applicable required assertion validly passes: `NO_VIOLATION_FOUND`.
+
+An integrity failure must invalidate the findings that depend on that evidence. A violation established by other valid evidence can still stand.
+
+**Why not “VALID”?** Passing a bounded set of checks is not proof of general scientific validity.
+
+**Why check empty evaluation folds?** No test rows can mean no observed overlap, but also no meaningful evaluation. Policy-v1.2 requires `split.evaluation_folds_nonempty`; an empty evaluation fold prevents a clean headline.
+
+## 6. What the model contributes
+
+The intended model contribution is interpreting the user's claim, explaining findings, and proposing an evaluation-code revision. Deterministic code handles the specified assertions and outcome rules.
+
+**Planned (T-06):** the model receives only the permitted context, not the secret API key or hidden answer keys in its prompt. No production model client exists yet.
+
+**Implemented in T-05 (not yet accepted):** `validate_diff` in `src/atlas/candidates.py` accepts a proposal only as a unified diff of the one permitted entry-point file. A diff that touches the manifest, the table, the evaluator or a second file is rejected, so a proposal cannot change the evaluator to award itself a pass.
+
+The two completed Nebius tests establish that authentication works and this model can return a short response and a valid JSON object. They do not establish reliable diagnosis, tool use or repair.
+
+### JSON and Pydantic
+
+JSON is a text format for structured values:
+
+```json
+{"project":"ATLAS","status":"ok"}
+```
+
+Pydantic validates the structure and allowed values in Python. It can reject missing fields, unexpected fields or invalid types, according to the schema. It does not prove the factual correctness of a diagnosis.
+
+The selected starting approach asks for JSON in the prompt and validates the entire reply in the application. It is not verified provider-enforced structured output. Malformed or incomplete output must not authorize actions.
+
+### API spending
+
+For the recorded rates, a response with 47 prompt tokens and 52 completion tokens costs:
+
+`47 × $0.30 / 1,000,000 + 52 × $0.90 / 1,000,000 = $0.0000609`
+
+The response reported reasoning tokens inside completion tokens; adding them again would double-count them. These rates are a historical checkpoint, not a permanent price promise. Token caps limit a request; application call budgets limit an execution path; neither guarantees an account-wide spending cap.
+
+## 7. Why Docker matters—and what it does not prove
+
+Generated Python can do more than train a model. It can read files, open connections, create processes or allocate memory. The runner limits these capabilities before executing candidate code.
+
+| Restriction | Purpose |
+| --- | --- |
+| No network | Candidate cannot make ordinary external network calls |
+| Restricted read-only inputs | Candidate cannot edit the original project or evaluator |
+| Explicit environment | Host secrets are not inherited into candidate execution |
+| Non-root, dropped capabilities, Docker's default seccomp profile | Reduce available operating-system privileges |
+| Memory, CPU and process limits | Bound resource use |
+| External deadline and confirmed cleanup | Prevent an execution from running indefinitely or leaving a container behind |
+| Bounded output collection | Treat returned files as untrusted input to the host |
+| No host fallback | Missing isolation means no candidate execution |
+
+These restrictions are implemented in T-05 and passed its contract tests on this Windows/Docker Desktop host; T-05 is not yet accepted. In code they are command-line flags built by `docker_run_args` in `src/atlas/runner/docker.py`, for example:
+
+```python
+"--network", "none",        # no network interfaces except loopback
+"--read-only",              # root filesystem cannot be written
+"--cap-drop", "ALL",        # no Linux capabilities
+"--pids-limit", str(limits.pids),
+```
+
+Each flag is one string in a Python list that is passed to the Docker CLI. Exercise: which contract test would fail if `"--network", "none"` were deleted? (Hint: search `tests/integration/test_runner_contract.py` for "network".)
+
+Docker is a risk-reduction boundary, not a claim that all hostile code is safe. It also cannot make candidate-produced scientific evidence true.
+
+A hash identifies bytes. It helps bind approval to the exact candidate and detect changes. It does not prove those bytes are honest or scientifically correct. Approval currently exists as a programmatic operation; the user-facing approval flow is pending.
+
+The trusted fixture runner is an explicit separate path for reviewed, allowlisted fixtures. Its existence must never become a fallback that runs an arbitrary candidate on the host.
+
+## 8. Learn debugging from the three T-05 review findings
+
+Codex review 1 (of `f494c95`) found three P2 defects. Repair commit `2e58280` addresses all three. Each fix has regression tests that failed at `f494c95` and pass now; the builder's unit tests (219 passed, 1 skipped) and Docker contract tests (28/28) pass. **That is self-tested, not independently verified:** Codex has not yet checked the repair, and T-05 is not accepted. Details: `TASKS.md`, T-05 "REVIEW 1 … REPAIR PASS 1".
+
+### A. Unknown cleanup is not successful cleanup
+
+If Docker cannot be contacted, the runner does not know whether a container remains. The defect treated inspection failure as confirmed absence. Another path allowed a completed status despite removal being unconfirmed.
+
+The lesson is three-valued reasoning: present, absent and unknown are distinct. Catching an exception and returning a reassuring value can corrupt the meaning of a program.
+
+The repair in `src/atlas/runner/docker.py` makes the three values explicit. `_container_listed` returns `True`, `False`, or `None` when Docker could not answer:
+
+```python
+if proc.returncode != 0:
+    return None, f"listing failed: {_cli_error(proc)}"   # unknown, NOT absent
+return name in proc.stdout.decode("utf-8", "replace").split(), None
+```
+
+`_remove_container` turns that into `cleanup` = `confirmed_absent`, `still_present` or `unknown`, and `_finish` refuses to report a plain outcome when removal is unconfirmed: the run's status becomes `cleanup_failed`, and the outcome it replaced is kept in `execution_status`. Note the Python detail `record.get("container_removed") is False`: it is true only for the value `False`, not for a missing key (`None`).
+
+Regression test to read: `test_daemon_failure_does_not_confirm_removal` in `tests/unit/test_runner_lifecycle.py`. It runs offline with a fake Docker CLI.
+
+### B. A limit checked too late is not protection
+
+```python
+# Too late: the allocation already happened.
+data = file.read()
+if len(data) > limit:
+    raise ValueError("too large")
+```
+
+A bounded read requests at most `limit + 1` bytes, then rejects oversize input before parsing. Checking the opened file's metadata also helps, but a prior pathname size check alone does not protect against later changes.
+
+The review demonstrated that oversized entry code reached `ast.parse` before its limit was applied. Parsing itself is work performed by the host, before candidate isolation.
+
+The repair in `src/atlas/candidates.py` validates the path, opens the file once, checks that the opened file is the same regular file that was checked by path (same device and inode, within the size cap), and only then reads:
+
+```python
+with _open_permitted(root, rel, max_bytes) as f:
+    data = f.read(max_bytes + 1)          # never more than the cap plus one byte
+if len(data) > max_bytes:
+    raise SnapshotError(f"{rel} exceeds {max_bytes} bytes")
+```
+
+Why `+ 1`? Reading exactly `max_bytes` cannot tell "exactly at the limit" from "over the limit"; one extra byte can. Revalidation now stops at the first unexpected file and hashes in chunks under the same caps. Regression test to read: `test_oversized_entry_is_refused_before_intake_parsing` in `tests/unit/test_candidates.py`.
+
+### C. Small input can still be deeply nested
+
+A byte limit does not necessarily constrain parser nesting. Deep JSON and chained archive extensions raised `RecursionError` below the existing byte caps. The error escaped, leaving an unfinished execution record.
+
+The repair checks structure with loops before handing input to a recursive parser. `_json_depth_exceeds` counts brackets outside strings, one token at a time, and refuses a header nested deeper than 8 levels before `json.loads` runs:
+
+```python
+for token in _JSON_TOKENS.finditer(raw):
+    t = token.group()
+    if t in (b"[", b"{"):
+        depth += 1
+        if depth > max_depth:
+            return True
+    elif t in (b"]", b"}"):
+        depth -= 1
+```
+
+A loop uses constant stack space however deep the input is; a recursive parser uses one stack frame per level. (C++ connection: the same reason a deep recursive function can overflow the call stack.) `_check_tar_structure` similarly walks the raw tar headers in a loop and allows at most one PAX extension header per file. Any failure during collection is now saved as `collection_failed`, and any other unexpected error as `runner_error`, after cleanup has run. Regression tests to read: `test_deeply_nested_header_is_a_collection_error` (`tests/unit/test_runner_collection.py`) and `test_nested_header_is_a_recorded_collection_failure` (`tests/unit/test_runner_lifecycle.py`).
+
+Known limitations of the repair are listed in `TASKS.md`; for example, the same-file check does not detect a directory swapped partway along the path.
+
+These were bounded reproductions. The review did not demonstrate a container escape. Distinguishing a demonstrated defect from a hypothetical larger exploit is part of sound engineering.
+
+## 9. Navigate the repository by purpose
+
+| Read locally | Question to answer |
+| --- | --- |
+| `PROJECT_BRIEF.md`, `docs/PRD.md` | Who needs this and what should the product do? |
+| `docs/SPEC.md`, `DECISIONS.md` | What exact behavior is required, and why? |
+| `TASKS.md`, `STATUS.md` | What is complete, under review or pending? |
+| `src/atlas/policy.py` | Which assertions are required for a claim? |
+| `src/atlas/checks/split_integrity.py` | How do rows and identifiers become findings? |
+| `GLOSSARY.md` | What do the project's terms mean exactly? |
+| `src/atlas/contracts.py` | Which statuses, outcomes and reason codes exist? |
+| `src/atlas/intake.py` | When is a project outside the supported scope? |
+| `src/atlas/adapter.py`, `src/atlas/recorder.py` | How does project execution produce observed history? |
+| `src/atlas/audit.py` | How are evidence and results assembled? |
+| `src/atlas/candidates.py` | How are permitted files and approved changes constrained? |
+| `src/atlas/runner/trusted.py` | How are reviewed, allowlisted fixtures run (not a sandbox)? |
+| `src/atlas/runner/docker.py` | How does the host launch, collect and clean up? |
+| `src/atlas/runner/container_entry.py` | What happens inside the container? |
+| `scripts/nebius_smoke.py` | How does a bounded model request work? |
+| `tests/unit/`, `tests/integration/` | What behavior has executable evidence? |
+
+Do not start by reading every line. Trace one input to one output. For each function, identify its inputs, return value, side effects, callers, assumptions and failure cases.
+
+## 10. Your C++ fundamentals are relevant
+
+| Fundamental | Python/ATLAS connection |
+| --- | --- |
+| Variables and types | Row IDs, configuration values, budgets and status labels |
+| Conditions | PASS/FAIL/unknown branches; approval checks |
+| Loops | Inspect folds, files and observed fit events |
+| Functions | Isolate one check with clear inputs and outputs |
+| Collections | Lists of rows, dictionaries of evidence, sets of overlapping IDs |
+| Classes and records | Typed manifests, validation schemas and result objects |
+| Exceptions | Turn failed operations into explicit, meaningful failure states |
+| Files and paths | Restrict snapshots, preserve evidence and reject traversal |
+| Resource management | Close files, stop subprocesses and remove containers |
+| Algorithms | Avoid repeatedly scanning large inputs or parsing before limits |
+
+C++ and Python differ in details, especially typing and memory management. The skill of tracing state and control flow transfers. Keep learning C++; learn enough Python alongside ATLAS to inspect and modify small parts independently. Do not rewrite this project in C++ merely to match your course.
+
+## 11. An eight-session learning route
+
+Each session can take roughly 15–25 minutes. Move on when you can explain the idea, not when you have memorized a file.
+
+| Session | Read and do | Explain without notes |
+| --- | --- | --- |
+| 1 | This guide §§1–5; manually compute a set intersection | Why does the deployment claim change whether a split is acceptable? |
+| 2 | One split check and its unit test | What makes missing evidence different from a violation? |
+| 3 | One clean and one faulty fixture | Where does preprocessing learn, and which rows influenced it? |
+| 4 | Policy and one outcome test | Why can a valid FAIL survive an unrelated ERROR? |
+| 5 | Smoke script; trace it without executing paid calls | Where do key loading, caps, API response and schema validation happen? |
+| 6 | Candidate validation and one rejection test | Why must approval identify exact bytes? |
+| 7 | `_remove_container` and `_finish` in `src/atlas/runner/docker.py`; `test_daemon_failure_does_not_confirm_removal` (offline, no Docker needed) | What happens when the daemon becomes unreachable? |
+| 8 | Planned (T-06): trace one full agent run once integration exists | Who proposes changes, who executes them and who judges the result? |
+
+At each session, first predict behavior. Then inspect code or run the already-approved offline test. Finally explain any mismatch. Save your own explanation in a few sentences; do not merely copy a generated answer.
+
+## 12. A tutoring prompt for the local agent
+
+Use this separately from an implementation task:
+
+```text
+Teach me one small part of ATLAS using the current local code. I know basic Python and am learning C++ fundamentals.
+
+Read the relevant function and one test. Do not edit files or run paid calls.
+1. Explain the purpose with a concrete input/output example.
+2. Show a short excerpt and explain unfamiliar syntax.
+3. Ask me one prediction question and wait for my answer.
+4. After I answer, explain the result and connect it to the real code.
+
+Separate implemented behavior from plans. Do not quiz me on multiple concepts at once or give the answer before I try.
+```
+
+For the first session, add: “Start with a group-overlap check, not the entire runner.”
+
+## 13. Being the engineer of an AI-assisted project
+
+Using an agent does not remove your responsibility for requirements, judgment and verification. Your goal is to become able to recognize when its answer is unsupported, not just to produce longer prompts.
+
+Before a task: describe the intended behavior and a counterexample. Afterward: examine the diff, ask what evidence demonstrates success, and distinguish the builder's claim from independent verification. If a repair changes the meaning of a rule, resolve the policy first instead of allowing tests to redefine it silently.
+
+The T-01 repeated-measures repairs are a useful example: the project had to distinguish a violation supported by the relevant known rows from an unrelated group failure elsewhere. That was a reasoning and specification problem as well as a coding problem.
+
+Behavioral skills can remind agents to make smaller changes and disclose uncertainty. They do not replace understanding the domain, good tests, bounded execution or an independent review.
+
+## 14. Résumé and interview readiness
+
+You can list an AI-assisted project, but describe work and outcomes you can explain. Do not claim future features as completed, a smoke test as model-quality evaluation, or a container as tamper-proof execution.
+
+Current example, qualified to the checkpoint:
+
+> Built an AI-assisted Python prototype for auditing tabular ML evaluations against deployment claims; implemented deterministic checks with 165 independently verified tests and integrated NVIDIA Nemotron through Nebius Token Factory. Restricted Docker execution is implemented and under review.
+
+Use “built” only if you can discuss your role in directing, reviewing and understanding the work. In an interview, describe Claude/Codex assistance candidly when asked; distinguish generated implementation from decisions and verification you owned. Replace the example with measured end-to-end outcomes when those exist. Test count alone is not the project's value.
+
+Practice these questions:
+
+1. What failure does ATLAS catch that ordinary accuracy reporting misses?
+2. Which parts need a model, and which are deterministic?
+3. Why is NO_VIOLATION_FOUND deliberately weaker than VALID?
+4. What does a hash prove, and what does it not prove?
+5. What happens if model JSON is malformed?
+6. Why is a Docker failure never permission to run a candidate on the host?
+7. Explain one bug, its counterexample, the fix and the regression test.
+8. What remains untested or unsupported?
+9. How will you measure whether memory improves the agent without contaminating the comparison?
+10. What evidence would make you reject your own preferred design?
+
+## 15. Keep this guide current
+
+This file, `docs/ATLAS_Learning_Guide.md`, is the canonical copy. It remains explanatory, with no authority over `AGENTS.md`, `docs/SPEC.md` or `DECISIONS.md`.
+
+`AGENTS.md` ("Learning guide") asks the builder to update it at task boundaries when architecture, implemented behavior, setup, acceptance status or important limitations change, and asks reviewers to flag material inaccuracies a change introduces. When updating: refresh the status table and the evidence-boundary commit, add one concrete example from actual code or evidence, and keep planned, implemented, independently verified and accepted behavior apart. Do not paste secrets, private run contents or sealed held-out cases into the guide.
+
+Your first learning goal is modest: explain the problem, one group-overlap test, and why missing information cannot become PASS. That is a real step toward owning the whole system.
