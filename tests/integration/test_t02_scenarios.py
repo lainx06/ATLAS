@@ -351,3 +351,62 @@ def test_duplicate_fold_identifier_is_an_evidence_error(tmp_path, order):
     for entry in reported.observed["entries"]:
         assert entry["recomputed"]["complete"] is False
     assert result.outcome is not Outcome.NO_VIOLATION_FOUND
+
+
+# --- Codex verification of 0cf955d: undecodable split evidence -----------------------------------
+
+
+def _undecodable(case: str, splits: list) -> bytes:
+    """Bytes that are not decodable split evidence; the index is re-hashed to match them."""
+    if (
+        case == "integer_5000_digits"
+    ):  # the demonstrated case: beyond the int-from-str limit
+        splits[1]["training_cutoff"] = "BIG"
+        raw = json.dumps(splits).replace('"BIG"', "1" + "0" * 4999)
+        return raw.encode("utf-8")
+    if case == "malformed_json":
+        return json.dumps(splits)[:-1].encode("utf-8")
+    if case == "invalid_utf8":
+        return b"\xff" + json.dumps(splits).encode("utf-8")
+    return ("[" * 100_000 + "]" * 100_000).encode("utf-8")  # deep_nesting
+
+
+@pytest.mark.parametrize(
+    "case", ["integer_5000_digits", "malformed_json", "invalid_utf8", "deep_nesting"]
+)
+def test_undecodable_hash_matching_splits_is_an_evidence_error(tmp_path, case):
+    from atlas.reports import sha256_file
+
+    run_dir = execute(CLEAN, tmp_path / "runs")
+    evaluate(
+        CLEAN, run_dir
+    )  # earlier outputs exist and must be replaced, not left stale
+    splits = json.loads((run_dir / "splits.json").read_text(encoding="utf-8"))
+    (run_dir / "splits.json").write_bytes(_undecodable(case, splits))
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    index["artifacts"]["splits.json"] = sha256_file(run_dir / "splits.json")
+    (run_dir / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+    result = evaluate(CLEAN, run_dir)  # returns; no uncaught decoder exception
+
+    required = required_assertions(_manifest("s11b_future_time_clean"))
+    assert [a.assertion_id for a in result.assertions] == required
+    for (
+        a
+    ) in result.assertions:  # every required assertion depends on the split evidence
+        assert (a.status, a.reason) == (E, Reason.EVIDENCE_INVALID), a.assertion_id
+    assert result.outcome is Outcome.INCONCLUSIVE  # no clean outcome is possible
+    assert "splits.json could not be decoded" in result.reason
+    assert not any(d.available for d in result.descriptive)
+    written = json.loads((run_dir / "outcome.json").read_text(encoding="utf-8"))
+    assert written["outcome"] == "INCONCLUSIVE"
+    assert [a["assertion_id"] for a in written["assertions"]] == required
+    outputs = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))[
+        "outputs"
+    ]
+    on_disk = {"outcome.json", "report.json"} | {
+        f"checks/{p.name}" for p in (run_dir / "checks").glob("*.json")
+    }
+    assert set(outputs) == on_disk
+    for name, digest in outputs.items():
+        assert sha256_file(run_dir / name) == digest, name

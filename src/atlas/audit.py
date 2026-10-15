@@ -307,7 +307,9 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
 
     required = required_assertions(manifest)
     execution, problem = _execution_trust(run_dir, index)
-    computed, descriptive = _compute(project, run_dir, index, manifest)
+    computed, descriptive, evidence_problem = _compute(
+        project, run_dir, index, manifest
+    )
     if snapshot_problem is not None:
         _degrade_unconfirmed(computed, snapshot_problem, completed=False)
     if problem is not None:
@@ -330,7 +332,7 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
     outcome = RunOutcome(
         outcome=derive_outcome(results),
         policy_version=POLICY_VERSION,
-        reason=unconfirmed or None,
+        reason="; ".join(p for p in (unconfirmed, evidence_problem) if p) or None,
         assertions=results,
         incomplete_coverage=incomplete_coverage(results),
         descriptive=descriptive,
@@ -347,9 +349,25 @@ def _read_events(path: Path) -> list[dict]:
     ]
 
 
+def _load_splits(path: Path) -> tuple[list, str | None]:
+    """(declared splits, decoding problem). Hash-verified bytes that cannot be decoded are invalid
+    evidence, never an exception: e.g. an integer beyond Python's int-from-string digit limit
+    (ValueError), malformed JSON or non-UTF-8 bytes (ValueError subclasses), or nesting deep
+    enough to exhaust recursion. Nothing is parsed partially or dropped.
+    """
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), None
+    except (ValueError, RecursionError) as exc:
+        return (
+            [],
+            f"splits.json could not be decoded ({type(exc).__name__}: {str(exc)[:160]})",
+        )
+
+
 def _compute(
     project: Path, run_dir: Path, index: dict, manifest: Manifest
-) -> tuple[dict[str, AssertionResult], list[DescriptiveResult]]:
+) -> tuple[dict[str, AssertionResult], list[DescriptiveResult], str | None]:
+    """(computed assertions, descriptive results, evidence-decoding problem or None)."""
     table_info = index.get("table") or {}
     table_path = project / manifest.table.path
     table_ok = table_path.exists() and sha256_file(table_path) == table_info.get(
@@ -360,7 +378,12 @@ def _compute(
     )
     splits_path, splits_hash, splits_ok = verified(run_dir, index, "splits.json")
     splits_ref = EvidenceRef(artifact="splits.json", sha256=splits_hash)
-    splits = json.loads(splits_path.read_text(encoding="utf-8")) if splits_ok else []
+    splits, splits_problem = [], None
+    if splits_ok:
+        splits, splits_problem = _load_splits(splits_path)
+        # Undecodable evidence takes the existing invalid-evidence path: every assertion that
+        # depends on the splits becomes ERROR(evidence_invalid).
+        splits_ok = splits_problem is None
 
     prov_path, prov_hash, prov_ok = verified(run_dir, index, "provenance.jsonl")
     events = _read_events(prov_path) if prov_ok else []
@@ -445,7 +468,7 @@ def _compute(
         evidence_valid=splits_ok and table_ok,
     )
     computed.update(metrics)
-    return computed, descriptive
+    return computed, descriptive, splits_problem
 
 
 def _report(project, manifest, execution, outcome: RunOutcome) -> dict:

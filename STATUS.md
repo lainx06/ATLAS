@@ -2,8 +2,9 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-02 repair pass 1 is self-tested and awaits independent verification (not accepted).
-- **T-02 (policy-v1.3, manifest schema 0.3):** implemented at `487664e`. **Codex review 1 found four P2 defects. Repair pass 1 is done and self-tested; it awaits independent verification. Not accepted.**
+CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Day two, 2026-10-15) and is the next separate task.** T-02 repair pass 2 is self-tested and awaits independent verification (not accepted).
+- **T-02 (policy-v1.3, manifest schema 0.3):** implemented at `487664e`. **Codex review 1 found four P2 defects, and Codex verified all four fixed at `0cf955d` (repair pass 1). That verification found one more P2: a 5,000-digit integer in hash-matching `splits.json` raised an uncaught decoder `ValueError`, and no outcome was written. Repair pass 2 is done and self-tested; it awaits independent verification. Not accepted.**
+  - Repair pass 2: undecodable split evidence (an over-limit integer, malformed JSON, invalid UTF-8, or excessive nesting) is now invalid evidence. Every dependent assertion is ERROR(evidence_invalid), and the INCONCLUSIVE outcome, check files and index are written. 4 new regressions failed at `0cf955d` and pass now; the audit and evidence-error suites passed 108/108. Details: TASKS.md T-02 "CODEX VERIFICATION OF REPAIR PASS 1 … REPAIR PASS 2".
   - The four repairs:
     - a missing value no longer suppresses a known cutoff violation;
     - a shared stream/group column no longer crashes the window check;
@@ -29,12 +30,12 @@ CURRENT STEP: Start Here Step 11. **T-03 hosting probe is due today (playbook Da
   - All review evidence is preserved unchanged under `runs/review-t05/` (`session-f494c95-20261015/`, `repair1-44c5a84/`, `repair2-eed73ee/`).
 - T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). **T-03 due, not started.**
 - **Learning guide:** `docs/ATLAS_Learning_Guide.md` is the canonical guide (tracked since `44c5a84`; maintenance rule in AGENTS.md "Learning guide"). The T-02 update:
-  - marks T-02's review-1 repairs as self-tested and awaiting verification, and corrects the overstated aggregate-completeness claim (duplicate fold names had defeated it);
+  - marks T-02's review-1 repairs as independently verified and repair pass 2 as awaiting verification; explains the runtime digit-limit defect; corrects the overstated aggregate-completeness claim (duplicate fold names had defeated it);
   - explains the four review findings as beginner lessons;
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), `487664e` (T-02), and the T-02 repair pass 1 commit containing this update). Nothing is pushed.
+CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), `487664e` (T-02), `0cf955d` (T-02 repair pass 1), and the T-02 repair pass 2 commit containing this update). Nothing is pushed.
 LAST UPDATED: 2026-10-15
 
 ## What works (verified by running)
@@ -109,12 +110,17 @@ LAST UPDATED: 2026-10-15
     - `uv run --locked pytest tests/unit tests/integration -q --ignore=tests/integration/test_runner_contract.py --basetemp=runs/t02r/f` (534 passed, 1 skipped);
     - copies of Codex's `probe.py` and `evaluate_probes.py` in `runs/t02r/probes/`;
     - ruff.
+15. T-02 repair pass 2 (2026-10-15):
+    - the new regression against a `git archive` copy of `0cf955d` (4 failed);
+    - the audit and evidence-error suites: T-01 scenarios, both T-01 review suites, T-02 scenarios, CLI and policy (108 passed);
+    - a copy of Codex's `json5000_runtime` case in `runs/t02r2/`;
+    - ruff.
 
 ## Blockers
 - **Nebius:** none. Credits available (user-reported), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** none. Accepted at `eed73ee`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
-- **T-02:** none for implementation. Acceptance waits for Codex's verification of repair pass 1.
+- **T-02:** none for implementation. Acceptance waits for Codex's verification of repair pass 2.
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
 
@@ -176,9 +182,9 @@ LAST UPDATED: 2026-10-15
 
 ## Next task
 1. **T-03 hosting probe: due now.** It was scheduled for playbook §11 Day two (2026-10-15), and the playbook says "Do not defer this discovery to recording week". It is not started. It is independent of T-02 and is docs/evidence only, with no purchases or deployment.
-2. **T-02 verification:** Codex verifies repair pass 1 (base `487664e`) against its four findings. T-02 stays unaccepted until then.
+2. **T-02 verification:** Codex verifies repair pass 2 (base `0cf955d`) against the split-evidence decoding finding. T-02 stays unaccepted until then.
 3. T-06 waits for T-02 acceptance (T-04 and T-05 are accepted). No further Nebius calls are planned before T-06.
 
 ## Unresolved questions
-- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the T-02 assertions (contract decided; repair pass 1 awaiting verification), synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
+- Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the T-02 assertions (contract decided; repair pass 2 awaiting verification), synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".

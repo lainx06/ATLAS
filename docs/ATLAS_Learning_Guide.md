@@ -1,12 +1,12 @@
 # Understanding ATLAS, end to end
 
-Personal learning guide for Adnan · 15 October 2026 · last checked against T-02 repair pass 1 (the commit after `487664e`)
+Personal learning guide for Adnan · 15 October 2026 · last checked against T-02 repair pass 2 (the commit after `0cf955d`)
 
 ## How to use this guide
 
 This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
 
-**Evidence boundary:** last checked against the local repository at T-02 repair pass 1, the commit after `487664e` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+**Evidence boundary:** last checked against the local repository at T-02 repair pass 2, the commit after `0cf955d` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
 
 **Status words used here** (they are deliberately different):
 
@@ -41,7 +41,7 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
 | Candidate re-evaluation integration | Planned for T-06. The evaluator (`audit.py`) still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` | Not demonstrated by T-05 |
 | Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
-| T-02 time, window and metric checks | Implemented at `487664e`. Codex's first review found four defects. **Repair pass 1 is self-tested and awaits independent verification; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
+| T-02 time, window and metric checks | Implemented at `487664e`. Codex's first review found four defects, and Codex verified their repairs at `0cf955d`. That verification found one more defect (undecodable split evidence). **Its repair (pass 2) is self-tested and awaits independent verification; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
@@ -120,9 +120,9 @@ Judge a fitted state against the training rows of the fold where it is used. A s
 
 Exercise: a scaler learns from rows `{1, 2, 3}`. It is used in a fold with training rows `{1, 2}` and evaluation row `{3}`. Why is that a violation? Answer: row 3 influenced the scaler while being held out for this use.
 
-### Time, windows and honest metrics (T-02: implemented; repairs self-tested, awaiting verification)
+### Time, windows and honest metrics (T-02: implemented; first repairs verified, latest repair awaiting verification)
 
-T-02 adds checks for evaluations where time matters. The rules were decided by the lead on 15 October 2026 (`DECISIONS.md`, "T-02 contract dispositions"). Codex's first review found four defects (below). They are repaired and pass the builder's tests, but the repairs have not been independently verified, so treat this as implemented, not verified.
+T-02 adds checks for evaluations where time matters. The rules were decided by the lead on 15 October 2026 (`DECISIONS.md`, "T-02 contract dispositions"). Codex's first review found four defects (below), and Codex has independently verified their repairs. That verification found one more defect, whose repair is self-tested and awaits verification. T-02 is not accepted, so treat it as implemented, not verified.
 
 **A label you could not have known yet.** A row predicted on day 100 has an outcome that becomes known on day 150. If a model trained with a cutoff of day 120 used that label, it learned something it could not have known on day 120. ATLAS checks both sides of the cutoff:
 
@@ -153,7 +153,7 @@ C++ connection: this is the same convention as `begin()`/`end()` iterators, wher
 
 **Averages that hide a missing fold.** Suppose four folds were declared but one has no valid predictions. Averaging the three remaining folds would quietly report a different experiment. ATLAS is designed to mark such an aggregate incomplete and refuse to PASS it, while still showing each valid fold's value.
 
-The first version did not fully live up to that: two folds declared with the *same name* let the later fold's result overwrite the earlier fold's error, so an incomplete aggregate was reported as complete. The repair (awaiting verification) treats a repeated fold name as ambiguous evidence, so both folds become evidence errors.
+The first version did not fully live up to that: two folds declared with the *same name* let the later fold's result overwrite the earlier fold's error, so an incomplete aggregate was reported as complete. The repair, now independently verified, treats a repeated fold name as ambiguous evidence, so both folds become evidence errors.
 
 **Floating-point at the edge.** The reported-metric rule is `abs(reported - recomputed) <= 1e-6`, applied literally to binary floats. Many decimals have no exact binary form, so a difference meant to be exactly 1e-6 can land just above it:
 
@@ -168,6 +168,7 @@ C++ connection: `double` behaves the same way, because it is the same IEEE 754 f
 - **"Both must hold" can fail on partial information.** The training-label rule needs the prediction time *and* the label time to be at or before the cutoff. If the prediction time is already after the cutoff, the rule is broken even if the label time is unknown. The first version gave up when either value was missing. Now each known value is compared on its own, and missing values only prevent a PASS.
 - **One column, two roles.** A table may use the same column as both stream and group. Selecting it twice created a table with two columns of the same name, and pandas refused to group it. Now each role is selected separately.
 - **Numbers too big for a float.** Python integers have no size limit, but a float stops near 1.8 × 10^308. `float(10**400)` raises `OverflowError` instead of returning infinity. Inputs that large are now rejected or treated as invalid evidence instead of crashing.
+  - The same idea has a second layer. Python refuses to turn a string of more than 4,300 digits into an `int` at all, which guards against slow conversions. Codex's verification found that a 5,000-digit number inside the run's `splits.json` stopped the evaluator before it could write any result. The fix (awaiting verification) treats undecodable split evidence as invalid evidence: every assertion that depends on it becomes ERROR, and the outcome is written as INCONCLUSIVE. The digit limit itself is left unchanged.
 - **A name used as a key must be unique.** A Python dictionary keeps only the last value for a repeated key:
 
 ```python

@@ -11,7 +11,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
-| T-02 | 11 | **Codex review 1 of `487664e` found four P2 defects; repair pass 1 done and self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
+| T-02 | 11 | **Codex verified repair pass 1 at `0cf955d`: all four review-1 findings fixed; one more P2 (undecodable split evidence) remained. Repair pass 2 done and self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
@@ -426,6 +426,41 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - A number with more digits than the JSON parser accepts (about 4,300 or more) is rejected by pydantic's JSON parser before field validation. Intake still gives `NOT_SUPPORTED`, but the reason names a position ("number out of range at line 1 column N"), not the field.
     - Duplicate fold identifiers are refused only by the metric assertions. The adapter still accepts them. Other checks surface their effects in Codex's reproduction (row-overlap FAIL, coverage gaps), but they do not name the duplication.
     - The RESULT limitations above stand. **T-02 remains unaccepted** pending independent verification of this repair.
+- **CODEX VERIFICATION OF REPAIR PASS 1 (local Codex, at `0cf955d`, 2026-10-15) and REPAIR PASS 2 (Claude Code, Opus 5.5 high):**
+  - **Review evidence:** preserved unchanged at `runs/review-t02/r0cf/` (git-ignored). A hash manifest of `runs/review-t02/` (4,885 lines) was identical before and after this repair. Key files:
+    - `review.md` (`716457dd…88ec8ee3`);
+    - `focused.py` (`22ccd7e1…a583eb40`) and `focused-results.json` (`0fb8682a…457b8f39`).
+
+    Codex's run: 534 passed, 1 skipped.
+  - **Codex's disposition:**
+    - All four review-1 findings are **verified fixed**: independent cutoff comparisons, the shared stream/group column, numeric overflow at the three helpers, and duplicate fold identifiers in both orderings.
+    - No fixture, allowlist, policy, existing expected value or existing assertion changed.
+    - **One more P2:** a 5,000-digit integer `training_cutoff` in hash-matching `splits.json` raised an uncaught `ValueError` from `json.loads` in `audit._compute`, before `time_value` could classify it. Outputs had already been cleared, so no `outcome.json` was written. This is newly demonstrated pre-existing behavior, not a regression.
+    - The paired 5,000-digit *manifest* case is safe: `NOT_SUPPORTED`, with a position-based diagnostic.
+  - **Checkpoints:** base `0cf955d`; head = the local commit "Repair T-02 split-evidence decoding after Codex verification" (parent `0cf955d`).
+  - **Cause:** `splits.json` was hash-verified and then decoded with an unguarded `json.loads`. Python refuses to convert integer strings longer than 4,300 digits, and the resulting `ValueError` escaped `evaluate()`. Malformed JSON, invalid UTF-8 (both `ValueError` subclasses) and nesting deep enough for `RecursionError` escaped the same line.
+  - **Repair:**
+    - A new helper, `audit._load_splits`, decodes the verified bytes and turns `ValueError`/`RecursionError` into a recorded problem. `splits_ok` becomes false, so every assertion that depends on the splits takes the existing invalid-evidence path, ERROR(`evidence_invalid`), and the descriptive results are unavailable.
+    - The problem, "splits.json could not be decoded (…)", is added to the outcome's reason. Finalization writes `outcome.json`, `report.json` and the check files, and indexes them with current hashes.
+    - Python's digit limit is not raised. No fold is dropped or partially parsed, and policy is unchanged.
+    - Every required T-02 and T-01 assertion depends on the split evidence, so no independent FAIL can survive undecodable splits. The finer-grained case of a cutoff beyond float64, where an independent FAIL in another fold survives, is still covered by repair pass 1's regression.
+  - **Tests:**
+    - `tests/integration/test_t02_scenarios.py::test_undecodable_hash_matching_splits_is_an_evidence_error[integer_5000_digits|malformed_json|invalid_utf8|deep_nesting]`, a full-evaluator regression.
+    - It executes trusted s11b, evaluates once, writes hash-matching undecodable `splits.json`, and evaluates again. It asserts that:
+      - evaluation returns;
+      - every required assertion is ERROR(`evidence_invalid`) and the outcome is INCONCLUSIVE;
+      - the reason names `splits.json`, and the descriptive results are unavailable;
+      - `outcome.json` lists the required assertions;
+      - the indexed outputs equal the files on disk, with current hashes.
+    - **RED at `0cf955d`**, from a temporary `git archive` copy placed first on `PYTHONPATH`: **4 failed** (`runs/t02r2/red-at-base.log`), with `ValueError` (the 4,300-digit limit), `JSONDecodeError`, `UnicodeDecodeError` and `RecursionError`. All 4 pass after the repair.
+  - **Actual results (2026-10-15):**
+    - Audit and evidence-error suites: `uv run --locked pytest tests/integration/test_t01_scenarios.py tests/integration/test_review_t01.py tests/integration/test_review_t01_repair.py tests/integration/test_t02_scenarios.py tests/integration/test_cli.py tests/unit/test_policy.py --basetemp=runs/t02r2/c` → **108 passed** (`runs/t02r2/audit-tests.log`).
+    - A copy of Codex's `json5000_runtime` case (`runs/t02r2/json5000_runtime.py`; paths only adapted) → INCONCLUSIVE; every assertion ERROR(`evidence_invalid`); `outcome.json` written.
+    - `ruff check .` and `ruff format --check .` → clean.
+    - **Not run, as instructed:** the full suite, Docker and the mutation check. The change is confined to how `audit.py` decodes `splits.json`; the decoding of valid splits is byte-for-byte unchanged. 0 inference calls.
+  - **Remaining limitations (repair pass 2):**
+    - **Sibling decoder, identified by inspection and not demonstrated or repaired** (this pass was scoped to the split boundary): `audit._read_events` decodes `provenance.jsonl` with the same unguarded `json.loads`. A hash-matching provenance line with an over-limit integer would likely escape `evaluate()` the same way.
+    - The repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of this repair.
 
 ### T-03 Hosting and isolated-worker probe (early, per playbook §11 Day 2)
 - **OWNER:** Claude Code (research and documentation only); the lead decides.
