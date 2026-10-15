@@ -710,6 +710,11 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - `hosting_probe/check_publication.py` confirms the set is exactly those two files with no ATLAS source, personal documentation, credential, key-shaped string, email, local path, Nebius reference or network import.
     - `hosting_probe/test_stage_a.py` renders the app with every non-loopback connection and lookup blocked (the guard has a self-test) and checks that only a hash prefix of the canary is shown. The first stub (with the optional Nebius check) is not published in stage A.
     - 9 local probe tests passed. T-03 stays unaccepted.
+  - **Stage A deployed by the owner (2026-10-15 18:41 -0400) and first observations recorded** (`docs/HOSTING_PROBE.md` §7a): public repository `lainx06/atlas-hosting-probe` with the two files (byte-identical to the local set), `https://atlas-hosting-probe.streamlit.app/`.
+    - Build about 14 s; no extra permission; Python 3.11.17 and Streamlit 1.66.0 on Linux.
+    - The canary was present and its hash prefix matched.
+    - Still pending: the sleep/wake observation (earliest about 2026-10-16 06:51 -0400 with no visits in between), a signed-out access check, outbound network, the full locked build, and the credit facts.
+    - **T-03 remains unaccepted.**
 
 ### T-04 Nebius access smoke (Start Here Step 10)
 - **OWNER:** Claude Code (writer); the user enters the key privately.

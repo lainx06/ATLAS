@@ -1,6 +1,6 @@
 # T-03 hosting probe: research and local design
 
-Status: **research and local design complete (2026-10-15); stage A publication set prepared locally; T-03 is NOT accepted.** Lead decisions of 2026-10-15 (DECISIONS.md "Hosting probe decisions") are applied below. Required feasibility evidence is missing (see §9). Nothing was deployed, no account was linked, no repository or secret was created, and no API call was made. Written under TASKS.md T-03 (Sonnet 5.5, medium effort); the lead decides, and the decision goes in DECISIONS.md.
+Status: **research and local design complete (2026-10-15); stage A deployed by the owner and first observations recorded (§7a); sleep/wake observation pending; T-03 is NOT accepted.** Lead decisions of 2026-10-15 (DECISIONS.md "Hosting probe decisions") are applied below. Required feasibility evidence is missing (see §9). Nothing was deployed, no account was linked, no repository or secret was created, and no API call was made. Written under TASKS.md T-03 (Sonnet 5.5, medium effort); the lead decides, and the decision goes in DECISIONS.md.
 
 **Evidence labels** used on every conclusion:
 
@@ -159,6 +159,32 @@ Local commands (no deployment): `uv run --locked python hosting_probe/check_publ
 | B | Optional `GET /models` from the host (the first stub's button) | Separate approval; a real key entered by the owner |
 | C | Full locked-environment build | Separate approval |
 
+## 7a. Stage A observations (2026-10-15)
+
+Deployed by the owner from `lainx06/atlas-hosting-probe` (public; `main`; exactly `app.py` and `requirements.txt`, byte-identical to the local set, checked by a read-only download). App URL: `https://atlas-hosting-probe.streamlit.app/`. All items are **observed** and **owner-reported** unless marked; no Nebius request or key was involved.
+
+| Observation | Value | Label |
+| --- | --- | --- |
+| GitHub authorization shown to the owner (earlier sign-in) | Public repositories, repository hooks, codespaces, org read, email read; no private-repository scope | observed (owner-reported) |
+| Extra permission requested during this deployment | None | observed (owner-reported) |
+| Python versions offered | 3.11 to 3.14; 3.11 chosen | observed (owner-reported) |
+| Build + deploy time | About 14 seconds (minimal one-package environment) | observed (owner-reported) |
+| Python on the host | **3.11.17**, the same patch version as the locked environment | observed (page) |
+| Streamlit on the host | 1.66.0 (unpinned `streamlit` resolved to the same version as `uv.lock` today; not a lock verification) | observed (page) |
+| Platform | Linux 6.12.94+, x86_64, glibc 2.41 | observed (page) |
+| First render | Fresh process (uptime 0.1 s), page rendered at unix 1792104075 = 2026-10-15 18:41:15 -0400 | observed (page) |
+| Secret store | `CANARY` present; the page's SHA-256 prefix matched the owner's locally computed prefix | observed (owner-reported match) |
+| Canary value on the page | Not shown; only presence and the hash prefix | observed (design) |
+
+**Not yet observed (stage A is incomplete):**
+- **Sleep/wake.** Documented: apps with no traffic for 12 hours go to sleep. The 12 hours restart with every visit, including the owner's. The earliest sleeping state to test is about **2026-10-16 06:51 -0400** (12 h 10 min after the first render, with **no visits in between**). The test is: visit, time how long the wake-up button and the page take, and read `process_uptime_s` (a small value shows a fresh process).
+- **Signed-out public access.** That the app opens for a visitor who is not signed in has not been checked; the owner should open it in a private browser window.
+- **Outbound network** from the host: untested by design (stage A has none).
+- **Full locked environment** (61 packages, stage C): untested. This build installed Streamlit only.
+- **Availability through 15 December:** not established by a single day's observation.
+
+The probe stays deployed until the sleep/wake observation is recorded. Deletion is a later, explicit action.
+
 ## 8. Approvals needed
 
 **The one minimal deployment action for stage A (explicit approval given for local preparation only; nothing has been created or published):**
@@ -181,8 +207,8 @@ Local commands (no deployment): `uv run --locked python hosting_probe/check_publ
 
 T-03 requires each open check answered by a dated source or an observed test. Answered here by documentation: plans and permissions, private-source behavior, sleep rule, secrets support, price, 90-day credit term. **Still missing:**
 
-- no deployment observed: the host build, cold-start time and outbound network are untested;
-- the secret store is untested on a host;
+- cold-start / sleep-wake time is not yet observed (the stage A build and canary were observed, §7a); outbound network is untested;
+- signed-out public access is not yet checked;
 - credit balance and the real expiry of the user's credits are unknown;
 - the Nebius account's behavior at zero balance is unknown, and no per-key limit was found;
 - the durable store for counters is not chosen;

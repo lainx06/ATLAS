@@ -42,7 +42,7 @@ CURRENT STEP: Start Here Step 11. **T-03 hosting probe: research and local desig
     - tested only on this host.
   - **Pending T-06:** candidate re-evaluation, and `audit.py` accepting Docker execution records. Audits stay `trusted_pipeline_only` until then.
   - All review evidence is preserved unchanged under `runs/review-t05/` (`session-f494c95-20261015/`, `repair1-44c5a84/`, `repair2-eed73ee/`).
-- T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). **T-03: research done, not accepted.**
+- T-01 accepted at `f5aa4dc`. GitHub setup complete (private `lainx06/atlas`). **T-03: stage A deployed, sleep/wake pending, not accepted.**
 - **Learning guide:** `docs/ATLAS_Learning_Guide.md` is the canonical guide (tracked since `44c5a84`; maintenance rule in AGENTS.md "Learning guide"). It marks T-02 accepted at `75a98f4` within its documented scope; explains the decoding and structure boundaries; corrects the overstated aggregate-completeness claim (duplicate fold names had defeated it);
   - explains the four review findings as beginner lessons;
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
@@ -212,7 +212,7 @@ LAST UPDATED: 2026-10-15
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-03 hosting probe:** stage A (canary only; no Nebius request; no key) is prepared locally and awaiting the owner's manual steps: create `lainx06/atlas-hosting-probe`, add the two files from `hosting_probe/stage_a/`, deploy on Streamlit Community Cloud, add a `CANARY` secret. The probe is kept until a sleep/wake observation is recorded. T-03 is not accepted. Credit facts: Nebius Builder terms say credits expire 90 days after issuance, but the user's issue dates, balance and expiry are unverified; payment information is already on the account and billing is unchanged, so the balance is not a hard ceiling. Details: `docs/HOSTING_PROBE.md`; DECISIONS.md "Hosting probe decisions".
+1. **T-03 hosting probe:** stage A is **deployed** (`https://atlas-hosting-probe.streamlit.app/`, from public `lainx06/atlas-hosting-probe`). First observations are recorded in `docs/HOSTING_PROBE.md` §7a: build about 14 s, Python 3.11.17, Streamlit 1.66.0, canary present with a matching hash prefix, no Nebius request. **Pending:** the sleep/wake observation (visit no earlier than about 2026-10-16 06:51 -0400, and do not visit before then), a signed-out access check, and the credit facts (Nebius Builder terms say credits expire 90 days after issuance; the user's issue dates, balance and expiry are unverified; billing is unchanged). The probe is kept until then. T-03 is not accepted.
 2. T-06 (bounded live agent loop): its inputs T-02, T-04 and T-05 are accepted, but it waits until T-03 is done. No further Nebius calls are planned before T-06.
 
 ## Unresolved questions
