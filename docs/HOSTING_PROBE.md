@@ -116,18 +116,30 @@ Planning caps: judge pool $10 (about 196 worst-case runs); public pool at most $
 
 ## 5a. Durable budget store: recommendation (research only, 2026-10-15)
 
-**Recommended: Neon serverless Postgres, Free plan.** One store holds every counter, reservation and the hashed judge code (§5). Nothing was created, no account opened, no connection made. Only public documentation was read.
+**Selected provisionally by the lead (2026-10-15): Neon serverless Postgres, Free plan, pending a successful connection test from the host (§5b).** One store holds every counter, reservation and the hashed judge code (§5). Nothing was created, no account opened, no connection made. Only public documentation was read.
 
 ### Why this fits the §5 design
 
 | Requirement | Neon Free | Label |
 | --- | --- | --- |
-| Free-tier limits | 1 GB storage per project; 100 compute-unit-hours per project each month; 100 projects; 5 GB network transfer a month; 6-hour restore history. Storage-increasing operations fail at the cap; compute suspends if the monthly compute allowance is exhausted until the next period | **Documented** (neon.com/docs/introduction/plans) |
-| Size of our need | Counters and a few thousand reservation rows are kilobytes to a few MB. The 1 GB cap is not a concern. Whether 100 compute-unit-hours is ample depends on the compute size Neon assigns, which the page read does not state | need: **proposed**; compute size **unknown** |
+| Free-tier limits | **No credit card required; the Free plan is permanent, not a trial** (neon.com/pricing). 1 GB storage per project; 100 compute-unit-hours (CU-hours) per project each month; 100 projects; 5 GB network transfer a month; 6-hour restore history. Storage-increasing operations fail at the cap; compute suspends if the monthly compute allowance is exhausted until the next period | **Documented** (neon.com/pricing and /docs/introduction/plans, 2026-10-15) |
+| Size of our need | **Fixed:** the pool and daily cap rows (a handful, plus about one daily row per day of judging) stay small. **Accumulating:** one reservation row per attempted request (up to 6 per run), plus any per-session cap rows, grow with traffic unless pruned. At an assumed 0.5 KB per reservation row including its index (not measured), 60,000 rows (10,000 runs) is about 30 MB, about 3% of 1 GB. Production must prune settled and released rows and old session rows; the 1 GB cap is then not expected to bind, but this is an estimate | need: **proposed**; row size **unknown** until measured |
+| Compute allowance | See the explanation below the table | **Documented**, usage **unknown** |
 | Atomic reservation | Ordinary Postgres transactions. A conditional `UPDATE ... WHERE reserved + spent + :amount <= cap RETURNING ...` is one atomic statement; the row lock serializes concurrent callers, so two requests cannot both take the last of a budget. Each cap (judge pool, public pool, daily key, session key) is one row | Standard Postgres behavior (**not tested here**); **proposed** design |
 | Restart behavior | All state is in the database, none in app memory. A Community Cloud restart, sleep or second process just reads the same rows. Neon suspends idle compute after 5 minutes (cannot be disabled on Free) and reactivates "within a few hundred milliseconds" on the next query. Free-plan data is not deleted for inactivity (storage, not compute, is what is kept) | **Documented**; first-query latency after suspension **not measured** |
 | Failure when exhausted or unreachable | Exhausted compute or storage, an unreachable database, or a connect timeout all make the reservation fail, and the app fails closed to recorded-example mode (§5) | **Proposed** |
 | Pausing risk | No inactivity pause or deletion is described for Free projects (unlike Supabase below). A single quiet day does not establish availability through 15 December | **Documented** absence; availability **unknown** |
+
+**What "100 CU-hours" means (documented: neon.com/docs/manage/computes, 2026-10-15).** A compute unit (CU) is a bundle of roughly 4 GB of RAM with associated CPU and local SSD. On the Free plan a compute autoscales between **0.25 and 2 CU**. Usage is **compute size × time the compute is active**; suspended time costs nothing. A compute suspends after **5 minutes with no activity** (not configurable on Free), so each burst of use stays active until 5 minutes after its last query.
+
+| Scenario (arithmetic only) | Result |
+| --- | --- |
+| 100 CU-hours at the smallest size (0.25 CU) | 400 hours of active time a month |
+| 100 CU-hours at the largest size (2 CU) | 50 hours of active time a month |
+| One isolated burst at 0.25 CU | at least 5 minutes active, about 0.02 CU-hours |
+| A query at least every 5 minutes, so the compute never suspends, at 0.25 CU | 744 hours in a 31-day month = 186 CU-hours, **over the allowance** (it runs out about day 17) |
+
+So the allowance is ample for sporadic judging traffic and **not** for a keep-alive or steady traffic. Never add a keep-alive ping: it keeps the compute active. When the allowance is exhausted, compute stays suspended until the next monthly period (documented), the budget store becomes unreachable, and the app fails closed to recorded-example mode (§5). How much active time real traffic causes, and which size Neon assigns within 0.25–2 CU, is **unknown** until measured; the monthly period also resets the allowance, which matters because judging spans roughly two months.
 
 ### Reservation protocol on this store (proposed; implements the 2026-10-15 decisions)
 
@@ -143,7 +155,7 @@ All amounts are integer micro-dollars. Each pool row has `cap`, `reserved` and `
 
 - **Reachability from Community Cloud is unknown.** Neon accepts TLS Postgres connections on port 5432 (documented). Whether Community Cloud allows outbound 5432 is **not documented** on the pages read. A one-connection test is therefore needed (stage D, below). Neon also documents an HTTP/WebSocket driver over port 443, but I could not confirm a usable Python client for it, so treat it as a **fallback to investigate**, not a plan.
 - **Cold-connection latency** after suspension is documented only as "a few hundred milliseconds"; it must be measured from the host. Hold no long-lived pool: reconnect per request or use short-lived connections.
-- **Account and terms.** Account creation, whether a payment card is required, and Neon's terms for this use were **not** established: the plan page does not say. Not researched: Neon's retention or deletion rules for abandoned accounts.
+- **Account and terms.** Neon advertises Free with no card required (**documented**). Neon's terms for this use, and its retention or deletion rules for abandoned accounts, were **not** researched.
 - **A paid fallback is not needed to start** but is unknown in price; no spending is proposed.
 - **Backup of truth.** The Nebius Usage tab remains the independent record of actual spend; the store is the control, not the ledger of record.
 
@@ -158,6 +170,66 @@ All amounts are integer micro-dollars. Each pool row has `cap`, `reserved` and `
 ### Stage D (proposed; needs its own approval and a separate new account)
 
 A canary-only test that does not touch the sleeping stage A probe: create a Neon account and a throwaway project; deploy a second stub (not yet written) that makes **one** database connection using a `DATABASE_URL` secret, runs one conditional-update statement on a scratch table, and prints only success, latency and row counts. It would settle: outbound 5432 reachability, first-query latency after suspension, and the atomicity of the conditional update under two simultaneous sessions. No Nebius key, no ATLAS code. Requires: a Neon account (permission to sign up), a second Streamlit app (the free plan's app count is **unknown**), and the owner entering the connection string as a secret.
+
+## 5b. Stage D: budget-store feasibility probe (prepared locally, 2026-10-15)
+
+Selection of Neon Free is **provisional**: it holds only if a hosted connection test succeeds. The probe is deliberately small and uses **synthetic integer units, scratch tables, no model-provider key and no model request**. It is an update to the existing Streamlit probe, not a second app: after tomorrow's sleep/wake observation, the probe repository would receive three files in place of the current two. **The deployed stage A probe is untouched until then** (a push would redeploy it and spoil the observation).
+
+### Files (local; nothing published)
+
+| Path (under `C:\Users\Lain\source\atlas\hosting_probe\stage_d\`) | Purpose |
+| --- | --- |
+| `app.py` | The stage A page (build, canary) plus a section that runs the scenarios only after a button press, and only if a `DATABASE_URL` secret exists. Shows result names, pass/fail and counts. It never prints the URL; a connection failure shows only the error type |
+| `budget_probe.py` | The database operations and scenarios. Imports no driver; takes a psycopg connection |
+| `requirements.txt` | `streamlit` and `psycopg[binary]` (the one extra dependency) |
+
+`hosting_probe/check_publication.py stage_d` confirms exactly these three files, no connection string, credential or project-document wording, no provider reference, and that the only network-related import is `psycopg`.
+
+### Database operations (proposed; scratch tables `probe_cap`, `probe_reservation`)
+
+All money is **integer units** (production: integer micro-dollars). Each connection is opened with `autocommit=True` so each `transaction()` block is a real transaction.
+
+| Operation | What it does in one transaction | Property it tests |
+| --- | --- | --- |
+| `reserve(request_id, amount, cap_keys)` | Inserts the reservation row (`request_id` is the **primary key**; `ON CONFLICT DO NOTHING`), then for each cap key **in sorted order** runs one conditional `UPDATE probe_cap SET reserved = reserved + amount WHERE cap_key = k AND reserved + spent + amount <= cap`. If any update changes no row, it raises and **everything rolls back**, including the reservation row | all-or-nothing across caps; unique request ID; consistent lock order; no overshoot under concurrency |
+| `mark_dispatched(request_id)` | Commits `state = 'dispatched'` **before** a request would be sent | a crash after sending leaves the cost retained |
+| `settle(request_id, actual)` | Locks the reservation row (`FOR UPDATE`); only a `dispatched` row settles; moves each cap's `reserved` down and `spent` up by the actual units; a repeat returns `already-settled`; an actual above the reservation is retained for reconciliation | no double settlement |
+| `release(request_id)` | Releases only a never-dispatched reservation; a dispatched one returns `retained-dispatched` | uncertain cost is never auto-released |
+
+Constraints in the schema (`reserved >= 0`, `spent >= 0`, `reserved + spent <= cap`, state values, `amount > 0`) back the logic with the database itself.
+
+### Scenarios the hosted run would execute
+
+1. **Two concurrent requests compete for a budget that admits only one** (cap 100, each asks 60), 20 rounds, each request on its own connection and thread, released together by a barrier. Pass: exactly one `reserved` and one `refused`, and 60 units held, every round.
+2. **A refused multi-cap reservation leaves no partial change** (caps 100 and 50; a 60-unit request to both is refused by the 50 cap). Pass: both caps unchanged and no reservation row.
+3. **Opposite cap orders do not deadlock** (two requests naming caps in reversed order, 20 rounds). Pass: both succeed every round.
+4. **Duplicate request IDs** reserve once and settle once, including when two attempts are simultaneous.
+5. **Uncertain dispatched cost** survives a new connection (standing for a restart or timeout recovery): release is refused, another request is blocked by the retained units, and a later settle with the actual usage frees the difference.
+
+It also reports the time of the first connection (cold-connection latency, which is the number the first run most needs).
+
+### What the probe demonstrates, and what it does not
+
+| It would show (if it passes on the host) | Label |
+| --- | --- |
+| The Community Cloud host can reach the Neon database (outbound TLS Postgres, port 5432) | to be **observed** |
+| The conditional-update design admits only one of two competing requests, rolls back a refused multi-cap reservation, and handles duplicates, lock order and dispatched retention on **Neon's actual Postgres** | to be **observed** |
+| Cold-connection latency from the host | to be **observed** |
+
+| Not shown, and required for production (not built during T-03) | |
+| --- | --- |
+| Real micro-dollar accounting, per-session and daily keys, the judge and public pools and judge access code | production implementation |
+| Lease handling for never-dispatched reservations, an owner reconciliation procedure and admin script for unknown-usage reservations | production implementation |
+| Pruning of old reservations and sessions; monitoring of the compute allowance and storage | production implementation |
+| Behavior at the Neon compute or storage limit, long outages and restore | not tested |
+| Integration with the agent loop, the Nebius usage record, and a security review of the whole budget path | review required before T-06 relies on it |
+| A statement that the SQL is correct beyond the five scenarios; concurrency is probed, not proven | limitation |
+
+**Local test status (2026-10-15):** the app's page tests pass offline (the budget section is skipped without a URL, nothing connects before the button is pressed, and the URL is never rendered). The five scenarios **have not been executed**: this machine has no PostgreSQL, and the SQL is **untested** until it runs against a real Postgres, locally or on Neon. A local run would need a throwaway Postgres container and a temporary driver install (no change to the project lock file) and has not been approved.
+
+### First account step (owner; nothing created yet)
+
+Sign up at Neon (neon.com) with the Free plan, choosing email or GitHub as you prefer. If GitHub, read the authorization screen and report the scopes. Stop at the dashboard: no card, no paid plan, no project yet. Report whether Neon created a default project automatically.
 
 ## 6. Credits and the 15 December requirement
 

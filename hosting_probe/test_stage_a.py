@@ -55,7 +55,7 @@ def _shown(at):
 
 
 def test_publication_set_is_exactly_two_clean_files():
-    assert check_publication.problems() == []
+    assert check_publication.problems("stage_a") == []
 
 
 def test_renders_with_no_network_and_no_secret(monkeypatch):
