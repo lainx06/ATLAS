@@ -636,3 +636,207 @@ def test_recorded_provenance_from_real_runs_passes_the_structure_check(
     for event in events:
         validate_provenance_event(event)
     assert {e["type"] for e in events} >= {"load", "split", "fit", "use", "predictions"}
+
+
+# --- Repair pass 5: split structure and fit-event field presence ------------------------------
+# (Codex verification of 3bc38ff: runs/verify-t02/3bc/consumer-results.json)
+
+
+def _rewrite(run_dir, name, text):
+    from atlas.reports import sha256_file
+
+    (run_dir / name).write_text(text, encoding="utf-8")
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    index["artifacts"][name] = sha256_file(run_dir / name)
+    (run_dir / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+
+def _assert_fresh_outputs(run_dir):
+    from atlas.reports import sha256_file
+
+    outputs = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))[
+        "outputs"
+    ]
+    on_disk = {"outcome.json", "report.json"} | {
+        f"checks/{p.name}" for p in (run_dir / "checks").glob("*.json")
+    }
+    assert set(outputs) == on_disk
+    for name, digest in outputs.items():
+        assert sha256_file(run_dir / name) == digest, name
+
+
+def _set(field, value):
+    def change(splits):
+        splits[0][field] = value
+
+    return change
+
+
+def _drop(field):
+    def change(splits):
+        del splits[0][field]
+
+    return change
+
+
+def _add_row(field, row):
+    def change(splits):
+        splits[0][field] = [*splits[0][field], row(splits[0][field])]
+
+    return change
+
+
+INVALID_SPLITS = {
+    # Codex's ten demonstrated cases
+    "fold_list": _set("fold", []),
+    "fold_missing": _drop("fold"),
+    "train_null": _set("train_ids", None),
+    "train_missing": _drop("train_ids"),
+    "train_string": _set("train_ids", "r0000"),
+    "eval_scalar": _set("eval_ids", 3),
+    "eval_nested": _set("eval_ids", [[]]),
+    "kind_list": _set("kind", []),
+    "entry_null": lambda s: [None, *s[1:]],
+    "nonempty_object": lambda s: {"fold0": s[0]},
+    # nearby wrong types read by the consumers
+    "kind_null": _set("kind", None),
+    "eval_id_number": _set("eval_ids", [1]),
+    # producer guarantees (SPEC §4.1): rows exist, no repeats within a list
+    "train_unknown_row": _add_row("train_ids", lambda ids: "no_such_row"),
+    "eval_unknown_row": _add_row("eval_ids", lambda ids: "no_such_row"),
+    "train_repeated_row": _add_row("train_ids", lambda ids: ids[0]),
+    "eval_repeated_row": _add_row("eval_ids", lambda ids: ids[0]),
+}
+
+
+@pytest.mark.parametrize("case", sorted(INVALID_SPLITS))
+def test_structurally_invalid_splits_are_wholly_invalid_evidence(tmp_path, case):
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    assert control.outcome is Outcome.VIOLATION_FOUND
+    splits = json.loads((run_dir / "splits.json").read_text(encoding="utf-8"))
+    changed = INVALID_SPLITS[case](splits)
+    _rewrite(run_dir, "splits.json", json.dumps(splits if changed is None else changed))
+
+    result = evaluate(tmp_path / "project", run_dir)  # returns; no consumer exception
+
+    assert [a.assertion_id for a in result.assertions] == [
+        a.assertion_id for a in control.assertions
+    ]
+    for a in result.assertions:  # every check reads the split evidence
+        assert (a.status, a.reason) == (E, Reason.EVIDENCE_INVALID), a.assertion_id
+    assert result.outcome is Outcome.INCONCLUSIVE  # an evidence error, not a violation
+    assert result.reason.startswith("splits.json ")
+    assert not any(d.available for d in result.descriptive)
+    _assert_fresh_outputs(run_dir)
+
+
+def _empty_last_eval(splits):
+    splits[-1]["eval_ids"] = []
+
+
+VALID_SPLITS = {
+    "kind_missing": (_drop("kind"), {}),
+    "extra_field": (_set("note", {"any": ["shape"]}), {}),
+    "empty_evaluation_partition": (
+        _empty_last_eval,
+        {"split.evaluation_folds_nonempty": (N, Reason.EMPTY_EVALUATION)},
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(VALID_SPLITS))
+def test_valid_split_variants_are_still_assessed(tmp_path, case):
+    """Optional kind, extra fields and empty partitions stay valid evidence."""
+    change, expected = VALID_SPLITS[case]
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    splits = json.loads((run_dir / "splits.json").read_text(encoding="utf-8"))
+    change(splits)
+    _rewrite(run_dir, "splits.json", json.dumps(splits))
+
+    result = evaluate(tmp_path / "project", run_dir)
+
+    assert result.reason is None or "splits.json" not in result.reason
+    by_id = _by_id(result)
+    for aid, status in expected.items():
+        assert (by_id[aid].status, by_id[aid].reason) == status
+    assert by_id[LABELS_ID].status is F  # the independent finding is still reported
+    if not expected:  # nothing else changed
+        before = _by_id(control)
+        assert {k: (a.status, a.reason) for k, a in by_id.items()} == {
+            k: (a.status, a.reason) for k, a in before.items()
+        }
+    _assert_fresh_outputs(run_dir)
+
+
+def test_invalid_cutoff_keeps_its_per_fold_handling(tmp_path):
+    """training_cutoff is judged per fold by the cutoff checks, not by the split structure."""
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    splits = json.loads((run_dir / "splits.json").read_text(encoding="utf-8"))
+    splits[0]["training_cutoff"] = {"bad": 1}
+    _rewrite(run_dir, "splits.json", json.dumps(splits))
+
+    result = evaluate(tmp_path / "project", run_dir)
+
+    by_id, before = _by_id(result), _by_id(control)
+    cutoff_checks = {LABELS_ID, "temporal.cutoff_precedes_evaluation"}
+    for aid in cutoff_checks:
+        assert (by_id[aid].status, by_id[aid].reason) == (E, Reason.EVIDENCE_INVALID)
+    for aid, a in by_id.items():
+        if aid not in cutoff_checks:
+            assert (a.status, a.reason) == (before[aid].status, before[aid].reason), aid
+    _assert_fresh_outputs(run_dir)
+
+
+def _fit_unknown_deps(input_status):
+    """Codex's case: the first fit event gets deps=null and a missing or null input_status."""
+
+    def change(events):
+        fit = next(e for e in events if e["type"] == "fit")
+        fit["deps"] = None
+        if input_status == "missing":
+            del fit["input_status"]
+        else:
+            fit["input_status"] = None
+
+    return change
+
+
+def _change_provenance(run_dir, change):
+    lines = (run_dir / "provenance.jsonl").read_text(encoding="utf-8").splitlines()
+    events = [json.loads(x) for x in lines if x]
+    change(events)
+    _rewrite(run_dir, "provenance.jsonl", "".join(json.dumps(e) + "\n" for e in events))
+
+
+def test_fit_event_missing_input_status_is_invalid_provenance(tmp_path):
+    control, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    _change_provenance(run_dir, _fit_unknown_deps("missing"))
+
+    result = evaluate(tmp_path / "project", run_dir)  # returns; no KeyError in _walk
+
+    by_id, before = _by_id(result), _by_id(control)
+    for aid in FIT:
+        assert (by_id[aid].status, by_id[aid].reason) == (E, Reason.EVIDENCE_INVALID)
+    assert by_id[LABELS_ID].status is F and by_id[LABELS_ID].evidence_valid
+    for aid, a in by_id.items():
+        if aid not in FIT:
+            assert (a.status, a.reason) == (before[aid].status, before[aid].reason), aid
+    assert result.outcome is Outcome.VIOLATION_FOUND
+    assert "provenance.jsonl event" in result.reason and "input_status" in result.reason
+    _assert_fresh_outputs(run_dir)
+
+
+def test_fit_event_null_input_status_stays_valid_unknown_ancestry(tmp_path):
+    """Control: a present null input_status is the recorded nullable form; it is assessed."""
+    _, run_dir = _evaluate_changed(tmp_path, _late_prediction)
+    _change_provenance(run_dir, _fit_unknown_deps("null"))
+
+    result = evaluate(tmp_path / "project", run_dir)
+
+    by_id = _by_id(result)
+    assert result.reason is None
+    for aid in FIT:
+        assert by_id[aid].status is not E
+    assert by_id[LABELS_ID].status is F
+    assert result.outcome is Outcome.VIOLATION_FOUND
+    _assert_fresh_outputs(run_dir)

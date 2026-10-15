@@ -20,6 +20,7 @@ from atlas.checks.metric_ids import prediction_id_assertions
 from atlas.checks.split_integrity import split_assertions
 from atlas.checks.temporal import temporal_assertions
 from atlas.contracts import (
+    SPLITS,
     AssertionResult,
     DescriptiveResult,
     EvidenceRef,
@@ -384,9 +385,38 @@ def _load_splits(path: Path) -> tuple[list, str | None]:
     enough to exhaust recursion. Nothing is parsed partially or dropped.
     """
     try:
-        return json.loads(path.read_text(encoding="utf-8")), None
+        splits = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, RecursionError) as exc:
         return [], _decode_problem("splits.json", exc)
+    # The whole artifact must have the structure every check reads before any check runs.
+    try:
+        SPLITS.validate_python(splits)
+    except ValidationError as exc:
+        return [], _structure_problem("splits.json", exc)
+    return splits, None
+
+
+def _unknown_split_rows(splits: list[dict], table: pd.DataFrame) -> str | None:
+    """The producer only declares rows of the table (SPEC §4.1); others are invalid evidence."""
+    rows = set(table.index)
+    for s in splits:
+        for name in ("train_ids", "eval_ids"):
+            unknown = [r for r in s[name] if r not in rows]
+            if unknown:
+                return (
+                    f"splits.json fold {s['fold']!r} {name} names {len(unknown)} row(s) "
+                    f"absent from the table (e.g. {unknown[0][:40]!r})"
+                )
+    return None
+
+
+def _structure_problem(artifact: str, exc: ValidationError) -> str:
+    """Name the failing entries and fields (as intake does); input values are not echoed."""
+    parts = [
+        f"{'.'.join(map(str, e['loc'])) or '<top level>'}: {e['msg']}"
+        for e in exc.errors(include_input=False)[:3]
+    ]
+    return f"{artifact} has an invalid structure ({'; '.join(parts)})"
 
 
 def _decode_problem(artifact: str, exc: Exception) -> str:
@@ -405,13 +435,19 @@ def _compute(
     table_ref = EvidenceRef(
         artifact=f"table:{manifest.table.path}", sha256=table_info.get("sha256")
     )
+    table = read_table(project, manifest) if table_ok else None
     splits_path, splits_hash, splits_ok = verified(run_dir, index, "splits.json")
     splits_ref = EvidenceRef(artifact="splits.json", sha256=splits_hash)
     splits, splits_problem = [], None
     if splits_ok:
         splits, splits_problem = _load_splits(splits_path)
-        # Undecodable evidence takes the existing invalid-evidence path: every assertion that
-        # depends on the splits becomes ERROR(evidence_invalid).
+        if splits_problem is None and table is not None:
+            splits_problem = _unknown_split_rows(splits, table)
+        # Undecodable or structurally invalid evidence takes the existing invalid-evidence path:
+        # every assertion that depends on the splits becomes ERROR(evidence_invalid). The whole
+        # artifact is invalid; no entry is dropped or assessed on its own.
+        if splits_problem is not None:
+            splits = []
         splits_ok = splits_problem is None
 
     prov_path, prov_hash, prov_ok = verified(run_dir, index, "provenance.jsonl")
@@ -453,7 +489,6 @@ def _compute(
     ]
 
     computed: dict[str, AssertionResult] = {}
-    table = read_table(project, manifest) if table_ok else None
     computed.update(
         split_assertions(
             manifest,

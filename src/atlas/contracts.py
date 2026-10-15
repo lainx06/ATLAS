@@ -4,7 +4,14 @@ import math
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    model_validator,
+)
 
 
 def _finite_number(value: Any) -> Any:
@@ -321,7 +328,7 @@ class _FitEvent(_Event):
     version: int
     fold: str
     input_token: str | None
-    input_status: str | None = None
+    input_status: str | None  # read directly by fit_provenance._walk: must be present
     labels_token: str | None = None
     classifier: bool
     supported: bool
@@ -384,3 +391,32 @@ def validate_provenance_event(event: Any) -> None:
     model = PROVENANCE_EVENTS.get(event["type"])
     if model is not None:
         model.model_validate(event)
+
+
+class SplitDeclaration(BaseModel):
+    """One splits.json entry, as written by adapter.declare_split and read by every check.
+
+    Required: string `fold`; `train_ids`/`eval_ids` as lists of string row IDs, each without
+    repeats (the producer refuses duplicates within a list; SPEC §4.1). Empty lists are valid.
+    Optional: `kind`, a string when present (consumers default a missing kind to
+    development_eval; the default is never written back). `training_cutoff` is not checked here:
+    the temporal checks judge it per fold, so an invalid cutoff is ERROR for the cutoff
+    assertions only. Extra fields are allowed; nothing is coerced.
+    """
+
+    model_config = ConfigDict(extra="allow", strict=True)
+    fold: str
+    train_ids: list[str]
+    eval_ids: list[str]
+    kind: str = "development_eval"
+
+    @model_validator(mode="after")
+    def _no_repeats_within_a_list(self):
+        for name in ("train_ids", "eval_ids"):
+            ids = getattr(self, name)
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"{name} repeats a row ID")
+        return self
+
+
+SPLITS = TypeAdapter(list[SplitDeclaration])

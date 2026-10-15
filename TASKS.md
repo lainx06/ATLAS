@@ -11,7 +11,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
-| T-02 | 11 | **Codex verified repair passes 1 (`0cf955d`) and 2 (`bb9bac8`): the four review-1 findings and the split-decoding fix. Two more decoding P2s remained (provenance, index recursion). Repair pass 3 done; wrong-shape evidence then repaired in pass 4. Both self-tested; awaiting independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
+| T-02 | 11 | **Codex verified repair passes 1 (`0cf955d`) and 2 (`bb9bac8`): the four review-1 findings and the split-decoding fix. Two more decoding P2s remained (provenance, index recursion). Codex verified pass 3 (provenance/index decoding) at `3bc38ff`; pass 4's structure checks fixed the demonstrated cases but missed split entries and fit `input_status`. Repair pass 5 done and self-tested; passes 4–5 await independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
@@ -543,6 +543,64 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Remaining limitations:**
     - `splits.json` structure is still checked only by decoding. A JSON object instead of a list gives INCONCLUSIVE safely, as the shape probe shows, but other wrong field types in split entries were not probed in this pass.
     - The repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of repair passes 3 and 4.
+- **CODEX VERIFICATION OF REPAIR PASSES 3–4 (local Codex, at `3bc38ff`, 2026-10-15) and REPAIR PASS 5 (Claude Code, Opus 5.5 high):**
+  - **Review evidence:** preserved at `runs/verify-t02/3bc/` (git-ignored). Key files:
+    - `review.md` (`e038f57b…caf72abb`);
+    - `consumer_shapes.py` (`dc646eda…6802f1cb`) and `consumer-results.json` (`e2fb611d…1f4bf182`).
+
+    Pre-repair hash manifests of `runs/review-t02/`, `runs/review-t02-pass2/`, `runs/verify-t02/`, `runs/t02r3/` and `runs/t02r4/` were saved **before any change** in `runs/t02r5/preservation/`, with `captured-at.txt` recording the capture time, and compared after the repair.
+  - **Codex's disposition:**
+    - Repair pass 3's decoding fixes are **verified**: whole-stream provenance decoding with no prefix, and index `ValueError`/`RecursionError` recovery.
+    - Pass 4 fixes the demonstrated index and provenance shape cases. `RunIndex` matches its consumers, the per-type models match ordinary recorder types, and the guards are narrow.
+    - **Two P2s remained:**
+      - **(1) Split structure:** ten hash-matching malformed-entry cases crashed the evaluator and left no `outcome.json`:
+        - `fold` as a list, or missing;
+        - `train_ids` null, missing or a string;
+        - `eval_ids` a scalar, or nested lists;
+        - `kind` as a list;
+        - a null entry;
+        - a non-empty object at the top level.
+      - **(2) Fit `input_status`:** it was optional in `_FitEvent`, but `fit_provenance._walk` reads `fit['input_status']` directly when `deps` is null. Its absence raised `KeyError`, no outcome was written, and the independent temporal FAIL went unreported. An explicit null was accepted correctly.
+    - TASKS.md's pass-4 field inventory, which listed fit `input_status` among fields read with `.get` and therefore optional, is corrected by this pass.
+  - **Restoration finding (Codex's exact distinction):** the `runs/t02r3` shape evidence is "overwritten and reconstructed, with content matching the retained pre-repair manifest. These are builder-produced records. This independent content comparison does not independently establish when the purported pre-repair snapshot was captured and does not erase the overwrite incident." No further restoration investigation was done.
+  - **Checkpoints:** base `3bc38ff`; head = the local commit "Repair T-02 split structure and fit input_status presence" (parent `3bc38ff`).
+  - **Requirements, derived from producers and consumers:**
+    - **Splits:** `adapter.declare_split` writes `fold`, `kind`, `train_ids`, `eval_ids` and `training_cutoff`, and refuses unknown or repeated IDs within a list (SPEC §4.1). The consumers (`audit`, `split_integrity`, `fit_provenance`, `metric_ids`, `temporal`, `independent_metrics`) read `s["fold"]`, `s["train_ids"]` and `s["eval_ids"]` directly, and `kind` and `training_cutoff` through `.get`.
+      - `SplitDeclaration` therefore requires a string `fold`, and `train_ids`/`eval_ids` as lists of strings with no repeats within a list. Empty lists stay valid.
+      - `kind` is optional and must be a string when present; the consumers' missing-kind default is never written back.
+      - `training_cutoff` is deliberately unchecked: the cutoff assertions keep judging it per fold.
+      - Extra fields are allowed. The top level is a list (`SPLITS`, a pydantic `TypeAdapter`).
+      - Row IDs must exist in the evaluator's table (checked when the table is valid).
+    - **Provenance:** the recorder always writes fit `input_status` (a string). It is now required and nullable, since the schema has always accepted null and the explicit-null control stays valid.
+  - **Repair:**
+    - `_load_splits` validates the decoded artifact with `SPLITS`. `_compute` now reads the table first and refuses split rows absent from it.
+    - Any problem gives "splits.json has an invalid structure (entry.field: message)" or "… names N row(s) absent from the table". The splits are not used at all: no entry is dropped or assessed alone. `splits_ok` is false, so the existing invalid-evidence path applies: every split-dependent assertion is ERROR(`evidence_invalid`), the run is INCONCLUSIVE, descriptive results are unavailable, and outputs and index are fresh.
+    - `_FitEvent.input_status` is now required. Only `ValidationError` from these validation calls is caught. Policy, fixtures and `fit_provenance.py` are unchanged.
+  - **Bounded schema/consumer check, for these two structures only:** every field read directly by subscript, including inside f-strings, was listed in `audit.py`, `fit_provenance.py` and the split consumers, and compared with its schema for required presence, type and nullability.
+    - Accesses that follow a `.get` truthiness or membership check (`e["token"]`, `e["output_token"]`, `event["labels_token"]`, `pred["artifact"]`) are guarded by that check.
+    - The only mismatch was fit `input_status`.
+    - This is not a complete validation of every possible content; other artifacts (execution, runtime, snapshot) were outside this pass.
+  - **Tests** (`tests/integration/test_t02_scenarios.py`, full evaluator, on the partial-label control with its independent temporal FAIL):
+    - **`test_structurally_invalid_splits_are_wholly_invalid_evidence`, 16 cases:** Codex's ten; `kind` null and an `eval_ids` number; unknown and repeated rows in `train_ids` and `eval_ids` (producer guarantees). Each asserts that every assertion is ERROR(`evidence_invalid`), the outcome is INCONCLUSIVE (an evidence error, not a violation), the reason names `splits.json`, descriptive results are unavailable, and outputs and hashes are current.
+    - **Valid controls:**
+      - `test_valid_split_variants_are_still_assessed[kind_missing|extra_field|empty_evaluation_partition]`;
+      - `test_invalid_cutoff_keeps_its_per_fold_handling` (an object cutoff: only the two cutoff checks are ERROR);
+      - `test_fit_event_null_input_status_stays_valid_unknown_ancestry`.
+    - **`test_fit_event_missing_input_status_is_invalid_provenance`:** Codex's exact case (`deps` null, `input_status` missing). Fit ERROR(`evidence_invalid`); the independent temporal FAIL stands; every other assertion is unchanged; VIOLATION_FOUND.
+    - **RED at `3bc38ff`**, from a temporary `git archive` copy placed first on `PYTHONPATH`: **17 failed** (all invalid cases), and the 5 valid controls passed as designed (`runs/t02r5/red-at-base.log`). The failures were `KeyError`/`TypeError` crashes and silent acceptance of a null `kind` and of repeated rows.
+  - **Actual results (2026-10-15):**
+    - The decoding, shape and recovery suites (T-01 scenarios, both T-01 review suites, T-02 scenarios, CLI, policy and manifest schema) → **228 passed** (`runs/t02r5/audit-tests.log`).
+    - A copy of Codex's `consumer_shapes.py` (`runs/t02r5/`; only `SOURCE` repointed read-only at Codex's `valid_control`; `consumer_shapes-adaptation.diff`):
+      - all ten split cases → INCONCLUSIVE with current outputs;
+      - missing `input_status` → VIOLATION_FOUND, with provenance invalid;
+      - every control is unchanged (missing kind → VIOLATION_FOUND; object cutoff → INCONCLUSIVE; null `input_status` and optional/extra fields valid; index cases as before).
+    - `runs/t02r5/referential_probe.py` (report-only, at `3bc38ff`) shows unknown split rows crashing with `KeyError` and no outcome, while repeated rows were silently accepted. Both are now covered.
+    - `ruff check .` and `ruff format --check .` → clean.
+    - **Not run:** the full suite, Docker and mutation. The changes are confined to `audit`'s split loading and new or tightened models in `contracts.py`, which the runner and candidate code do not use. 0 inference calls.
+  - **Remaining limitations:**
+    - Structural checks cover the fields the evaluator reads in `splits.json`, `provenance.jsonl` and `index.json`, not every possible content.
+    - Duplicate fold names across entries remain accepted and are handled downstream, as before.
+    - The repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of repair passes 4 and 5.
 
 ### T-03 Hosting and isolated-worker probe (early, per playbook §11 Day 2)
 - **OWNER:** Claude Code (research and documentation only); the lead decides.
