@@ -1,12 +1,12 @@
 # Understanding ATLAS, end to end
 
-Personal learning guide for Adnan · 15 October 2026 · last checked against T-02 repair pass 5 (the commit after `3bc38ff`)
+Personal learning guide for Adnan · 15 October 2026 · last checked against the T-02 acceptance commit (the commit after `75a98f4`)
 
 ## How to use this guide
 
 This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
 
-**Evidence boundary:** last checked against the local repository at T-02 repair pass 5, the commit after `3bc38ff` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+**Evidence boundary:** last checked against the local repository at the T-02 acceptance commit, the commit after `75a98f4` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
 
 **Status words used here** (they are deliberately different):
 
@@ -41,7 +41,7 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
 | Candidate re-evaluation integration | Planned for T-06. The evaluator (`audit.py`) still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` | Not demonstrated by T-05 |
 | Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
-| T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3) and found two remaining structure gaps: split entries were not checked, and one fit-event field could be missing. **The structural checks (passes 4 and 5) are self-tested and await independent verification; not accepted** | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
+| T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3), and the structural checks of that evidence (passes 4 and 5). **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope. The limitations stand | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
@@ -89,7 +89,7 @@ The three supported claim types are:
 
 Combined group-and-time claims are outside the selected V1 scope.
 
-In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.3). "Supported" means in scope, not fully checked. The accepted T-01 slice covers `unseen_group` fixtures. T-02 adds the time, window and metric checks that `future_time` and `same_population` need; it is implemented. The four defects found by its first review, and the repairs to how the split evidence, provenance log and run index are decoded, are repaired and independently verified. The structural checks of that evidence (repair passes 4 and 5) are self-tested and await verification. T-02 is not accepted. Under the older policy-v1.2 those checks were recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
+In code, `src/atlas/policy.py` lists these three in `SUPPORTED_CLAIM_TYPES` (policy-v1.3). "Supported" means in scope, not fully checked. The accepted T-01 slice covers `unseen_group` fixtures. T-02 adds the time, window and metric checks that `future_time` and `same_population` need; it is implemented. Every defect found by its reviews is repaired and independently verified, and the lead accepted T-02 at `75a98f4` within its documented scope: trusted synthetic fixtures, the declared clock, cutoff and containment rules, the supported provenance path, and the metric contracts. Under the older policy-v1.2 those checks were recorded as `NOT_ASSESSED` (`unimplemented_assertion`), never PASS.
 
 ### Leakage and preprocessing
 
@@ -120,9 +120,9 @@ Judge a fitted state against the training rows of the fold where it is used. A s
 
 Exercise: a scaler learns from rows `{1, 2, 3}`. It is used in a fold with training rows `{1, 2}` and evaluation row `{3}`. Why is that a violation? Answer: row 3 influenced the scaler while being held out for this use.
 
-### Time, windows and honest metrics (T-02: implemented; earlier repairs verified, latest repairs awaiting verification)
+### Time, windows and honest metrics (T-02: accepted within its documented scope)
 
-T-02 adds checks for evaluations where time matters. The rules were decided by the lead on 15 October 2026 (`DECISIONS.md`, "T-02 contract dispositions"). Codex's first review found four defects (below), and Codex has independently verified their repairs and the later decoding repairs. The structural checks added afterwards are self-tested and await verification. T-02 is not accepted, so treat it as implemented, not verified.
+T-02 adds checks for evaluations where time matters. The rules were decided by the lead on 15 October 2026 (`DECISIONS.md`, "T-02 contract dispositions"). Codex's reviews found several defects (below). All are repaired and independently verified, and the lead accepted T-02 at `75a98f4`. Accepted means the listed checks behave as specified on trusted synthetic fixtures. It does not mean the evaluation of a real project is proven sound, or that the checks establish statistical independence.
 
 **A label you could not have known yet.** A row predicted on day 100 has an outcome that becomes known on day 150. If a model trained with a cutoff of day 120 used that label, it learned something it could not have known on day 120. ATLAS checks both sides of the cutoff:
 
@@ -169,8 +169,8 @@ C++ connection: `double` behaves the same way, because it is the same IEEE 754 f
 - **One column, two roles.** A table may use the same column as both stream and group. Selecting it twice created a table with two columns of the same name, and pandas refused to group it. Now each role is selected separately.
 - **Numbers too big for a float.** Python integers have no size limit, but a float stops near 1.8 × 10^308. `float(10**400)` raises `OverflowError` instead of returning infinity. Inputs that large are now rejected or treated as invalid evidence instead of crashing.
   - The same idea has a second layer. Python refuses to turn a string of more than 4,300 digits into an `int` at all, which guards against slow conversions. Codex's verification found that a 5,000-digit number inside the run's `splits.json` stopped the evaluator before it could write any result. The fix, now independently verified, treats undecodable split evidence as invalid evidence: every assertion that depends on it becomes ERROR, and the outcome is written as INCONCLUSIVE. The digit limit itself is left unchanged.
-  - Decoding is only half the job: text can be perfectly valid JSON and still have the wrong *shape*, such as a list where an object belongs or a word where a number belongs. ATLAS now checks the split declarations, each provenance event and the run index before any check reads them. It looks at the fields the evaluator's checks actually read, with the types the recorder and adapter write. Split row IDs must also exist in the table and not repeat within a list, as the adapter guarantees when it records them. A wrong shape is treated exactly like undecodable text (repairs awaiting verification). This is a check of those fields, not a complete validation of every possible file content. A first version missed one fit-event field and the split entries entirely, which shows why the field list has to be derived from the code that reads it.
-  - The same applies to the provenance log and the run index (repairs awaiting verification). One bad line makes the *whole* provenance log invalid: ATLAS never trusts the lines that happened to decode before it. Only the fit checks that need provenance become ERROR, so a timing violation shown by the separate split and table evidence still stands. A run index that cannot be read leads to a fresh INCONCLUSIVE result rather than leaving the previous run's outcome in place.
+  - Decoding is only half the job: text can be perfectly valid JSON and still have the wrong *shape*, such as a list where an object belongs or a word where a number belongs. ATLAS now checks the split declarations, each provenance event and the run index before any check reads them. It looks at the fields the evaluator's checks actually read, with the types the recorder and adapter write. Split row IDs must also exist in the table and not repeat within a list, as the adapter guarantees when it records them. A wrong shape is treated exactly like undecodable text. This is a check of those fields, not a complete validation of every possible file content. A first version missed one fit-event field and the split entries entirely, which shows why the field list has to be derived from the code that reads it.
+  - The same applies to the provenance log and the run index (independently verified). One bad line makes the *whole* provenance log invalid: ATLAS never trusts the lines that happened to decode before it. Only the fit checks that need provenance become ERROR, so a timing violation shown by the separate split and table evidence still stands. A run index that cannot be read leads to a fresh INCONCLUSIVE result rather than leaving the previous run's outcome in place.
 - **A name used as a key must be unique.** A Python dictionary keeps only the last value for a repeated key:
 
 ```python

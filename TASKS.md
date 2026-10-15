@@ -11,7 +11,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
-| T-02 | 11 | **Codex verified repair passes 1 (`0cf955d`) and 2 (`bb9bac8`): the four review-1 findings and the split-decoding fix. Two more decoding P2s remained (provenance, index recursion). Codex verified pass 3 (provenance/index decoding) at `3bc38ff`; pass 4's structure checks fixed the demonstrated cases but missed split entries and fit `input_status`. Repair pass 5 done and self-tested; passes 4–5 await independent verification; not accepted.** Contract decided by the lead (policy-v1.3, manifest schema 0.3) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
+| T-02 | 11 | **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope (2026-10-15), on Codex's independent verification of every repair pass. Contract policy-v1.3, manifest schema 0.3. Limitations stand (see ACCEPTANCE) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | **Due:** playbook §11 Day two (2026-10-15); not started. Independent of T-02 | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
@@ -601,6 +601,39 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - Structural checks cover the fields the evaluator reads in `splits.json`, `provenance.jsonl` and `index.json`, not every possible content.
     - Duplicate fold names across entries remain accepted and are handled downstream, as before.
     - The repair pass 1 limitations stand. **T-02 remains unaccepted** pending independent verification of repair passes 4 and 5.
+
+- **CODEX VERIFICATION OF REPAIR PASS 5 (local Codex, at `75a98f4`, 2026-10-15):**
+  - **Review evidence:** `runs/t02-verification-final/` (git-ignored): `review.md` (`3d9149bb…9d7ebdc3`) and `tests-elevated.log` (`11713e0f…321d3fd5`).
+  - **Disposition:** both prior P2 blockers are **verified fixed**, and no remaining implementation blocker or new regression was demonstrated in the requested boundaries.
+    - **Split boundary:** the consumed-field inventory is complete, and the no-repeat and row-existence rules are justified by SPEC §4.1. Cross-partition overlap stays an assessable FAIL, an empty training partition is accepted, an invalid final entry invalidates the whole artifact, and an invalid cutoff in another fold keeps the earlier FAIL.
+    - **Provenance:** fit `input_status` is required and nullable. Every subscripted event field matches its schema, and guarded accesses are safe.
+    - **Unchanged:** decoding and recovery.
+    - Codex judged T-02's acceptance criteria met within its documented trusted-fixture scope, together with the earlier verification records.
+  - **Results (as reported by Codex):**
+    - `uv run --locked pytest tests/integration/test_t02_scenarios.py -k "structurally_invalid or valid_split_variants or invalid_cutoff_keeps or input_status or undecodable or wrong_shape or recorded_provenance"` → **51 passed, 24 deselected** (145.09 s).
+    - The copied probes `consumer_shapes.py`, `referential_probe.py`, the new `compatibility_probe.py` and `check_results.py` all exited 0.
+    - This was a focused run. **The full suite was not rerun at `75a98f4`**; the last full unit + integration run was 534 passed, 1 skipped, at repair pass 1. No Docker or mutation rerun.
+  - **P3 (documentation):** STATUS.md still called repair pass 3 unverified. Corrected in the acceptance commit.
+- **ACCEPTANCE (2026-10-15):** the lead accepted T-02 at `75a98f4` within its documented scope. The decision rests on `runs/t02-verification-final/review.md` and the earlier independent verification records: review 1 at `487664e` (`runs/review-t02/r487/`), and the verifications at `0cf955d` (`r0cf/`), `bb9bac8` (`runs/review-t02-pass2/bb9/`) and `3bc38ff` (`runs/verify-t02/3bc/`).
+  - **Accepted scope:**
+    - The policy-v1.3 assertions `split.no_window_overlap` (routes D and C), `split.temporal_separation`, the three `temporal.*` checks and `metric.reported_matches_recomputed`.
+    - Descriptive recomputation, the most-frequent baseline and class support.
+    - Manifest schema 0.3 intake.
+    - Evidence decoding, and the structural checks of the fields the evaluator reads in `splits.json`, `provenance.jsonl` and `index.json`.
+    - All of this on trusted synthetic fixtures (`benchmarks/t01/`, `benchmarks/t02/`), under the declared clock, cutoff and containment semantics, the supported provenance path and the metric contracts (DECISIONS.md "T-02 contract dispositions"; `docs/specs/t02-contract.md`).
+  - **Not covered by this acceptance (documented limitations):**
+    - Window and separation checks verify declared rules; they are not proof of statistical independence.
+    - Cutoffs and fold membership are declared by the evaluated code and not verified independently.
+    - Route C relies on a documented, unverified containment declaration; UCI HAR evidence needs T-09.
+    - Times are compared as float64, so integers beyond 2^53 lose precision. There is no date parsing or unit conversion.
+    - `final_holdout` reported metrics are NOT_ASSESSED: no evaluator-only label store exists.
+    - Splitter minimum requirements are unavailable, and the linear baseline is deferred.
+    - Pairwise window and separation comparison is untested at large scale.
+    - Manifest numbers longer than the JSON parser accepts are rejected with a position-only diagnostic.
+    - The adapter accepts duplicate fold names; only the metric checks refuse them.
+    - Structural validation covers the fields the evaluator reads, not every possible content. Candidate-produced provenance is not independently trustworthy.
+    - Audits stay `trusted_pipeline_only`; candidate re-evaluation and Docker-runner integration are T-06.
+    - The `runs/t02r3` shape evidence was overwritten and reconstructed (see repair pass 5).
 
 ### T-03 Hosting and isolated-worker probe (early, per playbook §11 Day 2)
 - **OWNER:** Claude Code (research and documentation only); the lead decides.
