@@ -1,12 +1,12 @@
 # Understanding ATLAS, end to end
 
-Personal learning guide for Adnan · 15 October 2026 · last checked against T-05 repair pass 2 (the commit after `44c5a84`)
+Personal learning guide for Adnan · 15 October 2026 · last checked against the T-05 acceptance commit (the commit after `eed73ee`)
 
 ## How to use this guide
 
 This explains the project you are building, starting from basic programming. Read one section, explain it aloud without looking, then inspect one corresponding function locally. You do not need to understand the whole repository in one sitting.
 
-**Evidence boundary:** last checked against the local repository at T-05 repair pass 2, the commit after `44c5a84` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
+**Evidence boundary:** last checked against the local repository at the T-05 acceptance commit, the commit after `eed73ee` that contains this text (15 October 2026): task statuses against `TASKS.md` and `STATUS.md`, and the paths, names, flags and code excerpts against the source. It is not a line-by-line audit. Local source code, `docs/SPEC.md`, `DECISIONS.md`, `TASKS.md` and `AGENTS.md` remain authoritative; if this guide disagrees with them, they win. This is a learning document, not another agent instruction file or a replacement specification.
 
 **Status words used here** (they are deliberately different):
 
@@ -38,8 +38,8 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | Requirements and evaluation policy | Recorded; policy-v1.2 | Explicit rules and supported scope |
 | T-01 deterministic audit | Accepted at `f5aa4dc`, after Codex's independent verification (165 tests passed) | Specified behavior on trusted synthetic fixtures and review cases |
 | T-04 model connection | Accepted within its smoke-test scope | Real NVIDIA text response and strict application-validated JSON response |
-| T-05 restricted runner | Implemented; **not accepted**. Codex review 1 of `f494c95` found three P2 defects. Codex then verified repair `2e58280`: the cleanup and snapshot-limit fixes are independently verified; two parser defects remained. Repair pass 2 (the commit after `44c5a84`) addresses them and passes the builder's tests; **it awaits independent verification** | Contract tests passed on this host (28/28 with Docker required) |
-| Candidate re-evaluation integration | Planned for T-06 | Not demonstrated by T-05 |
+| T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
+| Candidate re-evaluation integration | Planned for T-06. The evaluator (`audit.py`) still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` | Not demonstrated by T-05 |
 | Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
 | Remaining checks (T-02), memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
@@ -149,7 +149,7 @@ The intended model contribution is interpreting the user's claim, explaining fin
 
 **Planned (T-06):** the model receives only the permitted context, not the secret API key or hidden answer keys in its prompt. No production model client exists yet.
 
-**Implemented in T-05 (not yet accepted):** `validate_diff` in `src/atlas/candidates.py` accepts a proposal only as a unified diff of the one permitted entry-point file. A diff that touches the manifest, the table, the evaluator or a second file is rejected, so a proposal cannot change the evaluator to award itself a pass.
+**Accepted in T-05:** `validate_diff` in `src/atlas/candidates.py` accepts a proposal only as a unified diff of the one permitted entry-point file. A diff that touches the manifest, the table, the evaluator or a second file is rejected, so a proposal cannot change the evaluator to award itself a pass.
 
 The two completed Nebius tests establish that authentication works and this model can return a short response and a valid JSON object. They do not establish reliable diagnosis, tool use or repair.
 
@@ -188,7 +188,7 @@ Generated Python can do more than train a model. It can read files, open connect
 | Bounded output collection | Treat returned files as untrusted input to the host |
 | No host fallback | Missing isolation means no candidate execution |
 
-These restrictions are implemented in T-05 and passed its contract tests on this Windows/Docker Desktop host; T-05 is not yet accepted. In code they are command-line flags built by `docker_run_args` in `src/atlas/runner/docker.py`, for example:
+These restrictions are part of T-05, accepted at `eed73ee` on the evidence of its contract tests on this Windows/Docker Desktop host (not on other hosts). In code they are command-line flags built by `docker_run_args` in `src/atlas/runner/docker.py`, for example:
 
 ```python
 args = [
@@ -211,14 +211,40 @@ A hash identifies bytes. It helps bind approval to the exact candidate and detec
 
 The trusted fixture runner is an explicit separate path for reviewed, allowlisted fixtures. Its existence must never become a fallback that runs an arbitrary candidate on the host.
 
+### What T-05 acceptance covers, and what waits for T-06
+
+**Accepted (T-05, `eed73ee`):** the runner can take an approved candidate, run it in the restricted container, collect its outputs as untrusted input, and always save a final status. The contract tests showed the restrictions above on this host.
+
+**Planned (T-06):** connecting the runner to the evaluator. Today `audit.py` accepts only records from the trusted fixture runner, so no audit result comes from a container run yet, and the full required set of assertions is not re-evaluated for a candidate. "The runner works" and "ATLAS re-evaluates candidates" are different claims, and only the first is accepted.
+
+**Limitations that acceptance did not remove** (details in `TASKS.md`, T-05 "ACCEPTANCE"):
+
+- **Stable, trusted host directories:** the file checks would not notice a directory swapped partway along a path.
+- **Narrow archive format:** only the layout the container's supervisor writes is accepted. The cross-check assumes this Python version's `tarfile` (3.11.17).
+- **Programmatic approval:** approval is a function call (`approve()`); there is no approval screen yet.
+- **Candidate-produced provenance:** the recorder runs inside the candidate's own process, so its evidence comes from the code being checked.
+- **Unknown physical cleanup:** if the Docker API fails, the run is reported `cleanup_failed`. ATLAS cannot confirm the container is gone.
+- **Windows path length:** see below.
+
+**A real example: Windows path length.** During verification, Codex ran the unit tests from a deep folder. One test writes a valid file named `d/` followed by 150 `n` characters and `.txt`. Its full path came to 260 characters, and Windows refused to create it (`FileNotFoundError`); this host allows 259 characters in an ordinary path. With a shorter temporary folder the same path was 253 characters, and every test passed. You can check the arithmetic yourself:
+
+```python
+import os
+
+folder = r"C:\Users\Lain\source\atlas\runs\review-t05\repair2-eed73ee\unit-tmp\test_prechecked_layout_matches0\out\d"
+print(len(os.path.join(folder, "n" * 150 + ".txt")))  # 260
+```
+
+The archive checks limit what the archive *contains*; they cannot know how deep the destination folder on the host will be. In a real run this failure is recorded as `collection_failed` (`write_failed`), not as success. It is a documented limitation rather than a fix: the fix would use Windows extended-length paths when writing outputs. C++ connection: a fixed-size buffer such as `char path[260]` fails in exactly this way.
+
 ## 8. Learn debugging from the three T-05 review findings
 
 Codex review 1 (of `f494c95`) found three P2 defects, and repair commit `2e58280` addressed them. Codex then checked that repair (at `44c5a84`):
 
 - **A and B are independently verified as fixed.**
-- **C was only partly fixed.** Codex found two inputs that still got past the structural limits. Repair pass 2 (the commit after `44c5a84`) addresses them. Its new regression tests failed before the repair and pass after it, but **it awaits independent verification.**
+- **C was only partly fixed.** Codex found two inputs that still got past the structural limits. Repair pass 2 (`eed73ee`) addressed them, and its new regression tests failed before the repair and passed after it.
 
-T-05 is not accepted. Details: `TASKS.md`, T-05 "REVIEW 1 … REPAIR PASS 1" and "CODEX VERIFICATION OF REPAIR PASS 1 … REPAIR PASS 2".
+Codex then verified repair pass 2 independently: both parser defects were fixed, and no remaining blocker was found. The lead accepted T-05 at `eed73ee` within its documented scope. Details: `TASKS.md`, T-05 "REVIEW 1 … REPAIR PASS 1", "CODEX VERIFICATION OF REPAIR PASS 1 … REPAIR PASS 2", "CODEX VERIFICATION OF REPAIR PASS 2" and "ACCEPTANCE".
 
 ### A. Unknown cleanup is not successful cleanup
 
@@ -283,7 +309,7 @@ for token in _JSON_TOKENS.finditer(text):
 
 A loop uses constant stack space however deep the input is; a recursive parser uses one stack frame per level. (C++ connection: the same reason a deep recursive function can overflow the call stack.) `_check_tar_structure` similarly walks the raw tar headers in a loop and allows at most one PAX extension header per file. Any failure during collection is saved as `collection_failed`, and any other unexpected error as `runner_error`, after cleanup has run. Regression tests to read: `test_deeply_nested_header_is_a_collection_error` (`tests/unit/test_runner_collection.py`) and `test_nested_header_is_a_recorded_collection_failure` (`tests/unit/test_runner_lifecycle.py`).
 
-**What the first repair got wrong.** The checks above were real, but they could be bypassed, because each check read the input differently from the parser after it (section D). As of repair pass 2, still awaiting independent verification, the structural limits are:
+**What the first repair got wrong.** The checks above were real, but they could be bypassed, because each check read the input differently from the parser after it (section D). After repair pass 2, which Codex verified independently and which is part of the accepted T-05, the structural limits are:
 
 - **Header:** decoded once as strict UTF-8 (no byte-order mark, no NUL bytes). The depth limit (8) and `json.loads` both read that same text.
 - **Archive:** only the layout the supervisor writes. That means ordinary files, each preceded by at most one PAX extension header holding only a UTF-8 `path` record, with zero bytes in that header's padding. It also means valid checksums and numeric fields, and nothing after the end marker.
@@ -291,7 +317,7 @@ A loop uses constant stack space however deep the input is; a recursive parser u
 
 Neither limit is a byte-count limit: both bound how the input is *interpreted*. Regression tests to read: `test_non_utf8_header_is_refused_before_parsing` and `test_nonzero_pax_padding_is_refused_before_tarfile` (`tests/unit/test_runner_collection.py`).
 
-Known limitations of the repairs are listed in `TASKS.md`; for example, the same-file check does not detect a directory swapped partway along the path.
+Known limitations of the repairs are listed in `TASKS.md` and summarized in section 7; for example, the same-file check does not detect a directory swapped partway along the path.
 
 ### D. Check and parse the same representation
 
@@ -404,7 +430,7 @@ You can list an AI-assisted project, but describe work and outcomes you can expl
 
 Current example, qualified to the checkpoint:
 
-> Built an AI-assisted Python prototype for auditing tabular ML evaluations against deployment claims; implemented deterministic checks with 165 independently verified tests and integrated NVIDIA Nemotron through Nebius Token Factory. Restricted Docker execution is implemented and under review.
+> Built an AI-assisted Python prototype for auditing tabular ML evaluations against deployment claims; implemented deterministic checks with 165 independently verified tests and smoke-tested NVIDIA Nemotron access through Nebius Token Factory. Built a restricted Docker runner for candidate code (no network, read-only root, resource limits), independently verified on one Windows host; connecting it to the evaluator is planned.
 
 Use “built” only if you can discuss your role in directing, reviewing and understanding the work. In an interview, describe Claude/Codex assistance candidly when asked; distinguish generated implementation from decisions and verification you owned. Replace the example with measured end-to-end outcomes when those exist. Test count alone is not the project's value.
 

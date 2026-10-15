@@ -14,7 +14,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
-| T-05 | 10 | **Codex verified repair pass 1 at `44c5a84`: cleanup and snapshot fixes verified; two parser P2 findings remained (PAX padding, JSON encoding). Repair pass 2 done and self-tested; awaiting Codex verification** (not accepted). Acceptance command 28/28 passed with `ATLAS_REQUIRE_DOCKER=1` after repair pass 2; full candidate re-evaluation is T-06 | Isolated runner and hash-bound candidate approval |
+| T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | Proposed | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
@@ -574,6 +574,44 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - The pre-check mirrors Python 3.11.17's `tarfile` rules. A later `tarfile` that interprets headers differently would be refused by the stepped cross-check rather than trusted. The cross-check compares `TarInfo.offset`, `offset_data`, `size` and `pax_headers` and `TarFile.offset`; the last is an undocumented attribute of this `tarfile`.
     - Within one `tar.next()` call, `tarfile` reads a PAX header and the header after it. The pre-check computes that second position the same way; this is backed by the cross-check after the call and by the fuzz, not by a proof.
     - The repair pass 1 limitations stand: the intermediate-directory race, a single-instant absence listing, and `cleanup_failed` runs keeping validated outputs. **T-05 remains unaccepted** pending independent verification of this repair.
+- **CODEX VERIFICATION OF REPAIR PASS 2 (local Codex, at `eed73ee`, 2026-10-15):**
+  - **Review evidence:** preserved unchanged at `runs/review-t05/repair2-eed73ee/` (git-ignored; 1,605 files). Codex's own preservation check found all 1,006 earlier files under `runs/review*` unchanged (`preservation-result.json`, `3d1e0d05…799ee71b`). Key files:
+    - `review.md` (`d9cc589f…0a051cb7`);
+    - `unit.log` (`df4bd4ee…37016703`) and `unit-short-path.log` (`df358e76…93a26650`);
+    - `runner-contract.log` (`05c46ce2…84658069`) and `execution-inspection.json` (`9e5eef2b…c64bef39`);
+    - `check_failure_records.py` (`da19961f…969f9385`) and `failure-record-results.json` (`0a8d31f6…530e24a8`);
+    - `parser-disagreement-results.json` (`d908a443…5e4ca68f`), `lifecycle-matrix-results.json` (`623c10d7…1e90ec86`) and `probe-adaptation.diff` (`655d992e…36dd73d7`).
+  - **Codex's disposition:**
+    - PAX padding and archive layout: **verified fixed**. Both original archives now fail with `malformed_archive: non-zero PAX padding`, with no collected files and a final `collection_failed` record after confirmed cleanup. No boundary, size or unsafe-path disagreement that bypasses validation was demonstrated.
+    - JSON encoding/depth: **verified fixed**. Both UTF-16 cases fail as an unsupported encoding, and valid UTF-8 headers with escapes are still accepted.
+    - Failure records: all eight repaired-input × cleanup combinations save the record they return. Unknown cleanup gives `cleanup_failed`, with the collection failure kept in `execution_reason`. The 21 contract-run records show 13 containers, all with removal confirmed.
+    - No existing assertion, isolation flag or cleanup behavior was weakened. The guide was found accurate for this repair.
+    - No remaining parser blocker; the six T-05 acceptance criteria are demonstrated by the required Docker suite on this host and image.
+  - **Codex's results:**
+    - `uv run --locked pytest tests/unit -q`, first run: 1 failed, 260 passed, 1 skipped (see the P3 below).
+    - The same command with only a shorter temporary directory: 261 passed, 1 skipped.
+    - Contract suite with `ATLAS_REQUIRE_DOCKER=1`: 28 passed in 42.44 s.
+    - The copied probes ran with exit 0. 0 inference calls; no commits or pushes.
+  - **P3 (pre-existing, not a parser regression): Windows path length.**
+    - *Observed:* `test_prechecked_layout_matches_tarfile_for_supervisor_archives` writes a valid file named `d/` + 150 characters + `.txt`. Under Codex's longer temporary-directory prefix (`runs/review-t05/repair2-eed73ee/unit-tmp/…`), its absolute path was 260 characters. `open(target, "xb")` in `_write_members` (`src/atlas/runner/docker.py:776`) raised `FileNotFoundError`. Shortening `unit-tmp` to `u` (253 characters) made the unchanged suite pass. Nothing else changed between the two runs.
+    - *Cause:* output writes use ordinary Windows paths, which this host limits to 259 characters, and there is no extended-length (`\\?\`) handling. The pre-check limits archive layout, not the length of the final host path.
+    - *Effect:* a file name the archive checks accept can still fail to write under a long destination directory. By code inspection (not exercised in a live run), the `OSError` becomes `collection_failed` with problem `write_failed`, and the partial outputs are removed. It does not produce a false success.
+    - *Disposition:* accepted as a documented limitation; no code change. A fix would use extended-length paths for output writes, with a regression test. Until then, keep run directories short on Windows.
+- **ACCEPTANCE (2026-10-15):** the lead accepted T-05 at `eed73ee` within its documented scope, based on Codex's independent verification of repair pass 2.
+  - **Accepted scope:**
+    - the restricted Docker runner and its contract on this Windows 11 Home / Docker Desktop host and image `atlas-runner:t05`: no network, no secrets, read-only root, memory/PID/time limits, path-escape and changed-hash refusals, and no execution without isolation;
+    - bounded snapshot and candidate validation and the SPEC §9 hash-bound approval check;
+    - bounded collection of the supervisor's frame and archive, always ending in a saved final status;
+    - fail-closed cleanup reporting.
+  - **Not covered by this acceptance (documented limitations):**
+    - **Stable, trusted host directories:** the same-file check does not detect an intermediate directory swapped partway along a path.
+    - **Narrow archive format and `tarfile` assumptions:** only the supervisor's layout is accepted (PAX may carry only `path`). The cross-check mirrors Python 3.11.17's `tarfile` and uses its undocumented `TarFile.offset`. It is not a proof about other parser versions.
+    - **Programmatic approval:** `approve()` exists; there is no user-facing approval step.
+    - **Candidate-produced provenance:** the recorder runs inside the candidate process, so container evidence is candidate-produced (SPEC §9.9).
+    - **Unknown physical cleanup:** when Docker APIs fail, cleanup is `unknown` and the run is `cleanup_failed`. That is honest reporting; it cannot confirm that the container was removed. Absence is confirmed by a listing at one instant.
+    - **Windows path length (P3, above).**
+    - The other RESULT and repair limitations stand. These include: `cleanup_failed` runs keep validated outputs; the archive is held in memory; it was tested only on this host; and the image's Debian packages are pinned only through its digest.
+    - **T-06:** the runner does not re-evaluate candidates, and `audit.py` does not accept Docker execution records. Audits stay `trusted_pipeline_only` until T-06 integrates them.
 
 ### T-06 Bounded live agent loop
 - **OWNER:** Claude Code (writer); Codex reviews.
