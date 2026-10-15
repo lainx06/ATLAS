@@ -10,7 +10,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-06 | 6 | Done (`4b3cab6`, `6c06d5e`) | Selected skills installed; Matt skill workflow configured |
 | S-07 | 7 | Done (`698ffd8`) | Requirements interview → `docs/PRD.md`, `docs/SPEC.md`, `GLOSSARY.md`, this task list |
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
-| T-01 | 9 | Codex review 1 → repair 1 → verification (5 blockers) → repair 2 → verification (1 regression) → targeted fix → containment probe → repeated-measures repair (v1.1) → rm-v11 review → same-column fix and evaluation-fold prerequisite (v1.2; base `58e4dee`); **awaiting Codex verification**, not accepted | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
+| T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | Proposed | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
 | T-03 | 11 (early) | Proposed | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | Proposed | Nebius access: model list, capped structured-output smoke call |
@@ -279,6 +279,15 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - The prerequisite covers evaluation partitions only; an empty *training* partition is not a separate assertion.
     - Other assertions can still PASS vacuously on empty folds, though the run can no longer be `NO_VIOLATION_FOUND`.
     - Otherwise unchanged from repair pass 2.
+
+- **ACCEPTANCE (2026-10-14):** the lead accepted T-01 at `f5aa4dc` within its documented scope, based on Codex's independent verification (165 tests passed; no remaining blocker demonstrated in the reviewed scope). Accepted scope: the deterministic audit of trusted synthetic fixtures under `policy-v1.2` (split/group/observation checks, bounded fit provenance, prediction-ID matching, the evaluation-fold prerequisite, evidence JSON, outcome derivation).
+  - **Not covered by this acceptance (documented limitations):**
+    - no isolation (`trusted_pipeline_only` host runner; not a sandbox);
+    - the in-process recorder is not tamper-proof;
+    - no independent expected-fold contract;
+    - the fixture inventory binds fixture files, not the installed environment;
+    - empty training partitions are not a separate assertion;
+    - assertions planned for T-02 are materialized as NOT_ASSESSED `unimplemented_assertion`.
 
 ### T-02 Independent metrics, conditional split rules, temporal checks
 - **OWNER:** Claude Code (writer); Codex reviews.

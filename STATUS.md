@@ -2,8 +2,8 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 9: two bounded corrections from Codex's rm-v11 review are complete and self-tested: same-column route B, and the evaluation-fold prerequisite (policy-v1.2). **Awaiting Codex verification**; T-01 is not accepted. T-02 not started.
-CHECKPOINT: base `58e4dee`; head = local commit "Same-column route B and evaluation-fold prerequisite (policy-v1.2)" (parent `58e4dee`). Not pushed; no remote configured.
+CURRENT STEP: **T-01 accepted** by the lead at `f5aa4dc` within its documented scope (2026-10-14), on Codex's independent verification (165 tests passed; no remaining blocker in the reviewed scope). Immediate next action: GitHub setup (publish this repository as `lainx06/atlas`). T-02 not started.
+CHECKPOINT: T-01 accepted at `f5aa4dc`; head = local commit "Record T-01 acceptance" (parent `f5aa4dc`). Not pushed; no remote configured.
 LAST UPDATED: 2026-10-14
 
 ## What works (verified by running)
@@ -53,13 +53,32 @@ LAST UPDATED: 2026-10-14
 9. T-01: TDD cycles with `uv run --locked pytest tests/unit/<file> -q` (RED then GREEN per module); `uv run --locked python benchmarks/t01/generate.py`; `uv run --locked python -m atlas.runner.trusted allowlist benchmarks/t01`; full suite; `scripts/mutation_check.py`; CLI audits of s01/s02/s07; ruff check/format; `sync_skills.py --check`.
 
 ## Blockers
+- None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
 - `/grill-with-docs` slash discovery/invocation: **unverified** (Step 7 followed the wrapper manually). `/to-spec`: **unverified** (not used; PRD/SPEC were synthesized directly, which Start Here Step 7 permits).
 - Codex skill discovery: the `code-review-and-quality` skill was discovered through Codex's normal skill catalog during review 1 (reported by the user).
 - Docker/isolation: not installed. Not needed until Step 10; blocks candidate-code execution.
 
+## Publication readiness (pre-check 2026-10-14, for `lainx06/atlas`)
+- **State:** branch `main`; working tree clean apart from this acceptance record; **no remotes**.
+- **Authors:** all 11 commits are authored and committed as `Adnan Hossain <adnan.hossain0802@gmail.com>`, the expected identity.
+- **History scan:** every blob reachable from all refs (185 blobs, 11 commits) was checked.
+  - No private-key blocks, cloud/GitHub/OpenAI/Slack/Google tokens, JWTs, or non-placeholder key/secret/token/password assignments.
+  - No sensitive paths were ever committed (`.env*` other than `.env.example`, keys, local settings, `runs/`, `.dev/`, `.venv/`, caches, logs, raw data).
+  - No blob is over 1 MB.
+- **Ignore rules verified with `git check-ignore`:** `runs/` (including the preserved Codex review evidence), `.dev/` vendor clones, `.venv/`, `.env`/`.env.*`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/` and `.claude/settings.local.json` are all ignored, and none is tracked.
+- **Publication blockers found:** none.
+- **Non-blocking considerations for the user:**
+  1. **Visibility and personal context:** `docs/handoff/ATLAS_Master_Prompt.md` describes the user's education and internship, home hardware, and family funding of the Claude plan; `docs/handoff/ATLAS_Build_Playbook.md` mentions the family funding and a public Devpost credit code. No secrets, but a public repository would publish them. `docs/handoff/` is read-only under AGENTS.md, so redaction would need the user's explicit exception.
+  2. **Local paths:** absolute local Windows user paths appear in `DECISIONS.md` and `docs/TOOLING.md`.
+  3. **No LICENSE or README yet:** both are planned for T-13. A public repository without a LICENSE is all-rights-reserved by default. The vendored skills carry their own MIT licenses.
+  4. **Codex checkpoint ref:** a local ref `refs/codex/turn-diffs/checkpoints/…` points to a working-tree snapshot (a tree, not a commit), with no extra paths and fully covered by the scan. Push only `main`; don't use `git push --all` or `--mirror`.
+  5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
+
 ## Next task
-1. **The same local Codex session verifies the two corrections:** the delta `58e4dee..` against `runs/review-t01-rm-v11/` (not re-run in place), the same-column cases and the evaluation-fold prerequisite.
-2. If verified, the lead records T-01 acceptance. Otherwise Claude repairs the confirmed findings. These five blockers have now had their targeted repair, so any that recurs stops for diagnosis rather than another blind retry. Do not start T-02 before acceptance.
+1. **GitHub setup (immediate):** publish this existing repository as `lainx06/atlas`.
+   - The publication pre-check is recorded below under "Publication readiness".
+   - Creating the remote and pushing need the user's explicit go-ahead, including a decision on repository visibility.
+2. T-02 only after GitHub setup and a lead instruction.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. These are the repeated-measures rule (before T-02 acceptance), the T-02 assertions, synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
