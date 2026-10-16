@@ -599,3 +599,262 @@ def test_end_to_end_through_the_slice_1_executor(tmp_path, monkeypatch):
     )
     assert (candidate.candidate_dir / "approval.json").is_file()
     assert Status.PASS in {a.status for a in candidate.outcome.assertions}
+
+
+# =============================================================================================
+# Repair pass 1 (Codex review of 4232cc5, runs/r6s/review.md): four P2 findings.
+# =============================================================================================
+
+
+def _original_intact(result_or_dir):
+    run_dir = getattr(result_or_dir, "run_dir", result_or_dir)
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    hashes = tree_hashes(run_dir)
+    expected = {**index["artifacts"], **index["outputs"]}
+    assert all(hashes[name] == digest for name, digest in expected.items())
+    assert set(hashes) == {*expected, "index.json"}
+
+
+def _saved_report(tmp_path):
+    (path,) = (tmp_path / "runs").glob("agent-*/agent_report.json")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+# --- 1. error finalization --------------------------------------------------------------------
+
+
+def test_an_oversized_hunk_number_is_a_recorded_proposal_rejection(tmp_path):
+    header = "@@ -" + "9" * 5000 + ",1 +1,1 @@\n"
+    diff = "--- a/evaluate.py\n+++ b/evaluate.py\n" + header + "-x\n+y\n"
+    executor = RecordingExecutor()
+    result, client, _ = run(
+        tmp_path,
+        [say("propose_patch", diff=diff, rationale="r"), FINISH],
+        ApproveExactly(),
+        executor,
+    )
+    assert result.terminal_state == ctl.REPORT
+    assert executor.calls == [] and len(client.requests) == 2
+    (rejection,) = [t["result"] for t in result.transcript]
+    assert rejection["rejected"].startswith(
+        "malformed_diff: hunk line number out of range"
+    )
+    _original_intact(result.original)
+
+
+def test_a_failing_approver_is_a_recorded_error_with_a_report(tmp_path):
+    class BrokenConsole:
+        def decide(self, request):
+            raise OSError("console closed; token=secret-value")
+
+    executor = RecordingExecutor()
+    result, _, _ = run(tmp_path, [PATCH, FINISH], BrokenConsole(), executor)
+    assert result.terminal_state == ctl.ERROR
+    assert result.reason == "approver_error: OSError"
+    assert executor.calls == []
+    report = _saved_report(tmp_path)
+    assert report["terminal_state"] == "ERROR"
+    assert report["scientific_outcomes"]["original"] == Outcome.VIOLATION_FOUND
+    log = (result.run_dir / "agent_log.jsonl").read_text(encoding="utf-8")
+    assert "secret-value" not in log and "secret-value" not in json.dumps(report)
+    _original_intact(result.original)
+
+
+def test_an_unexpected_error_is_finalized_then_re_raised(tmp_path):
+    """A failing trusted component (here the executor, on the second revision) is not success:
+    the report is written with the stage and type, completed results are kept, and the
+    exception still reaches the caller."""
+
+    class FailsSecondTime(RecordingExecutor):
+        def __call__(self, *args, **kwargs):
+            if self.calls:
+                raise RuntimeError("password=hunter2")
+            return super().__call__(*args, **kwargs)
+
+    patch2 = say("propose_patch", diff=DIFF + "", rationale="again")
+    with pytest.raises(RuntimeError, match="hunter2"):
+        run(tmp_path, [PATCH, patch2, FINISH], ApproveExactly(), FailsSecondTime())
+    report = _saved_report(tmp_path)
+    assert report["terminal_state"] == "ERROR"
+    assert report["terminal_reason"] == "internal_error in EXECUTE: RuntimeError"
+    assert report["scientific_outcomes"]["candidates"] == [Outcome.NO_VIOLATION_FOUND]
+    assert "hunter2" not in json.dumps(report)
+    (original_dir,) = [
+        p for p in (tmp_path / "runs").iterdir() if p.name.startswith("s01")
+    ]
+    _original_intact(original_dir)
+    assert (
+        socket.getaddrinfo.__name__ == "getaddrinfo"
+    )  # guard restored after the raise
+
+
+# --- 2. network guard (loopback receivers only) -----------------------------------------------
+
+
+@pytest.fixture
+def udp_receiver():
+    rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    rx.bind(("127.0.0.1", 0))
+    rx.settimeout(0.3)
+    yield rx
+    rx.close()
+
+
+@pytest.fixture
+def tcp_pair():
+    """A loopback TCP connection opened before the guard (a pre-existing socket)."""
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    client = socket.create_connection(server.getsockname(), timeout=2)
+    accepted, _ = server.accept()
+    accepted.settimeout(0.3)
+    yield client, accepted
+    for s in (client, accepted, server):
+        s.close()
+
+
+def _phoning(action):
+    class Phoning(FixtureClient):
+        def complete(self, request):
+            action()
+            return super().complete(request)
+
+    return Phoning("phone", [FINISH])
+
+
+def test_udp_sendto_to_a_local_receiver_is_denied(tmp_path, udp_receiver):
+    sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    target = udp_receiver.getsockname()
+    try:
+        client = _phoning(lambda: sender.sendto(b"x", target))
+        result = ctl.run_agent(
+            S01, tmp_path / "runs", client, executor=RecordingExecutor(), env={}
+        )
+    finally:
+        sender.close()
+    assert result.reason == "client_error: NetworkDenied"
+    with pytest.raises(TimeoutError):
+        udp_receiver.recvfrom(16)  # nothing arrived
+
+
+def test_send_on_a_pre_existing_connected_socket_is_denied(tmp_path, tcp_pair):
+    client_sock, accepted = tcp_pair
+    result = ctl.run_agent(
+        S01,
+        tmp_path / "runs",
+        _phoning(lambda: client_sock.sendall(b"x")),
+        executor=RecordingExecutor(),
+        env={},
+    )
+    assert result.reason == "client_error: NetworkDenied"
+    with pytest.raises(TimeoutError):
+        accepted.recv(16)
+    client_sock.sendall(b"y")  # restored after the run
+    assert accepted.recv(16) == b"y"
+
+
+@pytest.mark.parametrize(
+    "lookup",
+    [
+        lambda: socket.gethostbyname("127.0.0.1"),
+        lambda: socket.gethostbyname_ex("127.0.0.1"),
+        lambda: socket.gethostbyaddr("127.0.0.1"),
+        lambda: socket.getnameinfo(("127.0.0.1", 80), 0),
+    ],
+    ids=["gethostbyname", "gethostbyname_ex", "gethostbyaddr", "getnameinfo"],
+)
+def test_resolver_entry_points_are_denied(tmp_path, lookup):
+    result = ctl.run_agent(
+        S01, tmp_path / "runs", _phoning(lookup), executor=RecordingExecutor(), env={}
+    )
+    assert result.reason == "client_error: NetworkDenied"
+
+
+def test_the_report_no_longer_claims_that_no_network_was_used(tmp_path):
+    result, _, _ = run(tmp_path, [FINISH])
+    banner = result.report["banner"]
+    assert "no network was used" not in banner
+    assert "not a sandbox" in banner and "no model was called" in banner
+
+
+# --- 3. active time after every reply ---------------------------------------------------------
+
+
+def _late_client(clock, script, late_at):
+    class Late(FixtureClient):
+        def complete(self, request):
+            if len(self.requests) + 1 == late_at:
+                clock.now += 400.0  # this reply returns after the 300 s ceiling
+            return super().complete(request)
+
+    return Late("late", script)
+
+
+@pytest.mark.parametrize("late_reply", ["finish", "tool"])
+def test_a_late_reply_is_not_consumed(tmp_path, late_reply):
+    clock = FakeClock()
+    script = [FINISH] if late_reply == "finish" else [INSPECT, FINISH]
+    client = _late_client(clock, script, late_at=1)
+    result = ctl.run_agent(
+        S01,
+        tmp_path / "runs",
+        client,
+        executor=RecordingExecutor(),
+        budget=Budget(clock=clock),
+        env={},
+    )
+    assert (
+        result.terminal_state == ctl.BUDGET_EXHAUSTED and "active_time" in result.reason
+    )
+    assert (
+        len(client.requests) == 1
+    )  # the call was not interrupted; nothing further sent
+    assert result.report["model_text"] == []  # finish was not consumed
+    assert result.report["budget"]["used"]["tool_operations"] == 0
+    (attempt,) = log_entries(result, "model_attempt")
+    assert attempt["result"] == "late"
+
+
+def test_a_long_approval_wait_alone_does_not_exhaust_active_time(tmp_path):
+    clock = FakeClock()
+
+    class Human(ApproveExactly):
+        def decide(self, request):
+            clock.now += 10_000.0
+            return super().decide(request)
+
+    client = _late_client(clock, [PATCH, FINISH], late_at=99)  # never late
+    executor = RecordingExecutor()
+    result = ctl.run_agent(
+        S01,
+        tmp_path / "runs",
+        client,
+        Human(),
+        executor=executor,
+        budget=Budget(clock=clock),
+        env={},
+    )
+    assert result.terminal_state == ctl.REPORT and len(executor.calls) == 1
+    assert result.report["budget"]["approval_wait_s"] == 10_000.0
+
+
+# --- 4. diff byte limit through the controller ------------------------------------------------
+
+
+def test_an_oversized_multibyte_diff_is_a_schema_failure_with_no_action(tmp_path):
+    diff = "é" * 40_000  # 40,000 characters, 80,000 UTF-8 bytes
+    content = json.dumps(
+        {"action": {"tool": "propose_patch", "diff": diff, "rationale": ""}},
+        ensure_ascii=False,
+    )
+    executor = RecordingExecutor()
+    result, client, _ = run(
+        tmp_path, [{"content": content}, FINISH], ApproveExactly(), executor
+    )
+    assert (
+        result.terminal_state == ctl.ERROR and result.reason == "schema_failure: schema"
+    )
+    assert len(client.requests) == 1 and executor.calls == []
+    used = result.report["budget"]["used"]
+    assert (used["tool_operations"], used["revisions"]) == (0, 0)

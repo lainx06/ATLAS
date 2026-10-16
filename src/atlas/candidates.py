@@ -39,7 +39,11 @@ _HASH_CHUNK = 1 << 20
 _WINDOWS_RESERVED = re.compile(
     r"^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$", re.IGNORECASE
 )
-_HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$")
+# ASCII digits only (\d would also match other scripts' digits, which int() accepts).
+_HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$", re.ASCII)
+# A line number or count beyond this cannot address a bounded entry point; longer digit
+# strings are refused before int() (whose digit limit would otherwise raise ValueError).
+_MAX_HUNK_DIGITS = 9
 _FORBIDDEN_HEADERS = (
     "new file mode",
     "deleted file mode",
@@ -334,15 +338,21 @@ def _header_path(line: str, prefix: str) -> str:
         raise CandidateRejected("path_escape", str(exc)) from exc
 
 
+def _hunk_number(text: str) -> int:
+    if len(text) > _MAX_HUNK_DIGITS:
+        raise CandidateRejected("malformed_diff", "hunk line number out of range")
+    return int(text)
+
+
 def _parse_hunks(lines: list[str], start: int) -> list[dict]:
     hunks, i = [], start
     while i < len(lines):
         m = _HUNK.match(lines[i])
         if not m:
             raise CandidateRejected("malformed_diff", f"unexpected line {i + 1}")
-        old_start = int(m.group(1))
-        old_count = int(m.group(2)) if m.group(2) is not None else 1
-        new_count = int(m.group(4)) if m.group(4) is not None else 1
+        old_start = _hunk_number(m.group(1))
+        old_count = _hunk_number(m.group(2)) if m.group(2) is not None else 1
+        new_count = _hunk_number(m.group(4)) if m.group(4) is not None else 1
         old, new, i = [], [], i + 1
         while i < len(lines) and (len(old) < old_count or len(new) < new_count):
             line = lines[i]

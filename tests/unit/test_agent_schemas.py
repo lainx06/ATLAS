@@ -115,3 +115,47 @@ def test_deep_nesting_within_the_size_cap_is_rejected_not_crashed():
     with pytest.raises(ReplyRejected) as raised:
         parse_reply(nested)
     assert raised.value.code in ("not_json", "schema")
+
+
+# --- repair pass 1 (Codex review of 4232cc5): the diff limit is in UTF-8 bytes ----------------
+
+
+def patch_reply(diff: str) -> str:
+    action = {"tool": "propose_patch", "diff": diff, "rationale": ""}
+    return json.dumps({"action": action}, ensure_ascii=False)
+
+
+HALF = schemas.MAX_DIFF_BYTES // 2  # "é" is two UTF-8 bytes
+
+
+@pytest.mark.parametrize(
+    "diff",
+    ["é" * HALF, "a" * schemas.MAX_DIFF_BYTES, "é" * (HALF - 1) + "ab"],
+    ids=["multibyte_at_limit", "ascii_at_limit", "mixed_at_limit"],
+)
+def test_a_diff_of_exactly_the_byte_limit_is_accepted(diff):
+    assert len(diff.encode("utf-8")) == schemas.MAX_DIFF_BYTES
+    assert parse_reply(patch_reply(diff)).action.diff == diff
+
+
+@pytest.mark.parametrize(
+    "diff",
+    ["é" * HALF + "x", "é" * 40_000, "a" * schemas.MAX_DIFF_BYTES + "é"],
+    ids=[
+        "multibyte_one_byte_over",
+        "multibyte_80000_bytes",
+        "ascii_then_multibyte_over",
+    ],
+)
+def test_a_diff_over_the_byte_limit_is_a_schema_failure(diff):
+    assert len(diff.encode("utf-8")) > schemas.MAX_DIFF_BYTES
+    with pytest.raises(ReplyRejected) as raised:
+        parse_reply(patch_reply(diff))
+    assert raised.value.code == "schema"
+
+
+def test_a_lone_surrogate_in_a_diff_is_a_schema_failure():
+    with pytest.raises(ReplyRejected):
+        parse_reply(
+            '{"action": {"tool": "propose_patch", "diff": "\ud800", "rationale": ""}}'
+        )

@@ -3,7 +3,9 @@
     INTAKE -> CHECK -> (INSPECT | PROPOSE_PATCH -> APPROVAL -> EXECUTE -> VERIFY)* -> REPORT
 
 Any state can end in NEEDS_INPUT, NOT_SUPPORTED, BUDGET_EXHAUSTED or ERROR; a report is always
-written. What the controller guarantees:
+written. An unexpected exception is finalized as ERROR (stage and exception type) and then
+re-raised; a failing approver is a recorded ERROR. Active time is checked after every reply
+returns, before any action (including finish) is consumed. What the controller guarantees:
 
 - **Audit first.** The deterministic audit of the original runs before any model request, and
   its results are never changed afterwards. A model failure at any point ends the run with
@@ -21,7 +23,8 @@ written. What the controller guarantees:
   call while attempts remain, 12 tool operations, 2 revisions, 5 active minutes (approval waits
   excluded).
 - **Fixture mode:** only non-live clients are accepted in this slice, and the whole run executes
-  under `deny_network()`. Reports and the log label the run non-live with model ID
+  under `deny_network()` (an in-process safeguard for fixture tests, not a sandbox).
+  Reports and the log label the run non-live with model ID
   `fixture:<script>`.
 
 Limitation of this slice: the original is audited by the trusted host-fixture runner
@@ -200,13 +203,16 @@ class _Run:
         with open(self.log_path, "a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(entry, sort_keys=True, default=str) + "\n")
 
+    def _stage(self) -> str:
+        return self.states[-1]["state"] if self.states else "START"
+
     def enter(self, state: str, detail: str | None = None) -> None:
         self.states.append({"state": state, "time_utc": _now(), "detail": detail})
         self.log({"event": "state", "state": state, "detail": detail})
 
     # -- the run ----------------------------------------------------------------------------
     def run(self) -> AgentResult:
-        terminal, reason = REPORT, None
+        terminal, reason, unexpected = REPORT, None, None
         try:
             self._intake_and_check()
             while True:
@@ -221,9 +227,18 @@ class _Run:
             terminal, reason = end.state, end.reason
         except BudgetExhausted as exc:
             terminal, reason = BUDGET_EXHAUSTED, str(exc)
+        except Exception as exc:  # noqa: BLE001 - finalized below, then re-raised
+            # An unexpected failure (a programming error or a failing trusted component) is
+            # never success: the report is written first, with the stage and the exception
+            # type only (messages may hold paths or secrets), and the exception is re-raised.
+            unexpected = exc
+            terminal = ERROR
+            reason = f"internal_error in {self._stage()}: {type(exc).__name__}"
         self.enter(terminal, reason)
         report = self._report(terminal, reason)
         write_json(self.run_dir / "agent_report.json", report)
+        if unexpected is not None:
+            raise unexpected
         return AgentResult(
             self.run_dir,
             terminal,
@@ -359,6 +374,14 @@ class _Run:
                 reply_model_id=reply.model_id,
                 reply_live=reply.live,
             )
+            # A reply that returns after the active-time ceiling is not consumed: no action,
+            # not even finish. (A request already in progress is not interrupted here; the
+            # transport's own timeout bounds it.)
+            try:
+                self.budget.check_time()
+            except BudgetExhausted as exc:
+                self.log({**entry, "result": "late", "detail": str(exc)})
+                raise
             try:
                 if reply.live is not False or reply.model_id != self.client.model_id:
                     raise ReplyRejected(
@@ -481,6 +504,11 @@ class _Run:
             raise _Terminal(
                 NEEDS_INPUT, f"candidate {computed[:12]} awaits approval: {exc}"
             ) from None
+        except Exception as exc:  # noqa: BLE001 - a failing approver ends the run, recorded
+            # The approver is the human-facing boundary (e.g. a closed console). Its failure
+            # is an operational error, never an approval: nothing executes.
+            self._record_tool(op, "propose_patch", args, {"approval": "approver_error"})
+            raise _Terminal(ERROR, f"approver_error: {type(exc).__name__}") from None
         bound = (
             isinstance(decision, Approval)
             and decision.candidate_hash == computed
@@ -532,7 +560,9 @@ class _Run:
             "report": "t06-agent-run",
             "banner": (
                 f"NON-LIVE RUN: every model reply came from fixture script "
-                f"{self.client.model_id!r}; no model was called and no network was used."
+                f"{self.client.model_id!r}; no model was called. Python networking in this "
+                "process was guarded during the run (an in-process fixture-testing safeguard, "
+                "not a sandbox; it does not govern other processes)."
             ),
             "mode": "fixture",
             "live": False,
@@ -569,9 +599,12 @@ class _Run:
                 "original": self.original.outcome.outcome,
                 "candidates": [c.outcome.outcome for c in self.candidates],
             }
-            report["comparison"] = comparison_report(
-                self.original.run_dir, self.original.outcome, self.candidates
-            )
+            try:
+                report["comparison"] = comparison_report(
+                    self.original.run_dir, self.original.outcome, self.candidates
+                )
+            except Exception as exc:  # noqa: BLE001 - the report is still written
+                report["comparison"] = {"unavailable": type(exc).__name__}
         return report
 
 

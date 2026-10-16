@@ -16,7 +16,7 @@ reports label as such.
 import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from atlas.candidates import MAX_DIFF_BYTES
 
@@ -53,6 +53,21 @@ class ProposePatch(_Action):
     tool: Literal["propose_patch"]
     diff: str = Field(min_length=1, max_length=MAX_DIFF_BYTES)
     rationale: str = Field(max_length=MAX_TEXT_CHARS)
+
+    @field_validator("diff")
+    @classmethod
+    def _diff_bytes(cls, value: str) -> str:
+        """The diff limit is in UTF-8 bytes, as `validate_diff` measures it (max_length above
+        counts characters, which multibyte text could exceed in bytes)."""
+        try:
+            size = len(value.encode("utf-8"))
+        except UnicodeEncodeError:
+            raise ValueError("diff is not encodable as UTF-8") from None
+        if size > MAX_DIFF_BYTES:
+            raise ValueError(
+                f"diff is {size} UTF-8 bytes; the limit is {MAX_DIFF_BYTES}"
+            )
+        return value
 
 
 class Finish(_Action):
