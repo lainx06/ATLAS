@@ -12,6 +12,13 @@ snapshot. Collected candidate files enter the view only through the explicit map
 collection, and every file is created exclusively, so nothing the candidate wrote can replace
 a host-owned record. Time spent waiting for a human approval happens before this function is
 called and is not part of `active_s`; the total since the proposal is recorded separately.
+
+Preflight: the snapshot's manifest is read (bounded) and must still have the hash recorded when
+the snapshot was built, before anything runs. A missing, changed or invalid manifest is a
+recorded refusal: Docker is never touched, an execution record and a final outcome and report
+are written, and the required assertion set comes only from a trusted source (a manifest whose
+canonical bytes have the snapshot's recorded hash); otherwise the outcome says that the set
+cannot be reconstructed, and no assertion is invented.
 """
 
 import json
@@ -26,6 +33,7 @@ from atlas.candidates import (
     Approval,
     Candidate,
     Snapshot,
+    SnapshotError,
     _permitted_file,
     candidate_hash,
     sha256_bytes,
@@ -85,13 +93,16 @@ def execute_and_reevaluate(
     image: str = dr.IMAGE_TAG,
     env=None,
     image_verifier=None,
+    trusted_manifest: Manifest | None = None,
 ) -> CandidateResult:
-    """Run one approved candidate in Docker and evaluate the full required set on the result."""
+    """Run one approved candidate in Docker and evaluate the full required set on the result.
+
+    `trusted_manifest` (optional) is used only if the snapshot's own manifest is unusable, and
+    only when its canonical bytes have the hash recorded in the snapshot inventory.
+    """
     started = time.monotonic()
     candidate_dir = Path(candidate_dir)
     candidate_dir.mkdir(parents=True, exist_ok=False)
-    manifest_bytes = _permitted_file(snapshot.root, MANIFEST_NAME, MAX_MANIFEST_BYTES)
-    manifest = Manifest.model_validate_json(manifest_bytes)
     computed_hash = candidate_hash(snapshot.base_hash, candidate.entry_bytes)
 
     # Host-owned records of the authorized invocation, written before anything runs.
@@ -110,6 +121,32 @@ def execute_and_reevaluate(
         },
     )
 
+    manifest_bytes, manifest, problem = _snapshot_manifest(snapshot)
+    if problem is not None:
+        record = {
+            "stage": "preflight",
+            "runner": None,
+            "status": "refused",
+            "reason": f"snapshot_manifest_invalid: {problem}",
+            "docker_used": False,
+            "approval": approval.to_dict(),
+            "base_snapshot_hash": snapshot.base_hash,
+            "candidate_hash": computed_hash,
+        }
+        _new_json(candidate_dir / "execution.json", record)
+        required = _trusted_required_set(snapshot, trusted_manifest)
+        return _result(
+            candidate_dir,
+            computed_hash,
+            approval,
+            candidate,
+            record,
+            False,
+            _not_executed(candidate_dir, required, record),
+            started,
+            proposed_at,
+        )
+
     # The runner re-checks both hashes against the bytes it stages, before Docker is touched.
     exec_dir = candidate_dir / EXEC_DIR
     try:
@@ -126,13 +163,69 @@ def execute_and_reevaluate(
         record = _saved_record(exec_dir)
 
     if record.get("status") in NOT_RUN or not (exec_dir / "execution.json").is_file():
-        outcome = _not_executed(candidate_dir, manifest, record)
+        outcome = _not_executed(candidate_dir, required_assertions(manifest), record)
         evaluated = False
     else:
         _build_view(candidate_dir, snapshot, manifest_bytes, manifest)
         outcome = evaluate(snapshot.root, candidate_dir, image_verifier=image_verifier)
         evaluated = True
+    return _result(
+        candidate_dir,
+        computed_hash,
+        approval,
+        candidate,
+        record,
+        evaluated,
+        outcome,
+        started,
+        proposed_at,
+    )
 
+
+def _canonical_manifest_bytes(manifest: Manifest) -> bytes:
+    """The serialization `candidates.build_snapshot` writes into a snapshot."""
+    text = json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+    return text.encode("utf-8")
+
+
+def _snapshot_manifest(snapshot: Snapshot):
+    """(bytes, manifest, None), or (None, None, problem) if the snapshot's manifest is missing,
+    unreadable, no longer the bytes recorded at snapshot time, or invalid."""
+    try:
+        data = _permitted_file(snapshot.root, MANIFEST_NAME, MAX_MANIFEST_BYTES)
+    except SnapshotError as exc:
+        return None, None, f"manifest unreadable ({exc})"
+    if sha256_bytes(data) != dict(snapshot.inventory).get(MANIFEST_NAME):
+        return None, None, "manifest changed after the snapshot was built"
+    try:
+        return data, Manifest.model_validate_json(data), None
+    except (ValueError, RecursionError) as exc:
+        return None, None, f"manifest invalid ({type(exc).__name__})"
+
+
+def _trusted_required_set(
+    snapshot: Snapshot, trusted_manifest: Manifest | None
+) -> list[str] | None:
+    """The required set from a manifest bound to the snapshot's recorded hash, else None."""
+    if trusted_manifest is None:
+        return None
+    recorded = dict(snapshot.inventory).get(MANIFEST_NAME)
+    if sha256_bytes(_canonical_manifest_bytes(trusted_manifest)) != recorded:
+        return None
+    return required_assertions(trusted_manifest)
+
+
+def _result(
+    candidate_dir: Path,
+    computed_hash: str,
+    approval: Approval,
+    candidate: Candidate,
+    record: dict,
+    evaluated: bool,
+    outcome: RunOutcome,
+    started: float,
+    proposed_at: datetime | None,
+) -> CandidateResult:
     finished = datetime.now(UTC)
     return CandidateResult(
         candidate_dir=candidate_dir,
@@ -174,16 +267,29 @@ def _saved_record(exec_dir: Path) -> dict:
         return {"status": "runner_error", "reason": "runner raised without a record"}
 
 
-def _not_executed(candidate_dir: Path, manifest: Manifest, record: dict) -> RunOutcome:
-    """Nothing ran: every required assertion is NOT_ASSESSED (not_executed), never clean."""
-    results = materialize(required_assertions(manifest), {})
-    outcome = RunOutcome(
-        outcome=Outcome.INCONCLUSIVE,
-        policy_version=POLICY_VERSION,
-        reason=f"candidate not executed ({record.get('status')}: {record.get('reason')})",
-        assertions=results,
-        incomplete_coverage=incomplete_coverage(results),
-    )
+def _not_executed(
+    candidate_dir: Path, required: list[str] | None, record: dict
+) -> RunOutcome:
+    """Nothing ran: every required assertion is NOT_ASSESSED (not_executed), never clean. With no
+    trusted source for the required set, the outcome says so and lists no assertion."""
+    reason = f"candidate not executed ({record.get('status')}: {record.get('reason')})"
+    if required is None:
+        outcome = RunOutcome(
+            outcome=Outcome.INCONCLUSIVE,
+            policy_version=POLICY_VERSION,
+            reason=f"{reason}; required assertion set could not be reconstructed: "
+            "no trusted manifest bound to the snapshot",
+            incomplete_coverage=["required_assertion_set"],
+        )
+    else:
+        results = materialize(required, {})
+        outcome = RunOutcome(
+            outcome=Outcome.INCONCLUSIVE,
+            policy_version=POLICY_VERSION,
+            reason=reason,
+            assertions=results,
+            incomplete_coverage=incomplete_coverage(results),
+        )
     _new_json(candidate_dir / "outcome.json", outcome.model_dump(mode="json"))
     _new_json(
         candidate_dir / "report.json",

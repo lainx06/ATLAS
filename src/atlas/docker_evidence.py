@@ -28,15 +28,26 @@ against an attacker who controls the host. `runtime.json`, provenance, splits an
 are written inside the candidate process: they are candidate-produced (SPEC §9.9), and
 `runtime.json` only corroborates.
 
-Order: integrity and binding first (any problem: `UNTRUSTED`, every PASS and FAIL becomes
-ERROR, because evidence that cannot be attributed to the approved candidate supports
-nothing), then the documented status mapping.
+Order: shared integrity and binding first. A failure there (the record, the approval, the
+snapshot, the staged bytes, the configuration, the view record, a host-name collision or an
+indexed file that was never collected) makes the mode `UNTRUSTED`: every PASS and FAIL becomes
+ERROR, because no evidence of that execution can be attributed to the approved candidate.
+
+Individual collected artifacts are checked separately. The host collection record is the
+authority for each artifact's hash: an artifact the view lacks (for example, a failed copy) or
+whose indexed hash differs from the collection record is unavailable, and so is an artifact
+whose bytes no longer match. Only the assertions that depend on it lose their evidence
+(ERROR, as for any missing artifact); findings established from other, separately verified
+artifacts stand. A mismatched artifact is never accepted to preserve a finding.
+
+Then the documented status mapping, with `runtime.json` as corroboration only.
 """
 
 import json
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 from pydantic import ValidationError
 
@@ -96,6 +107,19 @@ UNCONFIRMED = (
 UNTRUSTED = "untrusted"  # integrity or binding failed: nothing can be attributed
 
 ImageVerifier = Callable[[str], str | None]
+
+
+class Trust(NamedTuple):
+    """The evaluator's view of an execution: its record, the problem and trust mode, the index
+    the evidence checks may use, and the artifacts that are individually unavailable."""
+
+    record: dict | None
+    problem: str | None
+    mode: str
+    evidence_index: dict
+    artifact_problems: list[str]
+
+
 NOT_TRUSTED = "Docker execution evidence not trusted: "
 
 
@@ -173,29 +197,53 @@ def docker_trust(
     index: dict,
     manifest: Manifest,
     image_verifier: ImageVerifier | None = None,
-) -> tuple[dict | None, str | None, str]:
-    """(execution record, problem, mode) for a candidate view."""
+) -> Trust:
+    """Shared trust of a candidate view, then the availability of each collected artifact."""
     exec_path, _, exec_ok = verified(run_dir, index, "execution.json")
     if not exec_ok:
-        return (
-            None,
-            f"{NOT_TRUSTED}execution record missing or hash-mismatched",
-            UNTRUSTED,
-        )
+        problem = f"{NOT_TRUSTED}execution record missing or hash-mismatched"
+        return Trust(None, problem, UNTRUSTED, index, [])
     try:
         record = DockerExecutionRecord.model_validate_json(
             exec_path.read_text(encoding="utf-8")
         )
     except (ValueError, RecursionError):
-        return None, f"{NOT_TRUSTED}execution record fails schema validation", UNTRUSTED
+        problem = f"{NOT_TRUSTED}execution record fails schema validation"
+        return Trust(None, problem, UNTRUSTED, index, [])
     dump = record.model_dump(mode="json")
     problem = _integrity_problem(
         project, run_dir, index, manifest, record, image_verifier or verify_runner_image
     )
     if problem is not None:
-        return dump, f"{NOT_TRUSTED}{problem}", UNTRUSTED
-    problem, mode = _status_mapping(run_dir, index, record)
-    return dump, problem, mode
+        return Trust(dump, f"{NOT_TRUSTED}{problem}", UNTRUSTED, index, [])
+    evidence_index, artifact_problems = _artifact_index(index, record)
+    problem, mode = _status_mapping(run_dir, evidence_index, record)
+    return Trust(dump, problem, mode, evidence_index, artifact_problems)
+
+
+def _artifact_index(
+    index: dict, record: DockerExecutionRecord
+) -> tuple[dict, list[str]]:
+    """The index the evidence checks use: host records as indexed, and each collected artifact
+    with the hash from the host collection record, only if the view indexed exactly that hash.
+    An artifact the view lacks or indexed differently is left out, so its dependants see it as
+    missing; whether its bytes still match is checked when it is read (`verified`)."""
+    files = (
+        [f.model_dump() for f in record.collection.files] if record.collection else []
+    )
+    artifacts = {k: v for k, v in index["artifacts"].items() if k in HOST_RECORDS}
+    problems = []
+    for item in plan_mapping(files)["mapped"]:
+        indexed = index["artifacts"].get(item["to"])
+        if indexed == item["sha256"]:
+            artifacts[item["to"]] = item["sha256"]
+        elif indexed is None:
+            problems.append(f"{item['to']} unavailable: not in the candidate view")
+        else:
+            problems.append(
+                f"{item['to']} unavailable: indexed hash differs from the collection record"
+            )
+    return {**index, "artifacts": artifacts}, problems
 
 
 def _read_verified(run_dir: Path, index: dict, name: str):
@@ -317,10 +365,15 @@ def _integrity_problem(
     view = _read_verified(run_dir, index, VIEW_NAME)
     if not isinstance(view, dict) or view.get("mapped") != plan["mapped"]:
         return "view.json does not match the mapping of the recorded collection"
-    expected = {m["to"]: m["sha256"] for m in plan["mapped"]}
-    indexed = {k: v for k, v in index["artifacts"].items() if k not in HOST_RECORDS}
-    if indexed != expected:
-        return "indexed candidate files differ from the recorded collection"
+    # An indexed file that was never collected (an extra or remapped name) is a host-record
+    # inconsistency, not a missing artifact. Missing or differing collected artifacts are
+    # handled one by one in `_artifact_index`.
+    expected = {m["to"] for m in plan["mapped"]}
+    extra = sorted(
+        k for k in index["artifacts"] if k not in HOST_RECORDS and k not in expected
+    )
+    if extra:
+        return f"the view indexes files that were not collected: {extra[:5]}"
     return _status_consistency(record)
 
 

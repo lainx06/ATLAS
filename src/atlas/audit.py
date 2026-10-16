@@ -241,19 +241,21 @@ def _trusted_manifest(
 
 def _execution_trust(
     project: Path, run_dir: Path, index: dict, manifest: Manifest, image_verifier
-) -> tuple[dict | None, str | None, str]:
-    """(execution record, problem, trust mode). A candidate view (marked by view.json in the
-    index) is checked only as Docker evidence; anything else only as trusted-fixture evidence."""
+) -> docker_evidence.Trust:
+    """A candidate view (marked by view.json in the index) is checked only as Docker evidence;
+    anything else only as trusted-fixture evidence, whose index is used unchanged."""
     if docker_evidence.VIEW_NAME in index["artifacts"]:
         return docker_evidence.docker_trust(
             project, run_dir, index, manifest, image_verifier
         )
     record, problem = _fixture_execution_trust(run_dir, index)
     if problem is None:
-        return record, None, docker_evidence.COMPLETED
-    if problem == "fixture execution did not complete":
-        return record, problem, docker_evidence.NOT_COMPLETED
-    return record, problem, docker_evidence.UNCONFIRMED
+        mode = docker_evidence.COMPLETED
+    elif problem == "fixture execution did not complete":
+        mode = docker_evidence.NOT_COMPLETED
+    else:
+        mode = docker_evidence.UNCONFIRMED
+    return docker_evidence.Trust(record, problem, mode, index, [])
 
 
 def _fixture_execution_trust(
@@ -356,11 +358,13 @@ def evaluate(project: Path, run_dir: Path, *, image_verifier=None) -> RunOutcome
         return outcome
 
     required = required_assertions(manifest)
-    execution, problem, mode = _execution_trust(
-        project, run_dir, index, manifest, image_verifier
-    )
+    trust = _execution_trust(project, run_dir, index, manifest, image_verifier)
+    execution, problem, mode = trust.record, trust.problem, trust.mode
     computed, descriptive, evidence_problem = _compute(
-        project, run_dir, index, manifest
+        project, run_dir, trust.evidence_index, manifest
+    )
+    evidence_problem = (
+        "; ".join(p for p in (*trust.artifact_problems, evidence_problem) if p) or None
     )
     if snapshot_problem is not None:
         _degrade_unconfirmed(computed, snapshot_problem, completed=False)
@@ -460,6 +464,35 @@ def _unknown_split_rows(splits: list[dict], table: pd.DataFrame) -> str | None:
     return None
 
 
+# What the consumers of a prediction artifact read: the row-ID check reads `row_id`, the metric
+# check reads `row_id` and `y_pred` (each value judged by `canonical_label`). Row IDs are the
+# strings the adapter writes (`adapter.write_predictions`).
+PREDICTION_COLUMNS = ("row_id", "y_pred")
+
+
+def _load_predictions(path: Path) -> tuple[pd.DataFrame | None, str | None]:
+    """(frame, None) in the shape its consumers read, or (None, why it is unusable).
+
+    Decoding failures of the file are evidence errors, not evaluator crashes. Arrow's errors
+    subclass these built-in types (ArrowInvalid is a ValueError, ArrowIOError an OSError,
+    ArrowTypeError a TypeError, ArrowNotImplementedError a NotImplementedError); the guard covers
+    only the read itself, so evaluator programming errors elsewhere still raise.
+    """
+    try:
+        frame = pd.read_parquet(path)
+    except (OSError, ValueError, TypeError, NotImplementedError) as exc:
+        return None, f"could not be decoded as Parquet ({type(exc).__name__})"
+    columns = list(frame.columns)
+    if len(columns) != len(set(columns)):
+        return None, "has repeated column names"
+    missing = [c for c in PREDICTION_COLUMNS if c not in columns]
+    if missing:
+        return None, f"lacks required column(s) {missing}"
+    if not all(isinstance(r, str) for r in frame["row_id"]):
+        return None, "has row_id values that are not strings"
+    return frame, None
+
+
 def _structure_problem(artifact: str, exc: ValidationError) -> str:
     """Name the failing entries and fields (as intake does); input values are not echoed."""
     parts = [
@@ -519,15 +552,21 @@ def _compute(
         and e.get("artifact") != expected[e["fold"]]
     ]
     pred_refs, by_fold, frames, verified_artifacts = [], {}, {}, {}
+    prediction_problems: list[str] = []
     for fold, name in expected.items():
         path, recorded, ok = verified(run_dir, index, name)
         pred_refs.append(EvidenceRef(artifact=name, sha256=recorded))
-        if ok:
+        frame, problem = _load_predictions(path) if ok else (None, None)
+        if frame is not None:
             verified_artifacts[name] = recorded
-            frames[fold] = pd.read_parquet(path)
-            by_fold[fold] = [str(r) for r in frames[fold]["row_id"]]
+            frames[fold] = frame
+            by_fold[fold] = [str(r) for r in frame["row_id"]]
         elif recorded is not None:
-            by_fold[fold] = None  # present in the inventory but invalid
+            # Present in the inventory but invalid: a hash mismatch, or (problem) bytes whose
+            # hash matches but that its consumers cannot read. Only its dependants are affected.
+            by_fold[fold] = None
+            if problem is not None:
+                prediction_problems.append(f"{name} {problem}")
     # Unexpected paths stay separate from verified fold data; they are never read as rows.
     unexpected = sorted(
         name
@@ -587,7 +626,9 @@ def _compute(
         evidence_valid=splits_ok and table_ok,
     )
     computed.update(metrics)
-    problems = "; ".join(p for p in (splits_problem, prov_problem) if p)
+    problems = "; ".join(
+        p for p in (splits_problem, prov_problem, *prediction_problems) if p
+    )
     return computed, descriptive, problems or None
 
 

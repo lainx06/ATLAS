@@ -452,13 +452,23 @@ def test_staged_code_changed_with_its_record_is_refused(clean_view):
     assert_untrusted(reevaluate(snap, cdir), "staged code differs")
 
 
-def test_collected_file_changed_and_reindexed_is_refused(clean_view):
+def test_collected_file_changed_and_reindexed_is_never_used(clean_view):
+    """The collection record, not the view's index, is the authority for an artifact's hash:
+    a changed and re-indexed splits.json is unavailable (its dependants ERROR), never accepted.
+    (Repair pass 1: an individual artifact no longer makes the whole view untrusted.)"""
     snap, cdir = clean_view
     splits = json.loads((cdir / "splits.json").read_text(encoding="utf-8"))
     splits[0]["eval_ids"] = splits[0]["eval_ids"][:-1]
     (cdir / "splits.json").write_text(json.dumps(splits), encoding="utf-8")
     reindex(cdir, "splits.json")
-    assert_untrusted(reevaluate(snap, cdir), "differ from the recorded collection")
+    outcome = reevaluate(snap, cdir)
+    assert outcome.outcome is Outcome.INCONCLUSIVE
+    assert Status.PASS not in statuses(outcome).values()
+    assert "splits.json unavailable: indexed hash differs" in outcome.reason
+    split_results = [
+        a for a in outcome.assertions if a.assertion_id.startswith("split.")
+    ]
+    assert split_results and all(not a.evidence_valid for a in split_results)
 
 
 def test_execution_copy_differing_from_the_runner_record_is_refused(clean_view):
@@ -807,3 +817,313 @@ def test_report_separates_execution_from_outcome_and_leaves_the_original_alone(
     assert "outcome.json" in by_status["completed"]["evidence_sha256"]
     text = json.dumps(report).lower()
     assert "fixed" not in text and "improved" not in text
+
+
+# =============================================================================================
+# Repair pass 1 (Codex review of e23e67d, runs/r6/review.md): three P2 findings.
+# =============================================================================================
+
+
+def _faulty_control(tmp_path, monkeypatch, evidence, **kwargs):
+    """A completed candidate on s01 whose valid split/table evidence gives VIOLATION_FOUND."""
+    source = (S01 / "evaluate.py").read_text(encoding="utf-8") + "# repair control\n"
+    return run_case(
+        tmp_path, monkeypatch, evidence["faulty"], new_source=source, **kwargs
+    )
+
+
+def _split_statuses(outcome):
+    return {
+        a.assertion_id: (a.status, a.evidence_valid)
+        for a in outcome.assertions
+        if a.assertion_id.startswith("split.")
+    }
+
+
+def _only_dependants_lost(control, outcome):
+    """Every assertion that changed lost its evidence (ERROR or NOT_ASSESSED); none gained a
+    PASS or FAIL; split assertions (splits + table evidence) are unchanged and include FAILs."""
+    before, after = statuses(control), statuses(outcome)
+    changed = {a for a in before if before[a] != after[a]}
+    assert changed, "the broken artifact had no dependants"
+    assert all(after[a] in (Status.ERROR, Status.NOT_ASSESSED) for a in changed)
+    assert _split_statuses(outcome) == _split_statuses(control)
+    assert any(s is Status.FAIL for s, _ in _split_statuses(outcome).values())
+    return changed
+
+
+def _final_outputs(cdir):
+    return all((cdir / n).is_file() for n in ("outcome.json", "report.json")) and any(
+        (cdir / "checks").glob("*.json")
+    )
+
+
+# --- finding 1: malformed prediction evidence -------------------------------------------------
+
+
+def _prediction_case(name: str, good: bytes) -> bytes:
+    import pandas as pd
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    frame = pd.read_parquet(io.BytesIO(good))
+    if name == "not_parquet":
+        return b"not parquet"
+    if name == "truncated_parquet":
+        return good[: len(good) // 2]
+    if name == "missing_row_id":
+        return frame.drop(columns="row_id").to_parquet(index=False)
+    if name == "missing_y_pred":
+        return frame.drop(columns="y_pred").to_parquet(index=False)
+    if name == "row_id_not_strings":
+        return frame.assign(row_id=range(len(frame))).to_parquet(index=False)
+    if name == "repeated_columns":
+        rows = pa.array(frame["row_id"].tolist())
+        preds = pa.array(frame["y_pred"].tolist())
+        table = pa.Table.from_arrays(
+            [rows, rows, preds], names=["row_id", "row_id", "y_pred"]
+        )
+        buf = io.BytesIO()
+        pq.write_table(table, buf)
+        return buf.getvalue()
+    raise AssertionError(name)
+
+
+PREDICTION_CASES = [
+    "not_parquet",
+    "truncated_parquet",
+    "missing_row_id",
+    "missing_y_pred",
+    "row_id_not_strings",
+    "repeated_columns",
+]
+
+
+@pytest.mark.parametrize("case", PREDICTION_CASES)
+def test_malformed_collected_predictions_are_evidence_errors(
+    tmp_path, monkeypatch, evidence, case
+):
+    """Collected (hash-matching) prediction bytes its consumers cannot read: final outputs are
+    written, only prediction-dependent results lose their evidence, split FAILs stand."""
+    snap, control = _faulty_control(tmp_path / "control", monkeypatch, evidence)
+    assert control.outcome.outcome is Outcome.VIOLATION_FOUND
+    good = (evidence["faulty"] / "predictions" / "fold0.parquet").read_bytes()
+    bad = {"predictions/fold0.parquet": _prediction_case(case, good)}
+    _, result = _faulty_control(tmp_path / "case", monkeypatch, evidence, extra=bad)
+
+    assert result.execution["status"] == "completed"
+    assert _final_outputs(result.candidate_dir)
+    assert result.outcome.outcome is Outcome.VIOLATION_FOUND
+    assert "predictions/fold0.parquet" in result.outcome.reason
+    changed = _only_dependants_lost(control.outcome, result.outcome)
+    # The dependants are exactly those of an invalid (hash-mismatched) prediction artifact,
+    # the established evidence-error path: the control view with fold0's bytes changed.
+    target = control.candidate_dir / "predictions" / "fold0.parquet"
+    target.write_bytes(target.read_bytes() + b"x")
+    mismatch = reevaluate(snap, control.candidate_dir)
+    assert changed == {
+        a
+        for a, s in statuses(mismatch).items()
+        if s is not statuses(control.outcome)[a]
+    }
+    assert any(a.startswith("metric.") for a in changed)
+
+
+def test_malformed_predictions_in_a_trusted_fixture_run_are_evidence_errors(tmp_path):
+    """The same guard on the unchanged trusted-fixture path (reviewed fixtures only)."""
+    original = audit(S01, tmp_path / "runs")
+    run_dir = original.run_dir
+    (run_dir / "predictions" / "fold0.parquet").write_bytes(b"not parquet")
+    index = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))
+    index["artifacts"]["predictions/fold0.parquet"] = hashlib.sha256(
+        b"not parquet"
+    ).hexdigest()
+    (run_dir / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+    outcome = evaluate(S01, run_dir)
+    assert _final_outputs(run_dir)
+    assert outcome.outcome is Outcome.VIOLATION_FOUND
+    assert "could not be decoded as Parquet" in outcome.reason
+    _only_dependants_lost(original.outcome, outcome)
+
+
+# --- finding 2: an individual artifact versus the shared binding ------------------------------
+
+
+def _bridge_with_post_collection(tmp_path, monkeypatch, evidence, change):
+    """The real bridge after a completed run; `change(out_dir)` acts on exec/out/ between the
+    runner's collection and the bridge's view (as in Codex's bridge_probe.py)."""
+    source = (S01 / "evaluate.py").read_text(encoding="utf-8") + "# repair control\n"
+    snap, cand, appr = prepared(tmp_path, source)
+    out = collected(evidence["faulty"], tmp_path / "container-out")
+    fake_docker(monkeypatch, out)
+    no_host_execution(monkeypatch)
+    real = dr.run_candidate
+
+    def after_collection(*args, **kwargs):
+        record = real(*args, **kwargs)
+        assert record["status"] == "completed"
+        change(Path(args[3]) / "out")
+        return record
+
+    monkeypatch.setattr(dr, "run_candidate", after_collection)
+    return execute_and_reevaluate(snap, cand, appr, tmp_path / "agent" / "c1")
+
+
+ARTIFACT_LOSSES = {
+    "provenance_missing": lambda out: (out / "provenance.jsonl").unlink(),
+    "provenance_changed": lambda out: (out / "provenance.jsonl").write_bytes(
+        b"changed"
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(ARTIFACT_LOSSES))
+def test_unavailable_provenance_takes_down_only_its_dependants(
+    tmp_path, monkeypatch, evidence, case
+):
+    _, control = _faulty_control(tmp_path / "control", monkeypatch, evidence)
+    result = _bridge_with_post_collection(
+        tmp_path / "case", monkeypatch, evidence, ARTIFACT_LOSSES[case]
+    )
+    cdir = result.candidate_dir
+    assert not (
+        cdir / "provenance.jsonl"
+    ).exists()  # unverified bytes never enter the view
+    reason = result.outcome.reason
+    assert result.outcome.outcome is Outcome.VIOLATION_FOUND
+    assert "provenance.jsonl unavailable: not in the candidate view" in reason
+    assert "not trusted" not in reason
+    changed = _only_dependants_lost(control.outcome, result.outcome)
+    assert all(a.startswith("fit.") for a in changed), changed
+
+
+def test_missing_runtime_is_corroboration_only(tmp_path, monkeypatch, evidence):
+    _, control = _faulty_control(tmp_path / "control", monkeypatch, evidence)
+    result = _bridge_with_post_collection(
+        tmp_path / "case",
+        monkeypatch,
+        evidence,
+        lambda out: (out / "runtime.json").unlink(),
+    )
+    out = result.outcome
+    assert out.outcome is Outcome.VIOLATION_FOUND
+    assert "runtime.json unavailable" in out.reason
+    assert "container runtime record missing or invalid" in out.reason
+    assert Status.PASS not in statuses(out).values()  # no corroboration: no PASS
+    fails = {a for a, s in statuses(control.outcome).items() if s is Status.FAIL}
+    assert fails and all(statuses(out)[a] is Status.FAIL for a in fails)
+
+
+def test_splits_lost_after_collection_are_never_used(tmp_path, monkeypatch, evidence):
+    """Control in the other direction: the split evidence itself is unavailable."""
+    result = _bridge_with_post_collection(
+        tmp_path,
+        monkeypatch,
+        evidence,
+        lambda out: (out / "splits.json").write_bytes(b"[]"),
+    )
+    assert result.outcome.outcome is Outcome.INCONCLUSIVE
+    assert "splits.json unavailable" in result.outcome.reason
+    assert not {Status.PASS, Status.FAIL} & set(statuses(result.outcome).values())
+
+
+def test_an_indexed_file_that_was_never_collected_is_a_shared_failure(clean_view):
+    snap, cdir = clean_view
+    (cdir / "predictions" / "extra.parquet").write_bytes(b"x")
+    reindex(cdir, "predictions/extra.parquet")
+    assert_untrusted(reevaluate(snap, cdir), "files that were not collected")
+
+
+def test_a_broken_shared_binding_still_invalidates_every_finding(
+    tmp_path, monkeypatch, evidence
+):
+    snap, result = _faulty_control(tmp_path, monkeypatch, evidence)
+    assert result.outcome.outcome is Outcome.VIOLATION_FOUND
+    tamper_record(result.candidate_dir, _without_network)
+    outcome = reevaluate(snap, result.candidate_dir)
+    assert not {Status.PASS, Status.FAIL} & set(statuses(outcome).values())
+
+
+# --- finding 3: the snapshot manifest after approval ------------------------------------------
+
+
+def _change_manifest(snap, case):
+    from atlas.intake import MANIFEST_NAME
+
+    path = snap.root / MANIFEST_NAME
+    if case == "missing":
+        path.unlink()
+    elif case == "malformed":
+        path.write_bytes(b"{bad json")
+    elif case == "valid_but_changed":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["claim"]["statement"] = "changed after approval"
+        text = json.dumps(data, indent=2, sort_keys=True) + "\n"
+        path.write_text(text, encoding="utf-8")
+    else:
+        raise AssertionError(case)
+
+
+@pytest.mark.parametrize("case", ["missing", "malformed", "valid_but_changed"])
+def test_manifest_changed_after_approval_is_a_recorded_refusal(
+    tmp_path, monkeypatch, case
+):
+    original = audit(S01, tmp_path / "runs")
+    before = _tree_hashes(original.run_dir)
+    snap, cand, appr = prepared(tmp_path / "x")
+    _change_manifest(snap, case)
+    _refusing_docker(monkeypatch)
+
+    result = execute_and_reevaluate(snap, cand, appr, tmp_path / "x" / "c1")
+    cdir = result.candidate_dir
+    record = json.loads((cdir / "execution.json").read_text(encoding="utf-8"))
+    assert (record["stage"], record["status"], record["docker_used"]) == (
+        "preflight",
+        "refused",
+        False,
+    )
+    assert record["reason"].startswith("snapshot_manifest_invalid")
+    assert (cdir / "outcome.json").is_file() and (cdir / "report.json").is_file()
+    assert not (cdir / "exec").exists()
+    out = result.outcome
+    assert out.outcome is Outcome.INCONCLUSIVE and not result.evaluated
+    assert out.assertions == []  # no trusted source: nothing invented
+    assert "required assertion set could not be reconstructed" in out.reason
+    assert _tree_hashes(original.run_dir) == before
+
+
+def test_preflight_refusal_uses_only_a_manifest_bound_to_the_snapshot(
+    tmp_path, monkeypatch
+):
+    from atlas.intake import load_project
+
+    trusted_manifest = load_project(S01).manifest
+    original = audit(S01, tmp_path / "runs").outcome
+    snap, cand, appr = prepared(tmp_path / "x")
+    _change_manifest(snap, "malformed")
+    _refusing_docker(monkeypatch)
+    result = execute_and_reevaluate(
+        snap, cand, appr, tmp_path / "x" / "c1", trusted_manifest=trusted_manifest
+    )
+    assert [a.assertion_id for a in result.outcome.assertions] == [
+        a.assertion_id for a in original.assertions
+    ]
+    assert all(
+        a.status is Status.NOT_ASSESSED and a.reason is Reason.NOT_EXECUTED
+        for a in result.outcome.assertions
+    )
+
+    # A manifest that is not the snapshot's (here: a changed claim) is not a trusted source.
+    other = trusted_manifest.model_copy(
+        update={
+            "claim": trusted_manifest.claim.model_copy(update={"statement": "other"})
+        }
+    )
+    snap2, cand2, appr2 = prepared(tmp_path / "y")
+    _change_manifest(snap2, "missing")
+    result2 = execute_and_reevaluate(
+        snap2, cand2, appr2, tmp_path / "y" / "c1", trusted_manifest=other
+    )
+    assert result2.outcome.assertions == []
+    assert "could not be reconstructed" in result2.outcome.reason
