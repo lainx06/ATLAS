@@ -12,7 +12,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope (2026-10-15), on Codex's independent verification of every repair pass. Contract policy-v1.3, manifest schema 0.3. Limitations stand (see ACCEPTANCE) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
-| T-03 | 11 (early) | **Research and local design done (2026-10-15); NOT accepted: feasibility evidence missing.** Recommended: Streamlit Community Cloud; fallback Hugging Face protected Docker Space (PRO $9/month); limited hosted mode. `docs/HOSTING_PROBE.md`. Stage A deployed; one sleep/wake cycle and one hosted stage D run on Neon PostgreSQL 18 observed (2026-10-16, owner-reported, all ok). Remaining: lead decisions (host mode, Neon) and untested stages B/C (`docs/HOSTING_PROBE.md` §9) | Hosting and isolated-worker probe (docs/evidence only) |
+| T-03 | 11 (early) | **Research, local design and owner-run hosted observations recorded; lead decisions recorded (2026-10-16); NOT accepted; ready for the lead's acceptance decision, with one residue (worker cost unknown, §9).** Decided: limited hosted plus local Docker; Neon budget store; stages B/C moved to T-12. Recommended: Streamlit Community Cloud; fallback Hugging Face protected Docker Space (PRO $9/month); limited hosted mode. `docs/HOSTING_PROBE.md`. Stage A deployed; one sleep/wake cycle and one hosted stage D run on Neon PostgreSQL 18 observed (2026-10-16, owner-reported, all ok). Earlier recommendation: Streamlit Community Cloud; fallback HF protected Docker Space; `docs/HOSTING_PROBE.md` | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | In progress (slice 1 verified within scope; slice 2 verified within scope; slice 3 awaiting Codex review) | Bounded live agent loop end to end |
@@ -734,6 +734,18 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - credit expiry stays **marked unknown**, which criterion 3 allows; whether a public demo is "production" under the Builder terms is also unknown;
     - two untested hosted paths, to be required or deferred by the lead: outbound HTTPS to Nebius (stage B) and the hosted dependency build (stage C).
   - **T-03 remains unaccepted.**
+  - **Lead decisions (2026-10-16; DECISIONS.md "T-03 hosting decisions"):**
+    - V1 is limited hosted mode plus full local Docker execution; full hosted is a stretch goal.
+    - Neon is selected as the budget store; production integration still needs implementation and review.
+    - The availability plan through 15 December is accepted, with recorded examples and the local build as fallbacks; no uptime guarantee.
+    - The judge-access and budget design is accepted for planning scope only. In-app caps are planned controls, not an existing hard spending ceiling. Billing is unchanged and no additional spending is authorized.
+    - The $50 credit expiry and promotional-use eligibility stay explicitly unknown; unknown eligibility is not approval.
+    - Stages B (Nebius connectivity from the host) and C (full locked build on the host) are deferred to T-12 and are required there before the hosted app is declared ready.
+  - **Mapping against the acceptance criteria (`docs/HOSTING_PROBE.md` §9; criteria unchanged):**
+    - criterion 2 (recommendation with evidence): met, and the lead chose limited hosted;
+    - criterion 3 (expiry confirmed or marked unknown): met, marked unknown;
+    - criterion 1 (each open check answered with a dated source or an observed test): met for five of the six open checks. The isolated-worker check is answered for Community Cloud (documented absence) and the HF Space (documented constraints, not demonstrated), but **the cost and delivery time of a separate worker were not researched** and are recorded as unknown.
+  - **Readiness (builder's assessment):** ready for the lead's acceptance decision within the research-and-feasibility scope, provided the lead judges that residue acceptable because full hosted is a stretch goal. The alternative is a short documentation-only price search first. **T-03 is not accepted.**
 
 ### T-04 Nebius access smoke (Start Here Step 10)
 - **OWNER:** Claude Code (writer); the user enters the key privately.
@@ -1278,14 +1290,19 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **MODEL DECISION:** SWITCH to Sonnet Medium for deployment plumbing; Opus High for cost-control and key-handling logic.
 - **MODEL / EFFORT:** Sonnet 5.5 medium / Opus 5.5 high.
 - **READ FIRST:** SPEC §13; T-03 decision; DECISIONS.md Q5.
-- **INPUT STATE:** T-03 decision; T-07 UI; verified prices.
-- **CHANGE:** deployment configuration, server-side caps, judge route or reserved capacity, exhaustion and restoration behavior, labels.
+- **INPUT STATE:** T-03 decision (recorded 2026-10-16: limited hosted plus local Docker; Neon budget store); T-07 UI; verified prices.
+- **CHANGE:** deployment configuration, server-side caps on the Neon budget store, judge route or reserved capacity, exhaustion and restoration behavior, labels.
 - **ACCEPTANCE:**
   - a signed-out browser completes the curated workflow;
   - caps trigger correctly in a test;
   - the judge route survives exhaustion of the public budget;
   - keys stay server-side;
-  - replay is disclosed.
+  - replay is disclosed;
+  - **before the hosted app is declared ready** (moved from T-03 stages B and C; DECISIONS.md 2026-10-16):
+    - Nebius connectivity from the deployed host is tested and recorded;
+    - the full locked environment builds and imports on the host, and that is recorded;
+    - each needs its own approval when run;
+  - the Neon budget-store integration (accounting, caps, pools, leases, reconciliation, retention) is implemented and reviewed. Until then the caps are planned controls, not a spending ceiling.
 - **RUN:** *(create)* the deployment smoke and acceptance scenarios against the hosted URL.
 - **EVIDENCE:** URL, test output, cost log.
 - **HANDOFF:** lead approval before any paid usage.

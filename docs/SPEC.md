@@ -368,6 +368,11 @@ Any other runtime must pass the same contract tests before it replaces Docker. I
 
 Keys never reach the browser, prompts, fixtures, Git or candidate containers. The open checks are listed in DECISIONS.md.
 
+**Decided (2026-10-16, DECISIONS.md "T-03 hosting decisions"):**
+- V1 is limited hosted plus full local Docker execution; full hosted is a stretch goal.
+- The budget store is Neon Postgres. The server-side controls above are planned, not yet built.
+- The hosted app is not "ready" until Nebius connectivity from the host and the full locked-environment build on the host are tested (T-12).
+
 ## 14 Step 8 dispositions and remaining gated questions
 
 Gemini findings F1–F5 and lead findings L1–L2 were recorded in DECISIONS.md on 2026-10-14 and applied throughout this file. The reviewed packet `handoffs/science-01.md` is preserved unchanged as the snapshot that was reviewed.
