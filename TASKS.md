@@ -12,7 +12,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | S-08 | 8 | Done (dispositions recorded 2026-10-14) | Scientific review packet `handoffs/science-01.md`; Gemini review; lead dispositions F1–F5, L1–L2 |
 | T-01 | 9 | **Accepted by the lead at `f5aa4dc`** within its documented scope (2026-10-14), on Codex's independent verification: 165 tests passed, no remaining blocker in the reviewed scope. Limitations stand (see RESULT and review records) | First deterministic slice: `unseen_group` fixtures, split/group integrity, bounded fit provenance, prediction IDs, outcome derivation, evidence JSON |
 | T-02 | 11 | **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope (2026-10-15), on Codex's independent verification of every repair pass. Contract policy-v1.3, manifest schema 0.3. Limitations stand (see ACCEPTANCE) | Independent metrics, conditional split rules (windows, separation), `future_time` assertions, reported-metric comparison |
-| T-03 | 11 (early) | **Research, local design and owner-run hosted observations recorded; lead decisions recorded (2026-10-16); NOT accepted; ready for the lead's acceptance decision (criteria 1–3 met after the worker check, §3a and §9).** Decided: limited hosted plus local Docker; Neon budget store; stages B/C moved to T-12. Recommended: Streamlit Community Cloud; fallback Hugging Face protected Docker Space (PRO $9/month); limited hosted mode. `docs/HOSTING_PROBE.md`. Stage A deployed; one sleep/wake cycle and one hosted stage D run on Neon PostgreSQL 18 observed (2026-10-16, owner-reported, all ok). Earlier recommendation: Streamlit Community Cloud; fallback HF protected Docker Space; `docs/HOSTING_PROBE.md` | Hosting and isolated-worker probe (docs/evidence only) |
+| T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
 | T-06 | 11 | In progress (slice 1 verified within scope; slice 2 verified within scope; slice 3 awaiting Codex review) | Bounded live agent loop end to end |
@@ -754,6 +754,17 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - **Delivery:** provisioning time is unknown (not documented). Our implementation and verification is a rough estimate of about 5.5–13 working days, not demonstrated.
     - A VM with Docker does not establish isolation-contract compliance; that needs the T-05 suite on Linux plus a security review.
   - **Readiness after the worker check:** criterion 1 is now met at documentation level: cost answered by dated sources, contract compliance answered as "not demonstrated", and delivery split into an unknown provisioning time and a labelled estimate. Criteria 2 and 3 are met. Ready for the lead's acceptance decision. **T-03 is not accepted.**
+- **ACCEPTANCE (2026-10-16):** **accepted by the lead at `51d3dd8` within its documented research-and-feasibility scope.**
+  - **Covers:** the hosting recommendation; the observed probe results (stage A build and canary, one sleep/wake cycle, one stage D run on Neon PostgreSQL 18); the selected budget store (Neon); and the documented costs, risks and unknowns.
+  - **Does not establish:** production readiness, guaranteed availability, promotional-credit eligibility, or isolation-contract compliance on any remote worker.
+  - **Stays in force:**
+    - Limited hosted mode remains the V1 mode.
+    - The worker sizing and cost figures (`docs/HOSTING_PROBE.md` §3a) remain **provisional**, including the unconfirmed 672-hour billing cap.
+    - No new spending, account creation or deployment is authorized.
+  - **Carried forward, unchanged:**
+    - T-12 must test Nebius connectivity from the host (stage B) and the full locked-environment build on the host (stage C) before the hosted app is declared ready.
+    - T-12 must implement and review the production budget controls (accounting, caps, judge and public pools, leases, reconciliation, retention) on Neon. Until then the caps are planned controls, not a spending ceiling.
+  - **Kept as they are:** the deployed probe app, its Secrets, the Neon project and its scratch tables. Deletion and credential rotation remain later explicit actions.
 
 ### T-04 Nebius access smoke (Start Here Step 10)
 - **OWNER:** Claude Code (writer); the user enters the key privately.
