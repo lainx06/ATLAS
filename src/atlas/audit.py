@@ -1,6 +1,8 @@
 """Deterministic audit: intake -> trusted execution -> trusted evaluation -> evidence (SPEC §6, §7).
 
 Scope (T-01, T-02): audit mode only, trusted fixtures only, no model calls, no candidate execution.
+T-06 slice 1: `evaluate` also accepts a Docker candidate view (`atlas.docker_evidence`), whose
+execution evidence is checked separately; the trusted-fixture path is unchanged.
 """
 
 import hashlib
@@ -13,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
+from atlas import docker_evidence
 from atlas.adapter import ADAPTER_VERSION
 from atlas.checks.fit_provenance import fit_assertions
 from atlas.checks.independent_metrics import metric_assertions
@@ -236,7 +239,26 @@ def _trusted_manifest(
     return None, f"{SNAPSHOT_PROBLEM} and no hash-matching trusted manifest"
 
 
-def _execution_trust(run_dir: Path, index: dict) -> tuple[dict | None, str | None]:
+def _execution_trust(
+    project: Path, run_dir: Path, index: dict, manifest: Manifest, image_verifier
+) -> tuple[dict | None, str | None, str]:
+    """(execution record, problem, trust mode). A candidate view (marked by view.json in the
+    index) is checked only as Docker evidence; anything else only as trusted-fixture evidence."""
+    if docker_evidence.VIEW_NAME in index["artifacts"]:
+        return docker_evidence.docker_trust(
+            project, run_dir, index, manifest, image_verifier
+        )
+    record, problem = _fixture_execution_trust(run_dir, index)
+    if problem is None:
+        return record, None, docker_evidence.COMPLETED
+    if problem == "fixture execution did not complete":
+        return record, problem, docker_evidence.NOT_COMPLETED
+    return record, problem, docker_evidence.UNCONFIRMED
+
+
+def _fixture_execution_trust(
+    run_dir: Path, index: dict
+) -> tuple[dict | None, str | None]:
     """(execution record, problem). Both records must verify, validate, and be semantically valid."""
     exec_path, _, exec_ok = verified(run_dir, index, "execution.json")
     if not exec_ok:
@@ -298,8 +320,26 @@ def _degrade_unconfirmed(
             )
 
 
-def evaluate(project: Path, run_dir: Path) -> RunOutcome:
-    """Trusted evaluation of an executed run; always materializes the full required set."""
+def _invalidate(computed: dict[str, AssertionResult], problem: str) -> None:
+    """Evidence that cannot be attributed to the approved execution supports nothing: every
+    PASS and FAIL becomes ERROR (evidence_invalid)."""
+    for aid, result in computed.items():
+        if result.status in (Status.PASS, Status.FAIL):
+            computed[aid] = result.model_copy(
+                update={
+                    "status": Status.ERROR,
+                    "reason": Reason.EVIDENCE_INVALID,
+                    "evidence_valid": False,
+                    "limitations": [*result.limitations, problem],
+                }
+            )
+
+
+def evaluate(project: Path, run_dir: Path, *, image_verifier=None) -> RunOutcome:
+    """Trusted evaluation of an executed run; always materializes the full required set.
+
+    `image_verifier` applies only to Docker candidate views (default: ask Docker).
+    """
     project = Path(project).resolve()
     run_dir = Path(run_dir)
     index = _load_index(run_dir)
@@ -316,15 +356,19 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
         return outcome
 
     required = required_assertions(manifest)
-    execution, problem = _execution_trust(run_dir, index)
+    execution, problem, mode = _execution_trust(
+        project, run_dir, index, manifest, image_verifier
+    )
     computed, descriptive, evidence_problem = _compute(
         project, run_dir, index, manifest
     )
     if snapshot_problem is not None:
         _degrade_unconfirmed(computed, snapshot_problem, completed=False)
-    if problem is not None:
+    if problem is not None and mode == docker_evidence.UNTRUSTED:
+        _invalidate(computed, problem)
+    elif problem is not None:
         _degrade_unconfirmed(
-            computed, problem, completed=problem == "fixture execution did not complete"
+            computed, problem, completed=mode == docker_evidence.NOT_COMPLETED
         )
     unconfirmed = "; ".join(p for p in (snapshot_problem, problem) if p)
     if unconfirmed:
@@ -347,7 +391,13 @@ def evaluate(project: Path, run_dir: Path) -> RunOutcome:
         incomplete_coverage=incomplete_coverage(results),
         descriptive=descriptive,
     )
-    _finalize(run_dir, index, outcome, _report(project, manifest, execution, outcome))
+    docker_view = docker_evidence.VIEW_NAME in index["artifacts"]
+    _finalize(
+        run_dir,
+        index,
+        outcome,
+        _report(project, manifest, execution, outcome, docker_view=docker_view),
+    )
     return outcome
 
 
@@ -541,7 +591,27 @@ def _compute(
     return computed, descriptive, problems or None
 
 
-def _report(project, manifest, execution, outcome: RunOutcome) -> dict:
+FIXTURE_LIMITATION = "Audit mode: trusted repo-authored fixtures only; no isolation (trusted_pipeline_only)."
+DOCKER_LIMITATIONS = [
+    (
+        "Candidate executed only in the isolated Docker runner (isolated_available). Container "
+        "restrictions reduce execution risk; they do not prove provenance integrity or scientific "
+        "correctness."
+    ),
+    (
+        "Provenance, splits, predictions and runtime.json are written inside the candidate process "
+        "(candidate-produced evidence); runtime.json only corroborates."
+    ),
+    (
+        "Hash and configuration checks establish consistency with the approved candidate and the "
+        "trusted runner configuration, not authenticity against an attacker who controls the host."
+    ),
+]
+
+
+def _report(
+    project, manifest, execution, outcome: RunOutcome, docker_view: bool = False
+) -> dict:
     return {
         "project": project.name,
         "claim": manifest.claim.model_dump(mode="json") if manifest else None,
@@ -553,7 +623,7 @@ def _report(project, manifest, execution, outcome: RunOutcome) -> dict:
         "execution": execution,
         "versions": versions(),
         "limitations": [
-            "Audit mode: trusted repo-authored fixtures only; no isolation (trusted_pipeline_only).",
+            *(DOCKER_LIMITATIONS if docker_view else [FIXTURE_LIMITATION]),
             "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
             "Provenance begins at the supplied feature table.",
             "Window-overlap and temporal-separation checks verify declared rules; they are not proof of statistical independence.",

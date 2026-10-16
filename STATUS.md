@@ -2,7 +2,7 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11. **T-03 hosting probe: research and local design done (2026-10-15); not accepted, because feasibility evidence is missing** (`docs/HOSTING_PROBE.md`; TASKS.md T-03 "RESULT"). T-01, T-02, T-04 and T-05 are accepted.
+CURRENT STEP: Start Here Step 11. **T-03 hosting probe: research and local design done (2026-10-15); not accepted, because feasibility evidence is missing** (`docs/HOSTING_PROBE.md`; TASKS.md T-03 "RESULT"). T-01, T-02, T-04 and T-05 are accepted. **T-06 slice 1 (approved candidate -> Docker -> trusted re-evaluation, no model) is implemented and self-tested at the commit after `f1fa737`, awaiting Codex review; T-06 is not accepted** (TASKS.md T-06 "SLICE 1 RESULT"). The mutation check's temporary-copy layout was repaired and run once: baseline 663 passed, 1 skipped; 3/3 mutants caught cleanly.
 - **T-02 (policy-v1.3, manifest schema 0.3):** **accepted by the lead at `75a98f4` within its documented trusted-fixture scope (2026-10-15)**. The decision rests on Codex's final verification (`runs/t02-verification-final/review.md`) and the earlier independent verification records. Record: TASKS.md T-02 "ACCEPTANCE".
   - **Path to acceptance:**
     - implemented at `487664e`;
@@ -79,11 +79,11 @@ LAST UPDATED: 2026-10-15
 
 ## What does not exist yet
 - T-02 is accepted (`75a98f4`) within its trusted-fixture scope. The adapter still accepts duplicate fold names; only the metric checks refuse them. The linear baseline is deferred; splitter minimum requirements are not recorded.
-- Not implemented: `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED); candidate re-evaluation of the required set after isolated execution (T-06); model calls and the agent loop; procedures; UI; hosting; real-data and held-out evaluation. Under policy-v1.3 every required assertion is implemented.
+- Not implemented: `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED); the model client, agent loop, CLI approval prompt and `--mode agent` (T-06 slice 2 onward; candidate re-evaluation after isolated execution exists from slice 1, under review); procedures; UI; hosting; real-data and held-out evaluation. Under policy-v1.3 every required assertion is implemented.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - `docs/specs/` holds one spec, `t02-contract.md`. `handoffs/` holds only the Step 8 packet.
 - Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. No production model client, schemas or agent loop (T-06); diagnosis, tool-use and repair quality untested.
-- The Docker runner is accepted (T-05) but not integrated: `audit.py` still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` until T-06. No user-facing candidate approval step exists yet. Output writes have no Windows extended-length path handling (T-05 P3).
+- The Docker runner is accepted (T-05). T-06 slice 1 (under review) lets `audit.evaluate` accept a Docker *candidate view*; deterministic audits of fixtures still use the trusted runner (`trusted_pipeline_only`), and the original is not yet run in Docker. No user-facing candidate approval step exists yet. Output writes have no Windows extended-length path handling (T-05 P3).
 
 ## Commands executed in setup
 1. `git init -b main`
@@ -144,6 +144,14 @@ LAST UPDATED: 2026-10-15
     - the new regressions against a `git archive` copy of `3bc38ff` (17 failed, 5 controls passed);
     - the evidence-error and recovery suites (228 passed);
     - copies of Codex's `consumer_shapes.py` and a report-only `referential_probe.py` in `runs/t02r5/`;
+    - ruff.
+20. T-06 slice 1 (2026-10-15):
+    - `uv run --locked pytest tests/unit/test_candidate_reevaluation.py` (43 passed);
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_candidate_reevaluation_docker.py` (6 passed, 4 containers removed);
+    - `uv run --locked python runs/t06s1/variants.py` (baseline copy passes; 10/10 weakened variants caught);
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/t06s1/full` (663 passed, 1 skipped; run once);
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked python runs/t06s1/layout_demo.py` (old copy layout: 9 failed, 40 errors, all a missing `Dockerfile.runner`; repaired: 78 passed);
+    - `ATLAS_REQUIRE_DOCKER=1 uv run --locked python scripts/mutation_check.py` (run once after the repair: baseline 663 passed, 1 skipped; 3/3 caught cleanly);
     - ruff.
 19. T-03 research (2026-10-15): public documentation read (Streamlit, Hugging Face, Nebius); `hosting_probe/cost_calc.py`; the stub's 4 local AppTest tests (`uv run --locked python -m pytest hosting_probe/test_stub.py`); ruff. No deployment, account, secret or API call.
 
@@ -213,7 +221,7 @@ LAST UPDATED: 2026-10-15
 
 ## Next task
 1. **T-03 hosting probe:** stage A is **deployed** (`https://atlas-hosting-probe.streamlit.app/`, from public `lainx06/atlas-hosting-probe`). First observations are recorded in `docs/HOSTING_PROBE.md` §7a: build about 14 s, Python 3.11.17, Streamlit 1.66.0, canary present with a matching hash prefix, no Nebius request. **Pending:** the sleep/wake observation (visit no earlier than about 2026-10-16 06:54 -0400, and do not visit before then; the signed-out check passed at about 18:44 -0400) and the credit expiry. Owner's billing screenshot (2026-10-15): balance $50.00, a separate $1.00 trial credit with 29 days remaining, usage under $0.01; no expiry shown for the $50, which stays unknown (Nebius Builder terms say 90 days from issuance; billing and spending authorization unchanged). Durable budget store: **Neon Free Postgres, selected provisionally** (no card required; 100 CU-hours a month), pending a hosted connection test (`docs/HOSTING_PROBE.md` §5a-5b). The stage D probe (synthetic units, scratch tables, no provider key) is prepared locally in `hosting_probe/stage_d/` as a later update to the existing probe; its five database scenarios passed 3 of 3 runs on a disposable local PostgreSQL 17.11 (digest recorded in `docs/HOSTING_PROBE.md` §5b; defective variants were caught; container and image removed). That is a local result only, not Neon connectivity, durability or hosted concurrency. Retention rule: pruning never releases reserved funds or resets cumulative spending, and unresolved dispatched reservations stay accounted for. Owner-created Neon project `atlas-budget-probe` (Free, AWS US East 2 Ohio, **PostgreSQL 18**, no connection string shared) is kept; scenarios have run only on local PostgreSQL 17.11, so **Neon 18 verification is pending**. The stage D page now gates the database tests behind a server-side `PROBE_ACCESS_CODE` secret (the deployed app is public); tested with a counting stand-in driver. Next, after the sleep/wake check (earliest about 2026-10-16 06:54 -0400, no visits before): record that result, update the probe repository with the three stage D files, add `DATABASE_URL` (direct string), `PROBE_ACCESS_CODE` and keep `CANARY` as Secrets, and press the button once. The probe is kept until then. T-03 is not accepted.
-2. T-06 (bounded live agent loop): its inputs T-02, T-04 and T-05 are accepted, but it waits until T-03 is done. No further Nebius calls are planned before T-06.
+2. T-06 (bounded live agent loop): inputs accepted; T-03 is not one of its gates. **Slice 1 awaits independent Codex review** (scope in TASKS.md T-06, including `scripts/mutation_check.py`). Slice 2 (model side with fixture responses) is not started and needs the lead's go-ahead. No inference is authorized; per-stage token ceilings stay proposed.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. T-02's assertions are closed (accepted at `75a98f4`). The remaining items are synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).

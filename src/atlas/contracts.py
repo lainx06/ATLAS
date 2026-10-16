@@ -289,6 +289,87 @@ class RuntimeRecord(BaseModel):
     python: str
 
 
+# --- Docker candidate evidence (T-06 slice 1) --------------------------------------------------
+# The fields the trusted evaluator reads from host-written Docker runner records, strict, with
+# other fields allowed. Validating the shape says nothing about trust; docker_evidence.py checks
+# every value against anchors outside the record.
+
+
+class ApprovalRecord(BaseModel):
+    """approval.json: the exact candidate approved against the exact snapshot (SPEC §9.5)."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    candidate_hash: str
+    base_snapshot_hash: str
+    approved_at: str
+
+
+class _CollectedFile(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    path: str
+    size: int
+    sha256: str
+
+
+class _Collection(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    status: str
+    files: list[_CollectedFile]
+
+
+class _DockerInfo(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    image_id: str | None = None
+    recipe_sha256: str | None = None
+
+
+class _Supervisor(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    child_returncode: int | None = None
+    timed_out: bool | None = None
+
+
+class _Cleanup(BaseModel):
+    model_config = ConfigDict(extra="allow", strict=True)
+    status: str
+
+
+class DockerExecutionRecord(BaseModel):
+    """execution.json as written by the Docker runner on the host (runner/docker.py)."""
+
+    model_config = ConfigDict(extra="allow", strict=True)
+    runner: str
+    capability: str | None
+    status: str
+    reason: str | None
+    approval: ApprovalRecord
+    base_snapshot_hash: str
+    candidate_hash: str | None
+    limits: dict[str, Any]
+    docker: _DockerInfo | None = None
+    mounted_code: list[list[str]] | None = None
+    staged_project: list[list[str]] | None = None
+    container_name: str | None = None
+    docker_args: list[str] | None = None
+    container_removed: bool | None = None
+    cleanup: _Cleanup | None = None
+    collection: _Collection | None = None
+    supervisor: _Supervisor | None = None
+    host_timed_out: bool | None = None
+
+
+class ContainerRuntimeRecord(BaseModel):
+    """runtime.json written inside the container by the candidate process: corroborating only."""
+
+    model_config = ConfigDict(extra="allow", strict=True)
+    isolated: int
+    safe_path: bool
+    uid: int
+    gid: int
+    cwd: str
+    atlas_origin: str
+
+
 # --- Structure of evidence the trusted evaluator consumes (T-02 repair pass 4) -----------------
 # Only fields the consumers actually read are checked, with the types the recorder and adapter
 # write; other fields are allowed (extra="allow"). Strict: no coercion of strings, booleans or

@@ -274,6 +274,8 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 3. **Validation (hygiene, not the boundary):** allowed-path check, rejection of symlinks and path escapes, rejection of new files and deletions, a size cap, `ast.parse` of the result, and checking that the diff applies cleanly.
 4. **Candidate hash:** `sha256(base_snapshot_hash ‖ resulting entry_point bytes)`.
 5. **Approval:** the user explicitly approves one exact candidate. The record is `{candidate_hash, base_snapshot_hash, approved_at}`. The runner refuses to execute unless the hash matches, so any change needs fresh approval.
+   - **CLI approval (T-06 lead disposition):** the CLI shows the diff and requires the first 12 hex characters of the candidate hash; the full hash is recorded. With no terminal, the run ends `NEEDS_INPUT` and nothing executes.
+   - Waiting for approval is excluded from the active execution budget; total elapsed time is recorded separately. The approved bytes are revalidated before execution.
 6. **Execution and re-checking:** the candidate runs only in the isolated runner (§10). The controller then schedules the full required set (§6) on the result. The model never declares success.
 7. **Limits:** at most two candidate revisions per run.
 8. **Without isolation:** candidates are displayed and labeled "not executed (isolation unavailable)". No host fallback.
@@ -306,22 +308,28 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 - **Import resolution is controlled:** the child starts in Python isolated mode (`-I`: safe path, no `PYTHON*` variables, no user site), so neither the fixture directory nor the cwd is on `sys.path`. The parent's resolved `atlas` package directory is inserted explicitly.
 - **Evidence:** the child records `runtime.json` (atlas origin, isolated/safe-path flags, path membership). The evaluator verifies and schema-validates `execution.json` and `runtime.json`, and checks them semantically: the expected runner and capability; `isolated=1`, `safe_path=true`; neither the project directory nor the cwd on `sys.path`; and `atlas` imported from the explicitly selected trusted root. Without a verified, completed, import-controlled execution, no PASS is established (it becomes ERROR, or NOT_ASSESSED `not_executed` for a verified non-completion), while valid FAILs from independently verified artifacts stand.
 
+**Docker candidate evidence (T-06 slice 1).** A candidate's evidence reaches the trusted evaluator only through a *candidate view* built on the host after the runner returns (`src/atlas/docker_evidence.py`, `src/atlas/agent/execute.py`):
+- **Host-owned records:** `approval.json` and `candidate.json` (written before execution), `execution.json` (a byte copy of the runner's own record), `manifest.snapshot.json` (the snapshot's manifest), `view.json` (the mapping applied) and `index.json`. Collected candidate files enter only through an explicit mapping (`runtime.json`, `provenance.jsonl`, `splits.json`, `predictions/<fold>.parquet`), after their bytes match the hashes the runner recorded at collection. Names that collide with host-owned records (case-insensitively) are rejected, and every view file is created exclusively.
+- **Anchors outside the record:** the approval file; the snapshot re-hashed from disk; the staged project and staged code re-hashed from disk (the code must equal the evaluator's own copy of the mounted modules); the trusted runner limits; the `docker run` command rebuilt from those limits and the view's own paths; and the image confirmed by Docker itself (recipe label, non-root user). A limit changed together with its recorded command is refused.
+- **Order and mapping:** integrity and binding first. Any failure there makes every PASS and FAIL ERROR (`evidence_invalid`): evidence that cannot be attributed to the approved candidate supports nothing. Then: `completed` is evaluated normally, with `runtime.json` as corroboration only; `failed`/`timed_out` are verified non-completions (PASS becomes NOT_ASSESSED `not_executed`; FAILs with valid evidence stand; missing or corrupt evidence stays ERROR); `collection_failed`, `cleanup_failed` and `runner_error` establish no PASS (ERROR); `refused` and `not_executed` produce no evidence, so every required assertion is NOT_ASSESSED `not_executed` and the outcome is INCONCLUSIVE.
+- **Limits of these checks:** matching hashes establish consistency, not authenticity against an attacker who controls the host. Container evidence remains candidate-produced (§9.9). The trusted-fixture path is unchanged; a run without the view marker is checked only as trusted-fixture evidence, which a Docker record cannot satisfy.
+
 Any other runtime must pass the same contract tests before it replaces Docker. Isolation reduces risk and is not a claim that hostile code is safe; the public demo remains curated.
 
 ## 11 Agent loop and model integration
 
 - **States:** `INTAKE → CONTRACT_REVIEW → INSPECT → CHECK → PROPOSE_PATCH → (APPROVAL) → EXECUTE → VERIFY → REPORT`, with optional `SAVE_PROCEDURE`. Any state can end in `NEEDS_INPUT`, `NOT_SUPPORTED`, `BUDGET_EXHAUSTED` or `ERROR`. `CHECK` and `VERIFY` always run the controller's full required set (§6), whatever the agent chose.
 - **Tools (typed, normalized paths, no shell):** `list_project_files`, `read_project_file`, `profile_table`, `run_check`, `propose_patch`, `evaluate_candidate` (approval-gated), `inspect_evidence`, `retrieve_procedure`, `propose_procedure`. `run_check` can add inspection; it cannot remove scheduled assertions.
-- **Ceilings (initial; tune only with measurements, recorded in DECISIONS.md):** 6 model calls, 12 tool operations, 1 retry per transient model call, 2 candidate revisions, 5 min per run, 30 s per candidate execution. On exhaustion, unscheduled or incomplete required assertions are materialized as NOT_ASSESSED `not_executed`.
+- **Ceilings (initial; tune only with measurements, recorded in DECISIONS.md):** 6 model calls, 12 tool operations, 1 retry per transient model call, 2 candidate revisions, 5 min per run, 30 s per candidate execution. On exhaustion, unscheduled or incomplete required assertions are materialized as NOT_ASSESSED `not_executed`. Waiting for human approval is excluded from the active run budget; total elapsed time is recorded separately (T-06 lead disposition). The per-stage token ceilings in `docs/HOSTING_PROBE.md` remain proposed until reviewed before live execution.
 - **Model:** one verified NVIDIA model via Nebius (`NEBIUS_BASE_URL`, `ATLAS_MODEL_PRIMARY`; `.env.example`). IDs come only from the authenticated `GET /models`.
   - Structured JSON output where supported, validated by Pydantic, with a deterministic dispatcher.
-  - Invalid output is a recorded schema failure, never an unconstrained fallback.
+  - Invalid output is a recorded schema failure, never an unconstrained fallback. A schema failure terminates the model attempt without an action and without a format-repair retry; completed audit results remain intact (T-06 lead disposition).
   - `ATLAS_MODEL_MODE=fixture` runs are visibly labeled non-live.
 - **Prompt inputs:** contract, relevant snippets, check summaries, allowed actions, artifact references. Public/synthetic summaries only; never final-holdout labels or answer keys. Source files and logs are untrusted data.
 - **Logged per call:** model ID, parameters, request ID if returned, usage, timestamps, elapsed time, retries, schema failures, chosen tool, result.
 - **Modes (Q4):**
   - `audit`: deterministic; no model; detection and reporting only.
-  - `agent`: the bounded patch workflow.
+  - `agent`: the bounded patch workflow. The original and every candidate run in Docker; original execution is explicitly authorized and bound to its snapshot (T-06 lead disposition).
   - `agent+memory`: the same as `agent`, plus `retrieve_procedure`. Retrieval and prerequisite checks count toward its budget.
   - The agent modes are matched on inputs, policy, tools, model settings and budgets.
 

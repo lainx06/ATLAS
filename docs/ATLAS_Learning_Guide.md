@@ -39,8 +39,8 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-01 deterministic audit | Accepted at `f5aa4dc`, after Codex's independent verification (165 tests passed) | Specified behavior on trusted synthetic fixtures and review cases |
 | T-04 model connection | Accepted within its smoke-test scope | Real NVIDIA text response and strict application-validated JSON response |
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
-| Candidate re-evaluation integration | Planned for T-06. The evaluator (`audit.py`) still accepts only trusted-runner records, so audits remain `trusted_pipeline_only` | Not demonstrated by T-05 |
-| Production model loop and schemas | Planned for T-06 | A smoke-test script is not a production agent |
+| Candidate re-evaluation integration | **T-06 slice 1 implemented and self-tested; awaiting Codex review, not accepted.** An approved candidate runs in Docker, and the trusted evaluator re-evaluates the full required set from a *candidate view* whose trust is anchored outside the candidate's outputs (section 7). No model is involved yet | The builder's offline tests and four real Docker runs on `benchmarks/t01/s01_faulty`. Not independently verified |
+| Production model loop and schemas | Planned for T-06 slice 2 onward (no inference authorized) | A smoke-test script is not a production agent |
 | T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3), and the structural checks of that evidence (passes 4 and 5). **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope. The limitations stand | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
@@ -282,7 +282,43 @@ The trusted fixture runner is an explicit separate path for reviewed, allowliste
 
 **Accepted (T-05, `eed73ee`):** the runner can take an approved candidate, run it in the restricted container, collect its outputs as untrusted input, and always save a final status. The contract tests showed the restrictions above on this host.
 
-**Planned (T-06):** connecting the runner to the evaluator. Today `audit.py` accepts only records from the trusted fixture runner, so no audit result comes from a container run yet, and the full required set of assertions is not re-evaluated for a candidate. "The runner works" and "ATLAS re-evaluates candidates" are different claims, and only the first is accepted.
+**Implemented in T-06 slice 1 (self-tested, awaiting review, not accepted):** connecting the runner to the evaluator. "The runner works" and "ATLAS re-evaluates candidates" are different claims; only the first is accepted. The next subsection explains the second.
+
+### T-06 slice 1: how ATLAS decides to trust a container's evidence
+
+The container returns files the candidate wrote: `splits.json`, `provenance.jsonl`, predictions and `runtime.json`. The candidate is the code under review, so those files cannot vouch for themselves. The host also writes its own record, `execution.json`. Even that record cannot be checked only against itself.
+
+**A circular check, and why it fails.** Suppose the evaluator rebuilt the expected `docker run` command from the limits written in `execution.json`, then compared it with the command written in the same file. Someone who raised the memory limit *and* edited the recorded command to match would pass: both sides of the comparison come from the same place. `src/atlas/docker_evidence.py` instead rebuilds the command from values it does not take from that record:
+
+```python
+expected_args = dr.docker_run_args(
+    record.container_name,
+    EXEC_DIR,  # the view's own layout
+    (stage / "project").resolve(),
+    (stage / "code").resolve(),
+    docker.image_id,  # confirmed separately by asking Docker
+    TRUSTED_LIMITS,  # the runner's fixed limits, not record.limits
+)
+```
+
+The test `test_tampered_execution_record_is_not_trusted[limit_and_command_changed_together]` changes both the limit and the command and expects refusal. A deliberately weakened copy that takes the limits from the record is caught by exactly that test.
+
+**Other anchors outside the record:** the approval file written *before* execution; the snapshot, re-hashed from disk; the staged files, re-hashed (the mounted adapter and recorder must equal the evaluator's own copies); and the image, which Docker itself must confirm is the runner image.
+
+**Host-owned names.** The candidate's files are copied into the view only through an explicit list (`map_collected`). A file named `execution.json`, `INDEX.json` (any capitalization) or `outcome.json` collides with a host record and makes the evidence untrusted. Each view file is opened with mode `"xb"`, which refuses to replace an existing file.
+
+**Execution status is not the scientific outcome.** These are separate fields in the report:
+
+| Candidate (on `s01_faulty`) | Execution status | Scientific outcome |
+| --- | --- | --- |
+| Fold-local selection and grouped folds | `completed` | `NO_VIOLATION_FOUND` |
+| A harmless comment | `completed` | `VIOLATION_FOUND` (it ran fine; the flaw remains) |
+| Raises before any evidence | `failed` | `INCONCLUSIVE` (missing evidence stays ERROR) |
+| Raises after writing the faulty evidence | `failed` | `VIOLATION_FOUND` (a later crash does not erase a supported violation) |
+
+If the record or its binding fails, every PASS *and* FAIL becomes ERROR, because evidence that cannot be attributed to the approved candidate supports nothing.
+
+**What this does not prove.** Matching hashes show consistency, not authenticity against someone who controls the host. The container's files are still written by the candidate's process (`runtime.json` only corroborates). In slice 1 the original is audited by the trusted host-fixture runner while candidates run in Docker, and the report says so; final acceptance needs Docker for both.
 
 **Limitations that acceptance did not remove** (details in `TASKS.md`, T-05 "ACCEPTANCE"):
 
@@ -426,6 +462,8 @@ These were bounded reproductions. The review did not demonstrate a container esc
 | `src/atlas/runner/trusted.py` | How are reviewed, allowlisted fixtures run (not a sandbox)? |
 | `src/atlas/runner/docker.py` | How does the host launch, collect and clean up? |
 | `src/atlas/runner/container_entry.py` | What happens inside the container? |
+| `src/atlas/docker_evidence.py` | Which container evidence does the evaluator trust, and why (T-06 slice 1)? |
+| `src/atlas/agent/execute.py`, `src/atlas/agent/report.py` | How does an approved candidate become a re-evaluated, reported result? |
 | `scripts/nebius_smoke.py` | How does a bounded model request work? |
 | `benchmarks/t01/`, `benchmarks/t02/` | Which small synthetic fixtures demonstrate each rule? |
 | `tests/unit/`, `tests/integration/` | What behavior has executable evidence? |
@@ -462,7 +500,7 @@ Each session can take roughly 15–25 minutes. Move on when you can explain the 
 | 5 | Smoke script; trace it without executing paid calls | Where do key loading, caps, API response and schema validation happen? |
 | 6 | Candidate validation and one rejection test | Why must approval identify exact bytes? |
 | 7 | `_remove_container` and `_finish` in `src/atlas/runner/docker.py`; `test_daemon_failure_does_not_confirm_removal` (offline, no Docker needed) | What happens when the daemon becomes unreachable? |
-| 8 | Planned (T-06): trace one full agent run once integration exists | Who proposes changes, who executes them and who judges the result? |
+| 8 | T-06 slice 1 (self-tested): trace one candidate from `validate_diff` through `execute_and_reevaluate` to `comparison_report`; the model step is still planned | Who proposes changes, who executes them and who judges the result? |
 
 At each session, first predict behavior. Then inspect code or run the already-approved offline test. Finally explain any mismatch. Save your own explanation in a few sentences; do not merely copy a generated answer.
 
