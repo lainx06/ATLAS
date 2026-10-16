@@ -3,11 +3,13 @@
     INTAKE -> CHECK -> (INSPECT | PROPOSE_PATCH -> APPROVAL -> EXECUTE -> VERIFY)* -> REPORT
 
 Any state can end in NEEDS_INPUT, NOT_SUPPORTED, BUDGET_EXHAUSTED or ERROR, and a report is
-written. An unexpected exception, including one while building the report, is finalized as
-ERROR (stage and exception type; a minimal report if the full one cannot be built) and then
-re-raised; if even the minimal report cannot be written, the original exception still
-propagates, with a note that no report was saved; a failing approver is a recorded ERROR. Active time is checked after every reply
-returns, before any action (including finish) is consumed. What the controller guarantees:
+written (`_finalize`). An unexpected exception, including one while building the report or
+logging the terminal state, is finalized as ERROR (stage and exception type; a minimal report if
+the full one cannot be built) and then re-raised. The first exception stays primary; later
+finalization failures are recorded, never masking it. If the report cannot be written, the
+primary exception still propagates, with a note that no report was saved. A failing approver
+is a recorded ERROR. Active time is checked after every reply returns, before any action
+(including finish) is consumed. What the controller guarantees:
 
 - **Audit first.** The deterministic audit of the original runs before any model request, and
   its results are never changed afterwards. A model failure at any point ends the run with
@@ -208,8 +210,12 @@ class _Run:
     def _stage(self) -> str:
         return self.states[-1]["state"] if self.states else "START"
 
-    def enter(self, state: str, detail: str | None = None) -> None:
+    def _set_state(self, state: str, detail: str | None = None) -> None:
+        """Record a state in memory only (finalization logs separately, best-effort)."""
         self.states.append({"state": state, "time_utc": _now(), "detail": detail})
+
+    def enter(self, state: str, detail: str | None = None) -> None:
+        self._set_state(state, detail)
         self.log({"event": "state", "state": state, "detail": detail})
 
     # -- the run ----------------------------------------------------------------------------
@@ -236,21 +242,67 @@ class _Run:
             unexpected = exc
             terminal = ERROR
             reason = f"internal_error in {self._stage()}: {type(exc).__name__}"
-        self.enter(terminal, reason)
-        report, report_failure = None, None
+        return self._finalize(terminal, reason, unexpected)
+
+    def _finalize(self, terminal: str, reason: str | None, primary) -> AgentResult:
+        """Record the terminal state, write the report, then return or re-raise.
+
+        `primary` (an exception from the run, if any) is retained before any I/O here and is
+        never replaced by a later failure. Each finalization step is attempted once:
+
+        1. the terminal state is set in memory, then logged best-effort (one attempt);
+        2. the full report is built once; if that fails, a minimal report is built from state
+           already held, without calling the report builders again;
+        3. the report is written once.
+
+        A failure in step 1 or 2 becomes the primary exception only if there was none (the run
+        then ends ERROR, naming that stage); otherwise it is recorded as a secondary failure.
+        Failures are recorded by stage and exception type only, never by message, in the
+        report's `finalization_failures`. After a logging failure nothing more is logged. If
+        the report cannot be written, the primary exception carries an explicit "NOT saved"
+        note and no report is claimed.
+        """
+        failures: list[dict] = []
+        log_usable = True
+
+        def fail(stage: str, exc: Exception) -> None:
+            nonlocal primary, terminal, reason
+            failures.append({"stage": stage, "exception_type": type(exc).__name__})
+            if primary is None:
+                primary = exc
+                terminal, reason = (
+                    ERROR,
+                    f"internal_error in {stage}: {type(exc).__name__}",
+                )
+                self._set_state(terminal, reason)
+
+        def log_terminal() -> None:
+            nonlocal log_usable
+            if not log_usable:
+                return
+            try:
+                self.log({"event": "state", "state": terminal, "detail": reason})
+            except Exception as exc:  # noqa: BLE001 - recorded; never replaces the primary
+                log_usable = False
+                fail("TERMINAL_LOG", exc)
+
+        self._set_state(terminal, reason)
+        log_terminal()
+
+        report = None
         try:
             report = self._report(terminal, reason)
-        except Exception as exc:  # noqa: BLE001 - recorded below, then re-raised
-            # Reporting failed: never a normal completion. Unless an earlier error is already
-            # being finalized (it stays primary), the run becomes an ERROR in REPORT.
-            report_failure = exc
-            if unexpected is None:
-                terminal = ERROR
-                reason = f"internal_error in REPORT: {type(exc).__name__}"
-                self.enter(terminal, reason)
-        primary = unexpected or report_failure
-        if report_failure is not None:
-            report = self._minimal_report(terminal, reason, report_failure)
+        except Exception as exc:  # noqa: BLE001 - recorded; the minimal report follows
+            before = terminal
+            fail("REPORT", exc)
+            if terminal != before:
+                log_terminal()  # the new ERROR state, if the log is still usable
+            report = self._minimal_report(terminal, reason, failures)
+        else:
+            report.update(terminal_state=terminal, terminal_reason=reason)
+        if report is not None and failures:
+            report["finalization_failures"] = list(failures)
+
         try:
             if report is None:
                 raise RuntimeError("no report could be built")
@@ -631,11 +683,12 @@ class _Run:
         return report
 
     def _minimal_report(
-        self, terminal: str, reason: str | None, failure
+        self, terminal: str, reason: str | None, failures: list[dict]
     ) -> dict | None:
         """The fallback when the full report could not be built. It reads only state the run
-        already holds (it does not call the report builders again) and records the reporting
-        failure by stage and exception type, never its message. None if even this fails."""
+        already holds (it does not call the report builders again) and records each
+        finalization failure by stage and exception type, never its message. None if even this
+        fails."""
         try:
             report = {
                 "report": "t06-agent-run (minimal: the full report could not be built)",
@@ -645,10 +698,10 @@ class _Run:
                 "model_id": self.client.model_id,
                 "terminal_state": terminal,
                 "terminal_reason": reason,
-                "report_failure": {
-                    "stage": "REPORT",
-                    "exception_type": type(failure).__name__,
-                },
+                "report_failure": next(
+                    (f for f in failures if f["stage"] == "REPORT"), None
+                ),
+                "finalization_failures": list(failures),
                 "states": list(self.states),
                 "agent_log": {"path": str(self.log_path)},
             }

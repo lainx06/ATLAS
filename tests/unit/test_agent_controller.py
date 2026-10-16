@@ -974,3 +974,174 @@ def test_every_oversized_hunk_number_is_refused_before_approval(tmp_path, positi
     assert "APPROVAL" not in [s["state"] for s in result.report["states"]]
     (rejection,) = [t["result"] for t in result.transcript]
     assert rejection["rejected"] == "malformed_diff: hunk line number out of range"
+
+
+# =============================================================================================
+# Repair pass 3 (Codex verification of 4e3afae, runs/r6z/review.md): finalization matrix.
+# Fault injection only: the terminal-state log entry, comparison_report and the report write
+# raise pre-built exceptions, so the propagated exception's identity can be checked.
+# =============================================================================================
+
+SECRET = "secret-marker"
+
+
+def _matrix_run(tmp_path, monkeypatch, scenario, sink_usable):
+    errors = {
+        "executor": ValueError(f"executor {SECRET}"),
+        "comparison": RuntimeError(f"comparison {SECRET}"),
+        "log": OSError(f"log sink {SECRET}"),
+        "write": OSError(f"report write {SECRET}"),
+    }
+    log_failures = []
+    fail_state = {
+        "executor_and_log": "ERROR",
+        "comparison_and_log": "ERROR",
+        "log_only": "REPORT",
+    }.get(scenario)
+    real_log = ctl._Run.log
+
+    def log(self, entry):
+        if entry.get("event") == "state" and entry.get("state") == fail_state:
+            log_failures.append(entry["state"])
+            raise errors["log"]
+        return real_log(self, entry)
+
+    monkeypatch.setattr(ctl._Run, "log", log)
+    comparison_calls = []
+    if scenario == "comparison_and_log":
+
+        def failing_comparison(*args, **kwargs):
+            comparison_calls.append(1)
+            raise errors["comparison"]
+
+        monkeypatch.setattr(ctl, "comparison_report", failing_comparison)
+    if not sink_usable:
+        real_write = ctl.write_json
+
+        def refuse(path, data):
+            if Path(path).name == "agent_report.json":
+                raise errors["write"]
+            return real_write(path, data)
+
+        monkeypatch.setattr(ctl, "write_json", refuse)
+
+    class FailingExecutor(RecordingExecutor):
+        def __call__(self, *args, **kwargs):
+            raise errors["executor"]
+
+    if scenario == "executor_and_log":
+        script, approver, executor = (
+            [PATCH, FINISH],
+            ApproveExactly(),
+            FailingExecutor(),
+        )
+    else:
+        script, approver, executor = [FINISH], None, RecordingExecutor()
+    client = FixtureClient("matrix", script)
+    raised = None
+    try:
+        ctl.run_agent(
+            S01, tmp_path / "runs", client, approver, executor=executor, env={}
+        )
+    except Exception as exc:  # noqa: BLE001 - inspected below
+        raised = exc
+    return errors, raised, log_failures, comparison_calls
+
+
+EXPECTED = {
+    # scenario: (primary error key, terminal reason, finalization failures, comparison present)
+    "executor_and_log": (
+        "executor",
+        "internal_error in EXECUTE: ValueError",
+        [{"stage": "TERMINAL_LOG", "exception_type": "OSError"}],
+        True,
+    ),
+    "comparison_and_log": (
+        "comparison",
+        "internal_error in REPORT: RuntimeError",
+        [
+            {"stage": "REPORT", "exception_type": "RuntimeError"},
+            {"stage": "TERMINAL_LOG", "exception_type": "OSError"},
+        ],
+        False,
+    ),
+    "log_only": (
+        "log",
+        "internal_error in TERMINAL_LOG: OSError",
+        [{"stage": "TERMINAL_LOG", "exception_type": "OSError"}],
+        True,
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "sink_usable", [True, False], ids=["report_saved", "report_write_fails"]
+)
+@pytest.mark.parametrize("scenario", list(EXPECTED))
+def test_finalization_failure_matrix(tmp_path, monkeypatch, scenario, sink_usable):
+    errors, raised, log_failures, comparison_calls = _matrix_run(
+        tmp_path, monkeypatch, scenario, sink_usable
+    )
+    primary_key, reason, failures, has_comparison = EXPECTED[scenario]
+    # The first failure stays primary: the very same exception object propagates.
+    assert raised is errors[primary_key]
+    # Logging is attempted at most once per terminal state; never retried after failing.
+    assert len(log_failures) == 1
+    if scenario == "comparison_and_log":
+        assert len(comparison_calls) == 1  # the failed builder is not called again
+    reports = list((tmp_path / "runs").glob("agent-*/agent_report.json"))
+    notes = getattr(raised, "__notes__", [])
+    if sink_usable:
+        (path,) = reports
+        report = json.loads(path.read_text(encoding="utf-8"))
+        assert (
+            report["terminal_state"] == "ERROR" and report["terminal_reason"] == reason
+        )
+        assert report["finalization_failures"] == failures
+        assert ("comparison" in report) is has_comparison
+        assert report["scientific_outcomes"]["original"] == Outcome.VIOLATION_FOUND
+        assert report["live"] is False
+        assert SECRET not in json.dumps(report)
+        assert not any("NOT saved" in n for n in notes)
+    else:
+        assert reports == []
+        assert notes == ["ATLAS: agent_report.json was NOT saved (OSError)"]
+        assert SECRET not in notes[0]
+    log = next((tmp_path / "runs").glob("agent-*/agent_log.jsonl")).read_text(
+        encoding="utf-8"
+    )
+    assert SECRET not in log
+    (original_dir,) = [
+        p for p in (tmp_path / "runs").iterdir() if p.name.startswith("s01")
+    ]
+    _original_intact(original_dir)
+    assert socket.getaddrinfo.__name__ == "getaddrinfo"
+
+
+def test_normal_completion_control(tmp_path):
+    result, _, _ = run(tmp_path, [FINISH])
+    report = _saved_report(tmp_path)
+    assert result.terminal_state == ctl.REPORT and report["terminal_state"] == "REPORT"
+    assert "finalization_failures" not in report and "comparison" in report
+    log = log_entries(result, "state")
+    assert log[-1]["state"] == "REPORT"
+
+
+def test_normal_completion_with_an_unwritable_report_raises_that_failure(
+    tmp_path, monkeypatch
+):
+    """With no earlier error, the write failure itself is the exception, and no report is
+    claimed."""
+    failure = OSError(f"report write {SECRET}")
+    real_write = ctl.write_json
+
+    def refuse(path, data):
+        if Path(path).name == "agent_report.json":
+            raise failure
+        return real_write(path, data)
+
+    monkeypatch.setattr(ctl, "write_json", refuse)
+    with pytest.raises(OSError) as raised:
+        run(tmp_path, [FINISH])
+    assert raised.value is failure
+    assert not list((tmp_path / "runs").glob("agent-*/agent_report.json"))
