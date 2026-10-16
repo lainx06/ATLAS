@@ -352,6 +352,9 @@ def _parse_hunks(lines: list[str], start: int) -> list[dict]:
             raise CandidateRejected("malformed_diff", f"unexpected line {i + 1}")
         old_start = _hunk_number(m.group(1))
         old_count = _hunk_number(m.group(2)) if m.group(2) is not None else 1
+        _hunk_number(
+            m.group(3)
+        )  # new start: unused when applying, but bounded like the rest
         new_count = _hunk_number(m.group(4)) if m.group(4) is not None else 1
         old, new, i = [], [], i + 1
         while i < len(lines) and (len(old) < old_count or len(new) < new_count):

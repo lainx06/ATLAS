@@ -11,6 +11,7 @@ import difflib
 import hashlib
 import importlib.util
 import json
+import re
 import socket
 from pathlib import Path
 
@@ -858,3 +859,118 @@ def test_an_oversized_multibyte_diff_is_a_schema_failure_with_no_action(tmp_path
     assert len(client.requests) == 1 and executor.calls == []
     used = result.report["budget"]["used"]
     assert (used["tool_operations"], used["revisions"]) == (0, 0)
+
+
+# =============================================================================================
+# Repair pass 2 (Codex verification of dedf5e2, runs/r6u/review.md).
+# =============================================================================================
+
+
+class CountingComparisonFailure:
+    """Stands in for comparison_report; raises the injected error and counts calls."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, *args, **kwargs):
+        self.calls += 1
+        raise RuntimeError("comparison failed: token=secret-value")
+
+
+def test_a_successful_report_control(tmp_path):
+    result, _, _ = run(tmp_path, [FINISH])
+    report = _saved_report(tmp_path)
+    assert result.terminal_state == ctl.REPORT and report["terminal_state"] == "REPORT"
+    assert "comparison" in report and "report_failure" not in report
+
+
+def test_a_reporting_failure_is_an_error_with_a_minimal_report_and_re_raised(
+    tmp_path, monkeypatch
+):
+    failing = CountingComparisonFailure()
+    monkeypatch.setattr(ctl, "comparison_report", failing)
+    with pytest.raises(RuntimeError, match="secret-value"):
+        run(tmp_path, [PATCH, FINISH], ApproveExactly())
+    assert failing.calls == 1  # the fallback did not call the failing builder again
+    report = _saved_report(tmp_path)
+    assert report["terminal_state"] == "ERROR"
+    assert report["terminal_reason"] == "internal_error in REPORT: RuntimeError"
+    assert report["report_failure"] == {
+        "stage": "REPORT",
+        "exception_type": "RuntimeError",
+    }
+    assert "comparison" not in report
+    # The findings already available are kept.
+    assert report["scientific_outcomes"]["original"] == Outcome.VIOLATION_FOUND
+    assert report["scientific_outcomes"]["candidates"] == [Outcome.NO_VIOLATION_FOUND]
+    assert report["original"]["required_set"]
+    assert [c["execution_status"] for c in report["candidates"]] == ["completed"]
+    assert report["live"] is False and report["model_id"] == "fixture:unit"
+    assert "secret-value" not in json.dumps(report)
+    (original_dir,) = [
+        p for p in (tmp_path / "runs").iterdir() if p.name.startswith("s01")
+    ]
+    _original_intact(original_dir)
+    log = next((tmp_path / "runs").glob("agent-*/agent_log.jsonl")).read_text(
+        encoding="utf-8"
+    )
+    assert '"state": "ERROR"' in log and "secret-value" not in log
+
+
+def test_a_reporting_failure_during_an_earlier_error_keeps_the_earlier_error_primary(
+    tmp_path, monkeypatch
+):
+    class FailingExecutor(RecordingExecutor):
+        def __call__(self, *args, **kwargs):
+            raise ValueError("executor failed")
+
+    monkeypatch.setattr(ctl, "comparison_report", CountingComparisonFailure())
+    with pytest.raises(ValueError, match="executor failed"):
+        run(tmp_path, [PATCH, FINISH], ApproveExactly(), FailingExecutor())
+    report = _saved_report(tmp_path)
+    assert report["terminal_reason"] == "internal_error in EXECUTE: ValueError"
+    assert report["report_failure"]["exception_type"] == "RuntimeError"
+
+
+def test_if_even_the_fallback_cannot_be_written_the_original_still_propagates(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(ctl, "comparison_report", CountingComparisonFailure())
+    real_write = ctl.write_json
+
+    def refuse_report(path, data):
+        if Path(path).name == "agent_report.json":
+            raise OSError("disk full")
+        return real_write(path, data)
+
+    monkeypatch.setattr(ctl, "write_json", refuse_report)
+    with pytest.raises(RuntimeError, match="secret-value") as raised:
+        run(tmp_path, [FINISH])
+    assert any(
+        "agent_report.json was NOT saved (OSError)" in n for n in raised.value.__notes__
+    )
+    assert not list((tmp_path / "runs").glob("agent-*/agent_report.json"))
+
+
+_HUNK_HEADER = re.compile(r"^@@ -(\d+),(\d+) \+(\d+),(\d+) @@", re.MULTILINE)
+
+
+@pytest.mark.parametrize(
+    "position", range(4), ids=["old_start", "old_count", "new_start", "new_count"]
+)
+def test_every_oversized_hunk_number_is_refused_before_approval(tmp_path, position):
+    match = _HUNK_HEADER.search(DIFF)
+    start, end = match.span(position + 1)
+    diff = DIFF[:start] + "9" * 5000 + DIFF[end:]
+    approver, executor = ApproveExactly(), RecordingExecutor()
+    result, _, _ = run(
+        tmp_path,
+        [say("propose_patch", diff=diff, rationale="r"), FINISH],
+        approver,
+        executor,
+    )
+    assert result.terminal_state == ctl.REPORT
+    assert approver.requests == [] and executor.calls == []
+    assert "APPROVAL" not in [s["state"] for s in result.report["states"]]
+    (rejection,) = [t["result"] for t in result.transcript]
+    assert rejection["rejected"] == "malformed_diff: hunk line number out of range"

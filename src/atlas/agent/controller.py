@@ -2,9 +2,11 @@
 
     INTAKE -> CHECK -> (INSPECT | PROPOSE_PATCH -> APPROVAL -> EXECUTE -> VERIFY)* -> REPORT
 
-Any state can end in NEEDS_INPUT, NOT_SUPPORTED, BUDGET_EXHAUSTED or ERROR; a report is always
-written. An unexpected exception is finalized as ERROR (stage and exception type) and then
-re-raised; a failing approver is a recorded ERROR. Active time is checked after every reply
+Any state can end in NEEDS_INPUT, NOT_SUPPORTED, BUDGET_EXHAUSTED or ERROR, and a report is
+written. An unexpected exception, including one while building the report, is finalized as
+ERROR (stage and exception type; a minimal report if the full one cannot be built) and then
+re-raised; if even the minimal report cannot be written, the original exception still
+propagates, with a note that no report was saved; a failing approver is a recorded ERROR. Active time is checked after every reply
 returns, before any action (including finish) is consumed. What the controller guarantees:
 
 - **Audit first.** The deterministic audit of the original runs before any model request, and
@@ -235,10 +237,34 @@ class _Run:
             terminal = ERROR
             reason = f"internal_error in {self._stage()}: {type(exc).__name__}"
         self.enter(terminal, reason)
-        report = self._report(terminal, reason)
-        write_json(self.run_dir / "agent_report.json", report)
-        if unexpected is not None:
-            raise unexpected
+        report, report_failure = None, None
+        try:
+            report = self._report(terminal, reason)
+        except Exception as exc:  # noqa: BLE001 - recorded below, then re-raised
+            # Reporting failed: never a normal completion. Unless an earlier error is already
+            # being finalized (it stays primary), the run becomes an ERROR in REPORT.
+            report_failure = exc
+            if unexpected is None:
+                terminal = ERROR
+                reason = f"internal_error in REPORT: {type(exc).__name__}"
+                self.enter(terminal, reason)
+        primary = unexpected or report_failure
+        if report_failure is not None:
+            report = self._minimal_report(terminal, reason, report_failure)
+        try:
+            if report is None:
+                raise RuntimeError("no report could be built")
+            write_json(self.run_dir / "agent_report.json", report)
+        except Exception as write_exc:
+            if primary is None:
+                raise
+            # Never mask the original failure, and never claim a report was saved.
+            primary.add_note(
+                f"ATLAS: agent_report.json was NOT saved ({type(write_exc).__name__})"
+            )
+            raise primary from None
+        if primary is not None:
+            raise primary
         return AgentResult(
             self.run_dir,
             terminal,
@@ -599,13 +625,64 @@ class _Run:
                 "original": self.original.outcome.outcome,
                 "candidates": [c.outcome.outcome for c in self.candidates],
             }
-            try:
-                report["comparison"] = comparison_report(
-                    self.original.run_dir, self.original.outcome, self.candidates
-                )
-            except Exception as exc:  # noqa: BLE001 - the report is still written
-                report["comparison"] = {"unavailable": type(exc).__name__}
+            report["comparison"] = comparison_report(
+                self.original.run_dir, self.original.outcome, self.candidates
+            )
         return report
+
+    def _minimal_report(
+        self, terminal: str, reason: str | None, failure
+    ) -> dict | None:
+        """The fallback when the full report could not be built. It reads only state the run
+        already holds (it does not call the report builders again) and records the reporting
+        failure by stage and exception type, never its message. None if even this fails."""
+        try:
+            report = {
+                "report": "t06-agent-run (minimal: the full report could not be built)",
+                "banner": f"NON-LIVE RUN: fixture script {self.client.model_id!r}.",
+                "mode": "fixture",
+                "live": False,
+                "model_id": self.client.model_id,
+                "terminal_state": terminal,
+                "terminal_reason": reason,
+                "report_failure": {
+                    "stage": "REPORT",
+                    "exception_type": type(failure).__name__,
+                },
+                "states": list(self.states),
+                "agent_log": {"path": str(self.log_path)},
+            }
+            if self.original is not None:
+                original = self.original.outcome
+                report["scientific_outcomes"] = {
+                    "source": "trusted evaluator only",
+                    "original": original.outcome,
+                    "candidates": [c.outcome.outcome for c in self.candidates],
+                }
+                report["original"] = {
+                    "run_dir": str(self.original.run_dir),
+                    "outcome": original.outcome,
+                    "required_set": [
+                        {
+                            "assertion_id": a.assertion_id,
+                            "status": a.status,
+                            "reason": a.reason,
+                        }
+                        for a in original.assertions
+                    ],
+                }
+                report["candidates"] = [
+                    {
+                        "candidate_hash": c.candidate_hash,
+                        "execution_status": c.execution.get("status"),
+                        "scientific_outcome": c.outcome.outcome,
+                        "run_dir": str(c.candidate_dir),
+                    }
+                    for c in self.candidates
+                ]
+            return report
+        except Exception:  # noqa: BLE001 - the caller re-raises the original failure
+            return None
 
 
 def _since(t0: float) -> float:

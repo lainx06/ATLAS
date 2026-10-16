@@ -5,6 +5,7 @@ import builtins
 import difflib
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -423,3 +424,62 @@ def test_candidate_hash_binds_base_and_bytes(snap):
     assert candidate_hash(snap.base_hash, cand.entry_bytes + b" ") != expected
     other_base = "0" * 64
     assert candidate_hash(other_base, cand.entry_bytes) != expected
+
+
+# --- hunk header numbers (T-06 slice 2 repair passes 1 and 2) --------------------------------
+
+_HEADER = re.compile(r"^@@ -(\d+),(\d+) \+(\d+),(\d+) @@", re.MULTILINE)
+POSITIONS = ["old_start", "old_count", "new_start", "new_count"]
+
+
+def with_hunk_field(diff: str, position: int, value: str) -> str:
+    """The diff with one number of its first hunk header replaced."""
+    match = _HEADER.search(diff)
+    assert match, diff
+    start, end = match.span(position + 1)
+    return diff[:start] + value + diff[end:]
+
+
+def one_line_change(snap) -> str:
+    old = entry_text(snap)
+    return make_diff(old, old.replace("k=3", "k=2"))
+
+
+@pytest.mark.parametrize("position", range(4), ids=POSITIONS)
+@pytest.mark.parametrize(
+    "value",
+    ["9" * 5000, "9" * 10, "١"],
+    ids=["5000_digits", "10_digits", "arabic_indic_digit"],
+)
+def test_every_hunk_number_is_bounded_and_ascii(snap, position, value):
+    diff = with_hunk_field(one_line_change(snap), position, value)
+    with pytest.raises(CandidateRejected) as rejected:
+        validate_diff(snap, diff)
+    assert rejected.value.code == "malformed_diff"
+
+
+def test_hunk_number_controls_are_accepted(snap):
+    valid = one_line_change(snap)
+    assert validate_diff(snap, valid).entry_bytes  # unchanged header
+    # Nine digits are within the bound; the new start is not used when applying.
+    nine = with_hunk_field(valid, 2, "9" * 9)
+    assert (
+        validate_diff(snap, nine).entry_bytes == validate_diff(snap, valid).entry_bytes
+    )
+
+
+def test_omitted_hunk_counts_still_work(snap):
+    old = entry_text(snap)
+    new = old.replace("k=3", "k=2")
+    diff = "".join(
+        difflib.unified_diff(
+            old.splitlines(True),
+            new.splitlines(True),
+            "a/evaluate.py",
+            "b/evaluate.py",
+            n=0,
+        )
+    )
+    header = next(line for line in diff.splitlines() if line.startswith("@@"))
+    assert re.fullmatch(r"@@ -\d+ \+\d+ @@", header), header  # both counts omitted
+    assert validate_diff(snap, diff).entry_bytes == new.encode()
