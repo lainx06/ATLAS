@@ -1,0 +1,119 @@
+"""Model clients (SPEC §11). T-06 slice 2: the interface and the fixture client only.
+
+A client turns one request into one reply or one classified error. It never retries (the
+controller owns retries and the attempt budget) and never validates (the controller parses the
+whole reply). The production Nebius transport is a later slice; asking for live mode here is
+refused, never answered with a fixture or any other fallback.
+
+`FixtureClient` replays a named script of replies and errors. It makes no network access and
+reads no key or `.env`; every reply it returns is labelled `live: False` and model ID
+`fixture:<script>`, which logs and reports carry through.
+"""
+
+import json
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Protocol
+
+MODE_ENV = "ATLAS_MODEL_MODE"
+
+
+class ModelError(Exception):
+    """A request that produced no usable reply."""
+
+    transient = False
+    code = "model_error"
+
+
+class TransientModelError(ModelError):
+    """Worth one retry if the attempt budget allows (timeout, connection, 429, 5xx)."""
+
+    transient = True
+    code = "transport_error"
+
+
+class ModelTimeout(TransientModelError):
+    code = "model_timeout"
+
+
+class LiveModeUnavailable(RuntimeError):
+    """Live inference is not implemented or not authorized in this build."""
+
+
+@dataclass(frozen=True)
+class ModelRequest:
+    messages: list[dict]
+    params: dict  # e.g. max_completion_tokens; recorded with every attempt
+
+
+@dataclass
+class ModelReply:
+    content: str | None
+    finish_reason: str | None
+    model_id: str
+    live: bool
+    usage: dict = field(default_factory=dict)
+    request_id: str | None = None
+
+
+class ModelClient(Protocol):
+    model_id: str
+    live: bool
+
+    def complete(self, request: ModelRequest) -> ModelReply: ...
+
+
+_ERRORS = {
+    "timeout": ModelTimeout,
+    "transport": TransientModelError,
+    "rate_limited": TransientModelError,
+    "server_error": TransientModelError,
+    "rejected": ModelError,  # e.g. HTTP 400: not transient, never retried
+}
+
+
+class FixtureClient:
+    """Replays `script` entries in order, one per attempt. An entry is either
+    {"content": str | None, "finish_reason": str, "usage": {...}} or {"error": kind}."""
+
+    live = False
+
+    def __init__(self, name: str, script: list[dict]):
+        if not name or "/" in name or "\\" in name:
+            raise ValueError("fixture script name must be a plain identifier")
+        self.name = name
+        self.model_id = f"fixture:{name}"
+        self._script = list(script)
+        self.requests: list[ModelRequest] = []
+
+    @classmethod
+    def from_file(cls, path: Path) -> "FixtureClient":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(data["name"], data["replies"])
+
+    def complete(self, request: ModelRequest) -> ModelReply:
+        self.requests.append(request)
+        if not self._script:
+            raise ModelError("fixture script exhausted")
+        entry = self._script.pop(0)
+        if "error" in entry:
+            raise _ERRORS[entry["error"]](f"fixture error: {entry['error']}")
+        return ModelReply(
+            content=entry.get("content"),
+            finish_reason=entry.get("finish_reason", "stop"),
+            model_id=self.model_id,
+            live=False,
+            usage=dict(entry.get("usage") or {}),
+            request_id=entry.get("request_id"),
+        )
+
+
+def require_fixture_mode(env=None) -> None:
+    """Refuse anything but fixture mode in this slice; never fall back to another mode."""
+    mode = (env if env is not None else os.environ).get(MODE_ENV, "fixture")
+    if mode != "fixture":
+        raise LiveModeUnavailable(
+            f"{MODE_ENV}={mode!r}: only fixture mode exists in T-06 slice 2; "
+            "live inference is not implemented or authorized"
+        )

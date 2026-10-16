@@ -40,7 +40,8 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-04 model connection | Accepted within its smoke-test scope | Real NVIDIA text response and strict application-validated JSON response |
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
 | Candidate re-evaluation integration | **T-06 slice 1 implemented; Codex's review found three P2 defects; Codex verified the repairs (repair pass 2 at `1d58b20`, no remaining blocker), so slice 1 is independently verified within its documented scope; T-06 is not accepted.** An approved candidate runs in Docker, and the trusted evaluator re-evaluates the full required set from a *candidate view* whose trust is anchored outside the candidate's outputs (section 7). No model is involved yet | The builder's offline tests and four real Docker runs on `benchmarks/t01/s01_faulty`. Not independently verified |
-| Production model loop and schemas | Planned for T-06 slice 2 onward (no inference authorized) | A smoke-test script is not a production agent |
+| Bounded agent controller (fixture replies) | **T-06 slice 2 implemented and self-tested; awaiting Codex review; not accepted.** Strict one-action replies, 6 attempts including retries, an approval boundary, network denied, every run labelled non-live | Offline tests and one real Docker run. No real model has been called by it |
+| Production model transport, CLI approval, live run | Planned (later T-06 slices; no inference authorized) | A smoke-test script is not a production agent |
 | T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3), and the structural checks of that evidence (passes 4 and 5). **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope. The limitations stand | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
@@ -214,7 +215,19 @@ An integrity failure must invalidate the findings that depend on that evidence. 
 
 The intended model contribution is interpreting the user's claim, explaining findings, and proposing an evaluation-code revision. Deterministic code handles the specified assertions and outcome rules.
 
-**Planned (T-06):** the model receives only the permitted context, not the secret API key or hidden answer keys in its prompt. No production model client exists yet.
+**Implemented in T-06 slice 2 (self-tested, awaiting review), with fixture replies only:** the model receives only the permitted context (the claim, the required assertions' statuses, the allowed actions and earlier tool results, file contents marked untrusted), never the API key or hidden answer keys. No production (live) model client exists yet.
+
+**How one model reply becomes (at most) one action.** The controller in `src/atlas/agent/controller.py` treats every reply as untrusted text:
+
+```python
+action = parse_reply(reply.content).action  # the whole reply, or ReplyRejected
+```
+
+`parse_reply` accepts exactly one JSON object such as `{"action": {"tool": "inspect_evidence", "check": "split_integrity"}}`. Prose around it, a Markdown fence, a second action, an extra field such as `"approved": true`, or a repeated key all raise `ReplyRejected`. The run then ends as `ERROR` with nothing done, and the deterministic audit (which ran first) is still in the report. Exercise: why reject duplicate keys, when `json.loads` would simply keep the last one? (Hint: what if the first `tool` were `finish` and the second `propose_patch`?)
+
+**Counting attempts, not calls.** Six attempts per run, retries included. If attempts 1-5 succeed and attempt 6 times out, no seventh attempt may be sent to retry it, so the run ends `BUDGET_EXHAUSTED`. The attempt is reserved *before* the request is sent, because a request that times out may still have been processed (and billed) by the provider.
+
+**Who approves?** Not the model. A proposed diff is shown to an `Approver` object, a stand-in for the human; the candidate runs only with an approval bound to its exact hash. Without an approver the run stops at `NEEDS_INPUT`. Time spent waiting for the human is excluded from the 5-minute budget.
 
 **Accepted in T-05:** `validate_diff` in `src/atlas/candidates.py` accepts a proposal only as a unified diff of the one permitted entry-point file. A diff that touches the manifest, the table, the evaluator or a second file is rejected, so a proposal cannot change the evaluator to award itself a pass.
 
@@ -466,6 +479,7 @@ These were bounded reproductions. The review did not demonstrate a container esc
 | `src/atlas/runner/container_entry.py` | What happens inside the container? |
 | `src/atlas/docker_evidence.py` | Which container evidence does the evaluator trust, and why (T-06 slice 1)? |
 | `src/atlas/agent/execute.py`, `src/atlas/agent/report.py` | How does an approved candidate become a re-evaluated, reported result? |
+| `src/atlas/agent/controller.py`, `schemas.py`, `budget.py`, `client.py` | How does a (fixture) model reply become at most one bounded action (T-06 slice 2)? |
 | `scripts/nebius_smoke.py` | How does a bounded model request work? |
 | `benchmarks/t01/`, `benchmarks/t02/` | Which small synthetic fixtures demonstrate each rule? |
 | `tests/unit/`, `tests/integration/` | What behavior has executable evidence? |
