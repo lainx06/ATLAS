@@ -1,6 +1,6 @@
 # T-03 hosting probe: research and local design
 
-Status: **research and local design complete (2026-10-15); stage A deployed by the owner and first observations recorded (§7a); sleep/wake observation pending; T-03 is NOT accepted.** Lead decisions of 2026-10-15 (DECISIONS.md "Hosting probe decisions") are applied below. Required feasibility evidence is missing (see §9). Nothing was deployed, no account was linked, no repository or secret was created, and no API call was made. Written under TASKS.md T-03 (Sonnet 5.5, medium effort); the lead decides, and the decision goes in DECISIONS.md.
+Status: **research and local design complete (2026-10-15); stage A deployed by the owner and first observations recorded (§7a); one public sleep/wake cycle observed (2026-10-16, §7a); stage D run once on the host against Neon, all results ok (2026-10-16, §5b "Hosted results"); T-03 is NOT accepted** (remaining gaps: §9). Lead decisions of 2026-10-15 (DECISIONS.md "Hosting probe decisions") are applied below. The builder deployed nothing and linked no account; every deployment, secret and button press was the owner's. No Nebius request was made by any stage. Written under TASKS.md T-03 (Sonnet 5.5, medium effort); the lead decides, and the decision goes in DECISIONS.md.
 
 **Evidence labels** used on every conclusion:
 
@@ -34,7 +34,7 @@ Status: **research and local design complete (2026-10-15); stage A deployed by t
 | Python version | Chosen at deployment; "released versions still receiving security updates". Whether 3.11.17 exactly is available is **unknown** | Dockerfile; any base image. **Documented** |
 | Secrets | App settings, "Secrets" field (TOML, read with `st.secrets`). **Documented** | Settings → secrets; exposed as environment variables, private, not readable again from the settings page; secrets are not copied when a Space is duplicated. **Documented** |
 | Resources | Approx. 0.078–2 CPU cores, 690 MB–2.7 GB memory, up to 50 GB storage "as of Feb 2024". The page is dated, and the figures are not confirmed current. **Documented, dated** | CPU Basic: 2 vCPU, 16 GB RAM, 50 GB non-persistent disk; free hardware itself, though creating the Space needs PRO. **Documented** |
-| Sleep | Apps with no traffic for **12 hours** go to sleep; anyone with access can wake them with a button. **Documented**. Cold-start time: **unknown** (not measured) | "On free hardware, your Space will go to sleep ... after a period of time if unused"; running indefinitely needs paid hardware. CPU Basic is the free tier, so a PRO-plan Space on CPU Basic would still sleep. **Documented**, period **unknown** |
+| Sleep | Apps with no traffic for **12 hours** go to sleep; anyone with access can wake them with a button. **Documented**. Wake time: about 23–24 s in **one observed** cycle (2026-10-16, §7a); not a guaranteed figure | "On free hardware, your Space will go to sleep ... after a period of time if unused"; running indefinitely needs paid hardware. CPU Basic is the free tier, so a PRO-plan Space on CPU Basic would still sleep. **Documented**, period **unknown** |
 | Persistence | Container restarts clear memory (documented); disk persistence across restarts/sleep is not documented, so treat as **non-durable** | Docker Space disk is lost on restart; a storage bucket can be attached. **Documented** |
 | Multiple instances / scaling | Not documented; fixed resource limits. **Unknown** | Not documented here. **Unknown** |
 | Service end date, SLA | The pages read give none. That is not evidence of availability through 15 December. **Unknown** | Same. **Unknown** |
@@ -173,7 +173,7 @@ A canary-only test that does not touch the sleeping stage A probe: create a Neon
 
 ## 5b. Stage D: budget-store feasibility probe (prepared locally, 2026-10-15)
 
-Selection of Neon Free is **provisional**: it holds only if a hosted connection test succeeds. The probe is deliberately small and uses **synthetic integer units, scratch tables, no model-provider key and no model request**. It is an update to the existing Streamlit probe, not a second app: after tomorrow's sleep/wake observation, the probe repository would receive three files in place of the current two. **The deployed stage A probe is untouched until then** (a push would redeploy it and spoil the observation).
+Selection of Neon Free is **provisional**: it holds only if a hosted connection test succeeds. That test has now passed once (2026-10-16, "Hosted results" below), but confirming the selection is the lead's decision and is not yet recorded in DECISIONS.md. The probe is deliberately small and uses **synthetic integer units, scratch tables, no model-provider key and no model request**. It is an update to the existing Streamlit probe, not a second app. The probe repository received the three files in place of the stage A two **after** the sleep/wake observation, so that observation was not disturbed.
 
 ### Files (local; nothing published)
 
@@ -187,12 +187,12 @@ Selection of Neon Free is **provisional**: it holds only if a hosted connection 
 
 ### Neon project (owner-reported, 2026-10-15)
 
-The owner created the project **`atlas-budget-probe`** on the Neon **Free** plan: **AWS US East 2 (Ohio)**, **PostgreSQL 18**, Postgres only. The optional agent/CLI setup was skipped. **No connection string has been shared**; the project is kept (lead decision). Nothing has connected to it.
+The owner created the project **`atlas-budget-probe`** on the Neon **Free** plan: **AWS US East 2 (Ohio)**, **PostgreSQL 18**, Postgres only. The optional agent/CLI setup was skipped. **No connection string has been shared** with the builder; the owner entered it only as an app Secret. The project is kept (lead decision). The only ATLAS connections to it are those of the one stage D run from the deployed probe (2026-10-16).
 
 | Version | What has been run |
 | --- | --- |
 | PostgreSQL 17.11 (local container) | The five scenarios, 3 of 3 runs (below) |
-| PostgreSQL 18 (Neon) | **Nothing yet: verification pending** |
+| PostgreSQL 18 (Neon) | The five scenarios, **1 run** from the deployed Streamlit probe, all ok (2026-10-16; "Hosted results" below) |
 
 Hosted test inputs (all entered by the owner as Secrets on the existing probe app, never in chat, Git or screenshots): `DATABASE_URL` (the **direct**, non-pooled Neon string), `PROBE_ACCESS_CODE` (a long random value, generated like the canary but longer) and the existing `CANARY`. A deployed app is public, so the code gate is required before any database step is enabled.
 
@@ -265,6 +265,40 @@ It also reports the time to open the first connection. That is one **combined co
 
 **Still not shown:** the scenarios are a probe, not a proof; they say nothing about Neon, TLS latency, scale-to-zero resumption, the compute allowance, restarts of the real service, or production accounting.
 
+### Hosted results on Neon PostgreSQL 18 (2026-10-16; user-observed)
+
+**One run, observed and reported by the owner.** The builder did not see the page and did not rerun anything. These results show that the deployed Community Cloud app reached Neon and that the five scenarios passed once there. They do **not** establish production readiness, durability across a database restart, long-term availability, or correctness beyond the five scenarios.
+
+| Item | Value | Label |
+| --- | --- | --- |
+| Deployed files | The public repository `lainx06/atlas-hosting-probe` (`main`) holds exactly `app.py`, `budget_probe.py` and `requirements.txt`. Each is byte-identical to `hosting_probe/stage_d/` (SHA-256 `157994ad…`, `b6fab8b0…`, `a83b0249…`). The update commit is dated 2026-10-16 16:57:14 UTC (12:57 -0400), after the sleep/wake visit | checked by the builder (read-only download from GitHub; the app itself was not visited) |
+| Secrets | `DATABASE_URL`, `PROBE_ACCESS_CODE` and `CANARY` entered by the owner | owner-reported |
+| Access gate | A wrong code showed "Not authorized." and no button; the correct code enabled the button | observed (owner-reported) |
+| Run time | About 2026-10-16 13:15 -0400, button pressed once | owner-reported |
+| Server | Neon project `atlas-budget-probe`, PostgreSQL 18 (from the project settings; the probe page does not display the server version) | owner-reported |
+| First connection and setup | **1.04 s**: one combined figure for name lookup, TLS, login and any compute start. Not a region comparison, and it is not known whether the compute was suspended beforehand | observed (owner-reported) |
+| 1. Concurrent requests, budget admits one | ok: 20 rounds, exactly one reservation admitted and 60 units held every round | observed (owner-reported) |
+| 2. Refused multi-cap reservation | ok: caps unchanged, no reservation row | observed (owner-reported) |
+| 3. Opposite lock orders | ok: 20 rounds, no failures | observed (owner-reported) |
+| 4. Duplicate request ID | ok: reserved and settled exactly once | observed (owner-reported) |
+| 5. Uncertain dispatched cost | ok: the reservation was retained across a new connection and blocked another request, then settled successfully | observed (owner-reported) |
+| Total | ok, **57.2 s** measured by the app (local PostgreSQL 17.11: about 1.3 s; the difference was not investigated) | observed (owner-reported) |
+
+**What this settles:**
+- Outbound TLS Postgres from Community Cloud to Neon (port 5432, direct string) works.
+- The Secrets field holds several secrets.
+- The access-code gate behaved as designed on the host.
+- The reservation design behaved as intended in these five scenarios on Neon's PostgreSQL 18.
+
+**What it does not settle:**
+- Durability across a Neon restart or a long outage.
+- Behavior at the compute-hour or storage limit, and how much of the 100 CU-hours this run used (not read).
+- Outbound HTTPS to Nebius from the host (stage B, not run).
+- The full locked build (stage C, not run).
+- Production accounting (the "Not shown" table above).
+
+**Left in place:** the scratch tables `probe_cap` and `probe_reservation` remain in the Neon project, holding synthetic rows from the last scenario. The probe app, its Secrets and the Neon project are kept; deletion and any credential rotation are later explicit actions.
+
 ### First account step (owner; nothing created yet)
 
 Sign up at Neon (neon.com) with the Free plan, choosing email or GitHub as you prefer. If GitHub, read the authorization screen and report the scopes. Stop at the dashboard: no card, no paid plan, no project yet. Report whether Neon created a default project automatically.
@@ -334,13 +368,24 @@ Deployed by the owner from `lainx06/atlas-hosting-probe` (public; `main`; exactl
 | Canary value on the page | Not shown; only presence and the hash prefix | observed (design) |
 | Signed-out access | The page loaded in a private (incognito) window for a signed-out visitor, about 2026-10-15 18:44 -0400 | observed (owner-reported) |
 
-**Not yet observed (stage A is incomplete):**
-- **Sleep/wake.** Documented: apps with no traffic for 12 hours go to sleep. The 12 hours restart with every visit, including the owner's. The owner's signed-out visit at about 18:44 -0400 restarted the 12 hours, so the earliest sleeping state to test is about **2026-10-16 06:54 -0400** (12 h 10 min after that visit, with **no visits in between**). The test is: visit, time how long the wake-up button and the page take, and read `process_uptime_s` (a small value shows a fresh process).
-- **Outbound network** from the host: untested by design (stage A has none).
-- **Full locked environment** (61 packages, stage C): untested. This build installed Streamlit only.
-- **Availability through 15 December:** not established by a single day's observation.
+**Sleep/wake (observed once, 2026-10-16; owner-reported):**
 
-The probe stays deployed until the sleep/wake observation is recorded. Deletion is a later, explicit action.
+| Observation | Value |
+| --- | --- |
+| Visit | 2026-10-16 12:01 -0400, in a fresh signed-out incognito window |
+| Previous visit | 2026-10-15 18:44 -0400 (the signed-out check), so the gap was **17 h 17 min** with no visits in between (owner-reported) |
+| Page shown | A wake-up button, not the app |
+| Wake time | About **23–24 s** from pressing the button to the app |
+| `process_uptime_s` after wake | **0.1**, so a fresh process |
+
+This is **one observed successful public sleep/wake cycle**. It confirms that the documented sleep happens and that a signed-out visitor can wake the app. It does not guarantee future availability, a stable wake time, or the feasibility of hosting the full ATLAS deployment. It was recorded before the stage D files were pushed.
+
+**Not yet observed:**
+- **Outbound network:** stage A has none by design. Stage D later showed outbound Postgres to Neon (§5b "Hosted results"); outbound HTTPS to Nebius is untested (stage B).
+- **Full locked environment** (61 packages, stage C): untested. The stage A build installed Streamlit only; stage D added `psycopg[binary]`.
+- **Availability through 15 December:** not established by one observed cycle.
+
+The probe stays deployed. Deletion is a later, explicit action.
 
 ## 8. Approvals needed
 
@@ -362,16 +407,25 @@ The probe stays deployed until the sleep/wake observation is recorded. Deletion 
 
 ## 9. What is still missing (why T-03 is not accepted)
 
-T-03 requires each open check answered by a dated source or an observed test. Answered here by documentation: plans and permissions, private-source behavior, sleep rule, secrets support, price, 90-day credit term. **Still missing:**
+T-03 requires each open check answered by a dated source or an observed test. Answered by documentation: plans and permissions, private-source behavior, sleep rule, secrets support, price, 90-day credit term. **Answered by observation (2026-10-15/16, owner-reported):** the minimal build, the secret store, signed-out access, one sleep/wake cycle (§7a), and one hosted run of the budget-store scenarios on Neon PostgreSQL 18, which included outbound Postgres and the access-code gate (§5b). The retry rule is settled (DECISIONS.md, 2026-10-15).
 
-- cold-start / sleep-wake time is not yet observed (the stage A build and canary were observed, §7a); outbound network is untested;
-- credit balance and the real expiry of the user's credits are unknown;
-- the Nebius account's behavior at zero balance is unknown, and no per-key limit was found;
-- the durable store for counters is not chosen;
-- full hosted isolation is not demonstrated (a classification, not a negative result);
-- Streamlit's availability through 15 December is not established by anything read.
+**Assessment of the remaining gaps (2026-10-16; T-03 is NOT accepted):**
 
-**Recommendation to the lead (proposed):** approve stage A; record the limited hosted mode as the plan in DECISIONS.md; clarify the retry rule (§4.2); decide the durable store; confirm the credit terms with Nebius. T-03 can be accepted once stage A's observations and the credit facts are recorded.
+| # | Acceptance item or open check | State now | What would close it |
+| --- | --- | --- | --- |
+| 1 | Recommendation, limited vs. full hosted, with its evidence (criterion 2) | Written and **proposed** (§1, §3); the lead has not decided | The lead's decision recorded in DECISIONS.md (TASKS.md HANDOFF) |
+| 2 | Durable budget store | Neon Free is still **provisional**; its condition, a hosted connection test, passed once | The lead confirms or rejects Neon in DECISIONS.md |
+| 3 | Credit expiry vs. 15 December (criterion 3) | Balance $50.00 is owner-observed; **expiry marked unknown**, which the criterion allows. Whether a public judging demo counts as "production" under the Builder terms is also unknown | Formally satisfied as "marked unknown". The lead decides whether to ask Nebius before relying on credits for public traffic |
+| 4 | Sleep/cold-start and availability through 15 December | One wake cycle observed (about 23–24 s). Long-term availability cannot be observed in advance | The lead accepts it as documented plus one observation, with recorded examples and the local build as the fallback, or asks for more observations |
+| 5 | Outbound HTTPS from the host to Nebius | **Not observed.** Postgres to Neon works, but that does not show port 443 to Nebius | Stage B (one free `GET /models`; separate approval; the owner would enter a real key on a public app, behind the same code gate). Or the lead defers it to the hosted live-mode work and keeps the hosted demo in recorded mode until then |
+| 6 | Hosted build of the ATLAS app's dependencies | **Not observed** (stage C). Only the minimal one- and two-package builds ran | Stage C (separate approval), or the lead defers it to the deployment task |
+| 7 | Zero-balance behavior | Documented: a negative balance triggers an automatic card charge, and in-application caps are the control (lead decision). No per-key limit was found | Probably closed by the lead's billing decision; confirm |
+| 8 | Isolated worker for full hosted execution | Not demonstrated; classified, not shown infeasible | Accepted as "limited hosted" under item 1, unless the lead wants a worker probe |
+| 9 | Judge access route, restoration procedure, server-side caps | Design **proposed** (§5, §5a); only the probe's access gate and synthetic reservation operations were exercised. Production accounting is not built | Implementation belongs to later tasks. For T-03, the lead decides whether the proposed design is enough |
+
+In short, every check now has a dated source, an observation or an explicit "unknown". What remains is mainly **the lead's decisions** (items 1–4, 7 and 9) plus **two untested hosted paths** (items 5–6) that the lead may require or defer.
+
+**Recommendation to the lead (proposed):** record the limited hosted mode and the Neon decision in DECISIONS.md, and say whether stages B and C are required for T-03 or deferred. T-03 could then be judged on the recorded evidence.
 
 ## 10. Sources (all fetched 2026-10-15)
 
