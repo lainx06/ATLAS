@@ -1127,12 +1127,21 @@ def test_normal_completion_control(tmp_path):
     assert log[-1]["state"] == "REPORT"
 
 
-def test_normal_completion_with_an_unwritable_report_raises_that_failure(
-    tmp_path, monkeypatch
-):
-    """With no earlier error, the write failure itself is the exception, and no report is
-    claimed."""
-    failure = OSError(f"report write {SECRET}")
+def _capture_run(monkeypatch) -> list:
+    """Keep the controller's _Run object so its in-memory state can be inspected after a
+    raise (there is no AgentResult then)."""
+    captured = []
+    real_finalize = ctl._Run._finalize
+
+    def finalize(self, *args, **kwargs):
+        captured.append(self)
+        return real_finalize(self, *args, **kwargs)
+
+    monkeypatch.setattr(ctl._Run, "_finalize", finalize)
+    return captured
+
+
+def _refuse_report_write(monkeypatch, failure):
     real_write = ctl.write_json
 
     def refuse(path, data):
@@ -1141,7 +1150,127 @@ def test_normal_completion_with_an_unwritable_report_raises_that_failure(
         return real_write(path, data)
 
     monkeypatch.setattr(ctl, "write_json", refuse)
-    with pytest.raises(OSError) as raised:
-        run(tmp_path, [FINISH])
-    assert raised.value is failure
+
+
+def _fail_logging_state(monkeypatch, state, failure):
+    real_log = ctl._Run.log
+    attempts = []
+
+    def log(self, entry):
+        if entry.get("event") == "state" and entry.get("state") == state:
+            attempts.append(state)
+            raise failure
+        return real_log(self, entry)
+
+    monkeypatch.setattr(ctl._Run, "log", log)
+    return attempts
+
+
+NOT_SAVED = "ATLAS: agent_report.json was NOT saved (OSError)"
+WRITE_CASES = [
+    "write_first_log_usable",
+    "write_first_then_log_fails",
+    "earlier_error_then_write",
+]
+
+
+@pytest.mark.parametrize("case", WRITE_CASES)
+def test_an_unwritable_report_ends_error_with_the_note(tmp_path, monkeypatch, case):
+    """Repair pass 4 (Codex verification of 1266b44): a report-write failure, first or not,
+    leaves the run ERROR in memory (and in the log when it is usable), keeps the right
+    exception primary and annotates it; nothing is retried."""
+    captured = _capture_run(monkeypatch)
+    write_failure = OSError(f"report write {SECRET}")
+    _refuse_report_write(monkeypatch, write_failure)
+    log_attempts = []
+    if case == "write_first_then_log_fails":
+        log_attempts = _fail_logging_state(
+            monkeypatch, "ERROR", OSError(f"log {SECRET}")
+        )
+    executor_failure = ValueError(f"executor {SECRET}")
+
+    class FailingExecutor(RecordingExecutor):
+        def __call__(self, *args, **kwargs):
+            raise executor_failure
+
+    with pytest.raises(Exception) as raised:
+        if case == "earlier_error_then_write":
+            run(tmp_path, [PATCH, FINISH], ApproveExactly(), FailingExecutor())
+        else:
+            run(tmp_path, [FINISH])
+
+    expected = executor_failure if case == "earlier_error_then_write" else write_failure
+    assert raised.value is expected
+    assert raised.value.__notes__ == [NOT_SAVED]
+    assert SECRET not in raised.value.__notes__[0]
     assert not list((tmp_path / "runs").glob("agent-*/agent_report.json"))
+
+    (controller_run,) = captured
+    last = controller_run.states[-1]
+    assert last["state"] == "ERROR"
+    if case == "earlier_error_then_write":
+        assert last["detail"] == "internal_error in EXECUTE: ValueError"
+    else:
+        assert last["detail"] == "internal_error in REPORT_WRITE: OSError"
+
+    log_path = next((tmp_path / "runs").glob("agent-*/agent_log.jsonl"))
+    log_text = log_path.read_text(encoding="utf-8")
+    assert SECRET not in log_text
+    logged = [
+        json.loads(line)
+        for line in log_text.splitlines()
+        if json.loads(line).get("event") == "state"
+    ]
+    if case == "write_first_log_usable":
+        # REPORT was logged, then corrected to ERROR once.
+        assert [e["state"] for e in logged[-2:]] == ["REPORT", "ERROR"]
+        assert logged[-1]["detail"] == "internal_error in REPORT_WRITE: OSError"
+    elif case == "write_first_then_log_fails":
+        assert log_attempts == [
+            "ERROR"
+        ]  # the correction was attempted once, not retried
+        assert (
+            logged[-1]["state"] == "REPORT"
+        )  # the failed correction is not in the log
+    else:
+        assert logged[-1]["state"] == "ERROR"
+        assert logged[-1]["detail"] == "internal_error in EXECUTE: ValueError"
+        assert sum(e["state"] == "ERROR" for e in logged) == 1  # no extra correction
+    (original_dir,) = [
+        p for p in (tmp_path / "runs").iterdir() if p.name.startswith("s01")
+    ]
+    _original_intact(original_dir)
+    assert socket.getaddrinfo.__name__ == "getaddrinfo"
+
+
+def test_report_construction_and_writing_are_not_retried(tmp_path, monkeypatch):
+    builds, writes = [], []
+    real_report, real_write = ctl._Run._report, ctl.write_json
+
+    def report(self, *args, **kwargs):
+        builds.append(1)
+        return real_report(self, *args, **kwargs)
+
+    def refuse(path, data):
+        if Path(path).name == "agent_report.json":
+            writes.append(1)
+            raise OSError("write")
+        return real_write(path, data)
+
+    monkeypatch.setattr(ctl._Run, "_report", report)
+    monkeypatch.setattr(ctl, "write_json", refuse)
+    with pytest.raises(OSError):
+        run(tmp_path, [FINISH])
+    assert (len(builds), len(writes)) == (1, 1)
+
+
+def test_normal_completion_writes_report_and_logs_report_state(tmp_path, monkeypatch):
+    captured = _capture_run(monkeypatch)
+    result, _, _ = run(tmp_path, [FINISH])
+    assert result.terminal_state == ctl.REPORT
+    assert captured[0].states[-1]["state"] == "REPORT"
+    report = _saved_report(tmp_path)
+    assert (
+        report["terminal_state"] == "REPORT" and "finalization_failures" not in report
+    )
+    assert log_entries(result, "state")[-1]["state"] == "REPORT"

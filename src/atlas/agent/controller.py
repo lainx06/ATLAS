@@ -3,12 +3,12 @@
     INTAKE -> CHECK -> (INSPECT | PROPOSE_PATCH -> APPROVAL -> EXECUTE -> VERIFY)* -> REPORT
 
 Any state can end in NEEDS_INPUT, NOT_SUPPORTED, BUDGET_EXHAUSTED or ERROR, and a report is
-written (`_finalize`). An unexpected exception, including one while building the report or
-logging the terminal state, is finalized as ERROR (stage and exception type; a minimal report if
-the full one cannot be built) and then re-raised. The first exception stays primary; later
-finalization failures are recorded, never masking it. If the report cannot be written, the
-primary exception still propagates, with a note that no report was saved. A failing approver
-is a recorded ERROR. Active time is checked after every reply returns, before any action
+written (`_finalize`). An unexpected exception, including one while logging the terminal state,
+building the report or writing it, is finalized as ERROR (stage and exception type; a minimal
+report if the full one cannot be built) and then re-raised. The first exception stays primary;
+later finalization failures are recorded, never masking it. If the report cannot be written
+(as the first failure or after another), the run ends ERROR and the primary exception
+propagates with a note that no report was saved. A failing approver is a recorded ERROR. Active time is checked after every reply returns, before any action
 (including finish) is consumed. What the controller guarantees:
 
 - **Audit first.** The deterministic audit of the original runs before any model request, and
@@ -255,12 +255,14 @@ class _Run:
            already held, without calling the report builders again;
         3. the report is written once.
 
-        A failure in step 1 or 2 becomes the primary exception only if there was none (the run
-        then ends ERROR, naming that stage); otherwise it is recorded as a secondary failure.
-        Failures are recorded by stage and exception type only, never by message, in the
-        report's `finalization_failures`. After a logging failure nothing more is logged. If
-        the report cannot be written, the primary exception carries an explicit "NOT saved"
-        note and no report is claimed.
+        A failure in any step becomes the primary exception only if there was none (the run
+        then ends ERROR in memory, naming that stage: TERMINAL_LOG, REPORT or REPORT_WRITE,
+        and the new state is logged once if the log is still usable); otherwise it is
+        recorded as a secondary failure. Failures are recorded by stage and exception type
+        only, never by message, in the report's `finalization_failures`. After a logging
+        failure nothing more is logged. If the report cannot be written (first failure or
+        not), the primary exception carries an explicit "NOT saved" note and no report is
+        claimed. No step is retried.
         """
         failures: list[dict] = []
         log_usable = True
@@ -307,10 +309,15 @@ class _Run:
             if report is None:
                 raise RuntimeError("no report could be built")
             write_json(self.run_dir / "agent_report.json", report)
-        except Exception as write_exc:
-            if primary is None:
-                raise
-            # Never mask the original failure, and never claim a report was saved.
+        except Exception as write_exc:  # noqa: BLE001 - recorded, annotated, re-raised
+            # The write is never retried. As the first failure it becomes primary and the run
+            # ends ERROR in REPORT_WRITE (corrected in the log once, if the log is still
+            # usable); after an earlier failure it is secondary. Either way the primary
+            # exception says that no report was saved.
+            before = terminal
+            fail("REPORT_WRITE", write_exc)
+            if terminal != before:
+                log_terminal()
             primary.add_note(
                 f"ATLAS: agent_report.json was NOT saved ({type(write_exc).__name__})"
             )
