@@ -1,9 +1,11 @@
-"""Model clients (SPEC §11). T-06 slice 2: the interface and the fixture client only.
+"""Model clients (SPEC §11): the interface, the fixture client, and the shared checks for
+provider-reported values (T-06 slices 2-3).
 
 A client turns one request into one reply or one classified error. It never retries (the
-controller owns retries and the attempt budget) and never validates (the controller parses the
-whole reply). The production Nebius transport is a later slice; asking for live mode here is
-refused, never answered with a fixture or any other fallback.
+controller owns retries and the attempt budget). The controller parses the whole reply, and
+it also passes reported usage and identifiers through the checks below, whatever the client.
+The production client is `nebius.NebiusClient` (offline-verified only); asking for live mode
+without explicit authorization is refused, never answered with a fixture or any other fallback.
 
 `FixtureClient` replays a named script of replies and errors. It makes no network access and
 reads no key or `.env`; every reply it returns is labelled `live: False` and model ID
@@ -12,6 +14,7 @@ reads no key or `.env`; every reply it returns is labelled `live: False` and mod
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -30,12 +33,23 @@ class ModelError(Exception):
     transient = False
     code = "model_error"
 
-    def __init__(self, message: str = "", *, code=None, dispatched=True, usage=None):
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        code=None,
+        dispatched=True,
+        usage=None,
+        invalid_fields=(),
+    ):
         super().__init__(message or self.code)
         if code is not None:
             self.code = code
         self.dispatched = dispatched
-        self.usage = usage
+        self.usage = usage  # validated counts only (see `sanitize_usage`), or None
+        self.invalid_fields = tuple(
+            invalid_fields
+        )  # names from USAGE_FIELDS, never values
 
 
 class TransientModelError(ModelError):
@@ -53,6 +67,65 @@ class LiveModeUnavailable(RuntimeError):
     """Live inference is not implemented or not authorized in this build."""
 
 
+# -- provider-reported values (T-06 slice 3 repair) ---------------------------------------------
+# Everything a provider reports is untrusted: SDK response models are not validated at runtime.
+# Only checked values reach accounting, actions or logs; a rejected value is replaced, and only
+# the name of the field (from the fixed lists here) is recorded, never the rejected value.
+
+USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+FINISH_REASONS = ("stop", "length", "content_filter", "tool_calls", "function_call")
+_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}", re.ASCII)
+
+
+def sanitize_usage(raw) -> tuple[dict, tuple[str, ...]]:
+    """Reported usage reduced to {field: count or None} for every field in USAGE_FIELDS.
+
+    A count is known only if it is a genuine non-negative integer (`int`, not `bool`). A missing
+    or null field is unknown (None). Anything else (a boolean, fraction, string, negative or
+    non-finite number) is invalid: it becomes None and its field name is returned, so the caller
+    can fail closed. A `raw` that is not a mapping or an object with these attributes makes every
+    field invalid."""
+    usage, invalid = {}, []
+    if raw is None:
+        return {f: None for f in USAGE_FIELDS}, ()
+    if isinstance(raw, dict):
+        get = raw.get
+    elif isinstance(raw, (str, bytes, int, float, list, tuple)):
+        return {f: None for f in USAGE_FIELDS}, USAGE_FIELDS
+    else:
+
+        def get(name):
+            return getattr(raw, name, None)
+
+    for name in USAGE_FIELDS:
+        value = get(name)
+        if value is None:
+            usage[name] = None
+        elif type(value) is int and value >= 0:
+            usage[name] = value
+        else:
+            usage[name] = None
+            invalid.append(name)
+    return usage, tuple(invalid)
+
+
+def safe_identifier(value, secret: str | None = None) -> str | None:
+    """A provider-reported identifier (request ID, served model) if it is a short plain
+    identifier that does not contain `secret`; otherwise None (withheld, not logged)."""
+    if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
+        return None
+    if secret and secret in value:
+        return None
+    return value
+
+
+def safe_finish_reason(value) -> str | None:
+    """A finish reason from the known set, None if absent, else 'unrecognized'."""
+    if value is None:
+        return None
+    return value if value in FINISH_REASONS else "unrecognized"
+
+
 @dataclass(frozen=True)
 class ModelRequest:
     messages: list[dict]
@@ -68,6 +141,9 @@ class ModelReply:
     usage: dict = field(default_factory=dict)
     request_id: str | None = None
     served_model: str | None = None  # the model the provider reports having used
+    withheld: tuple[
+        str, ...
+    ] = ()  # provider fields replaced because they failed validation
 
 
 class ModelClient(Protocol):
@@ -77,8 +153,9 @@ class ModelClient(Protocol):
     def complete(self, request: ModelRequest) -> ModelReply: ...
 
     # Optional (live clients): `check_request(request)` raises ModelError(dispatched=False)
-    # before anything is sent; `ceiling_cost()` and `usage_cost(usage)` return Decimal USD
-    # (None when usage is incomplete).
+    # before anything is sent; `ceiling_cost()` returns Decimal USD at both ceilings, and
+    # `component_costs(usage)` / `component_ceilings()` return (input, output) Decimal USD,
+    # with None for a component whose count is unknown.
 
 
 _ERRORS = {

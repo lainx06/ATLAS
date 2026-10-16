@@ -1,32 +1,43 @@
 """Production Nebius Token Factory client (SPEC §11; T-06 slice 3). Offline-verified only.
 
 This client has never sent a real request: it is tested with a mocked HTTP transport. A live
-run (T-06 slice 4) needs separate, explicit authorization, reviewed ceilings and a model ID
-confirmed by the authenticated `GET /models`.
+run (T-06 slice 4) needs separate, explicit authorization, reviewed ceilings, a justified
+prompt-token bound and a model ID confirmed by the authenticated `GET /models`.
 
 What it does with one request:
 
 - **No hidden retries.** The SDK's retries are disabled (`max_retries=0`); the controller owns
   the single retry per transient call and the six-attempt limit.
-- **Bounded.** Every value in `NebiusConfig` is required: there are no built-in ceilings,
-  timeouts or prices. Before sending, `check_request` refuses a prompt whose conservative token
-  bound exceeds `max_input_tokens` (refused requests are never dispatched). The bound assumes
-  that no token covers less than one UTF-8 byte of message text, plus the configured
-  `template_overhead_tokens` per message for the chat template; that assumption is unverified
-  for this tokenizer. After a reply, usage above either ceiling is an error (fail closed),
-  charged at the reported usage.
+- **Validated configuration.** Every value in `NebiusConfig` is required and checked before
+  any SDK object exists: positive integer token ceilings, a non-negative integer template
+  allowance, a finite positive timeout and finite non-negative `Decimal` prices. There are no
+  built-in ceilings, timeouts or prices; the live values are a lead decision.
+- **An input estimate, not a proven bound.** Before sending, `check_request` refuses a prompt
+  whose *estimated* token count exceeds `max_input_tokens` (refused requests are never
+  dispatched). The estimate is the UTF-8 byte length of the message text plus the configured
+  `template_overhead_tokens` per message. It would be an upper bound only if no token covered
+  less than one byte of text and the allowance covered the chat template; neither assumption
+  has been verified for this model, so the estimate guarantees neither the prompt's token count
+  nor the maximum charge. Justifying a bound is an open lead decision before any live run.
+- **Validated reply metadata.** Reported usage is checked before anything else
+  (`client.sanitize_usage`): a count is known only as a genuine non-negative integer. Invalid
+  usage fails closed (`invalid_usage`), and only the validated counts and the invalid fields'
+  names are kept, never a rejected value. Known usage above either ceiling is an error
+  (`usage_over_ceiling`), charged at the known usage. The request ID and served model are kept
+  only as short plain identifiers that do not contain the key, and the finish reason only from
+  the known set.
 - **Application-validated output.** The prompt asks for JSON; no `response_format`, tools or
   streaming are sent, and nothing on the provider side constrains the format. The controller
   validates the finish reason and the whole reply before any action.
 - **No credential exposure.** The key is passed to the SDK only. Errors are classified by
   exception type and HTTP status only: provider and SDK messages (which can echo request text)
   are never used, and the SDK exception is not chained to the error raised here.
-- **Conservative cost accounting.** `ceiling_cost()` is the cost of a request at both
-  ceilings; `usage_cost()` is None when usage is incomplete, so the caller keeps the ceiling
-  reserved for a dispatched request whose usage is unknown. Prices are listed prices from
-  configuration; nothing here authorizes spending.
+- **Cost figures for accounting.** `component_costs(usage)` prices each known count at the
+  listed prices (None for an unknown count); `component_ceilings()` prices each ceiling. The
+  ledger keeps an unknown component at its ceiling. Nothing here authorizes spending.
 """
 
+import math
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -39,6 +50,9 @@ from atlas.agent.client import (
     ModelRequest,
     ModelTimeout,
     TransientModelError,
+    safe_finish_reason,
+    safe_identifier,
+    sanitize_usage,
 )
 
 KEY_ENV = "NEBIUS_API_KEY"
@@ -52,31 +66,51 @@ class NebiusConfig:
     model_id: str
     max_input_tokens: int
     max_completion_tokens: int
-    template_overhead_tokens: int  # per message, for the conservative input bound
+    template_overhead_tokens: int  # per message, for the input estimate
     timeout_s: float
     price_input_per_token: Decimal
     price_output_per_token: Decimal
 
     def __post_init__(self):
-        for name in (
-            "max_input_tokens",
-            "max_completion_tokens",
-            "template_overhead_tokens",
+        self.validate()
+
+    def validate(self) -> None:
+        """Raise TypeError or ValueError for an invalid field (its name only, never a value)."""
+        if not isinstance(self.base_url, str) or not self.base_url.startswith(
+            "https://"
+        ):
+            raise ValueError("base_url must be an https:// URL")
+        if not isinstance(self.model_id, str) or not self.model_id.strip():
+            raise ValueError("model_id must be a non-empty string")
+        for name, minimum in (
+            ("max_input_tokens", 1),
+            ("max_completion_tokens", 1),
+            ("template_overhead_tokens", 0),
         ):
             value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ValueError(f"{name} must be a non-negative integer")
-        if not (isinstance(self.timeout_s, (int, float)) and self.timeout_s > 0):
-            raise ValueError("timeout_s must be positive")
+            if type(value) is not int:  # excludes bool and fractions
+                raise TypeError(f"{name} must be an integer")
+            if value < minimum:
+                raise ValueError(f"{name} must be at least {minimum}")
+        if type(self.timeout_s) not in (int, float):  # excludes bool
+            raise TypeError("timeout_s must be a number of seconds")
+        if not math.isfinite(self.timeout_s) or self.timeout_s <= 0:
+            raise ValueError("timeout_s must be finite and positive")
         for name in ("price_input_per_token", "price_output_per_token"):
-            if not isinstance(getattr(self, name), Decimal):
+            value = getattr(self, name)
+            if not isinstance(value, Decimal):
                 raise TypeError(f"{name} must be a Decimal")
+            if not value.is_finite() or value < 0:
+                raise ValueError(f"{name} must be finite and non-negative")
 
 
 class NebiusClient:
     live = True
 
     def __init__(self, config: NebiusConfig, api_key: str, *, http_client=None):
+        if not isinstance(config, NebiusConfig):
+            raise TypeError("config must be a NebiusConfig")
+        config.validate()  # again here: no SDK object is built from an invalid configuration
         if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("an API key is required")  # the key itself is never echoed
         self.config = config
@@ -92,9 +126,9 @@ class NebiusClient:
     def __repr__(self) -> str:
         return f"NebiusClient(model_id={self.model_id!r})"
 
-    # -- bounds and cost ----------------------------------------------------------------------
+    # -- the input estimate and cost ----------------------------------------------------------
     def input_bound(self, request: ModelRequest) -> int:
-        """A conservative upper bound on prompt tokens (see the module docstring)."""
+        """The input estimate: assumption-dependent, not a proven bound (module docstring)."""
         total = 0
         for message in request.messages:
             content = message.get("content")
@@ -103,29 +137,38 @@ class NebiusClient:
         return total
 
     def check_request(self, request: ModelRequest) -> None:
-        bound = self.input_bound(request)
-        if bound > self.config.max_input_tokens:
+        if self.input_bound(request) > self.config.max_input_tokens:
             raise ModelError(
-                "prompt exceeds the input ceiling; not sent",
+                "estimated prompt tokens exceed the input ceiling; not sent",
                 code="input_over_ceiling",
                 dispatched=False,
             )
 
-    def ceiling_cost(self) -> Decimal:
+    def component_ceilings(self) -> tuple[Decimal, Decimal]:
         c = self.config
         return (
-            c.max_input_tokens * c.price_input_per_token
-            + c.max_completion_tokens * c.price_output_per_token
+            c.max_input_tokens * c.price_input_per_token,
+            c.max_completion_tokens * c.price_output_per_token,
         )
 
-    def usage_cost(self, usage: dict) -> Decimal | None:
-        prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
-        if not all(
-            isinstance(v, int) and not isinstance(v, bool) for v in (prompt, completion)
-        ):
-            return None
+    def ceiling_cost(self) -> Decimal:
+        prompt, completion = self.component_ceilings()
+        return prompt + completion
+
+    def component_costs(self, usage) -> tuple[Decimal | None, Decimal | None]:
+        """(input, output) cost of each validated known count; None for an unknown count."""
+        counts, _ = sanitize_usage(usage)
+        prompt, completion = counts["prompt_tokens"], counts["completion_tokens"]
         c = self.config
-        return prompt * c.price_input_per_token + completion * c.price_output_per_token
+        return (
+            None if prompt is None else prompt * c.price_input_per_token,
+            None if completion is None else completion * c.price_output_per_token,
+        )
+
+    def usage_cost(self, usage) -> Decimal | None:
+        """The cost of complete, valid usage; None if either count is unknown."""
+        prompt, completion = self.component_costs(usage)
+        return None if prompt is None or completion is None else prompt + completion
 
     # -- the request --------------------------------------------------------------------------
     def complete(self, request: ModelRequest) -> ModelReply:
@@ -160,41 +203,51 @@ class NebiusClient:
         return self._reply(data, request_id)
 
     def _reply(self, data, request_id) -> ModelReply:
-        usage = {}
-        if getattr(data, "usage", None) is not None:
-            u = data.usage
-            usage = {
-                "prompt_tokens": getattr(u, "prompt_tokens", None),
-                "completion_tokens": getattr(u, "completion_tokens", None),
-                "total_tokens": getattr(u, "total_tokens", None),
-            }
-        choices = getattr(data, "choices", None) or []
-        if len(choices) != 1:
+        # 1. Usage first: nothing below sees an unvalidated count.
+        usage, invalid = sanitize_usage(getattr(data, "usage", None))
+        if invalid:
             raise ModelError(
-                "unexpected number of choices", code="bad_response", usage=usage
+                "reported usage is invalid",
+                code="invalid_usage",
+                usage=usage,
+                invalid_fields=invalid,
             )
-        prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
-        over = (isinstance(prompt, int) and prompt > self.config.max_input_tokens) or (
-            isinstance(completion, int)
-            and completion > self.config.max_completion_tokens
-        )
-        if over:
+        c = self.config
+        prompt, completion = usage["prompt_tokens"], usage["completion_tokens"]
+        if (prompt is not None and prompt > c.max_input_tokens) or (
+            completion is not None and completion > c.max_completion_tokens
+        ):
             raise ModelError(
                 "reported usage exceeds a configured ceiling",
                 code="usage_over_ceiling",
                 usage=usage,
             )
+        choices = getattr(data, "choices", None)
+        if not isinstance(choices, list) or len(choices) != 1:
+            raise ModelError(
+                "unexpected number of choices", code="bad_response", usage=usage
+            )
         choice = choices[0]
-        message = getattr(choice, "message", None)
-        content = getattr(message, "content", None)
+        content = getattr(getattr(choice, "message", None), "content", None)
+        # 2. Provider-reported identifiers: kept only if plain and free of the key.
+        secret = self._sdk.api_key
+        withheld = []
+        safe_request_id = safe_identifier(request_id, secret)
+        if request_id is not None and safe_request_id is None:
+            withheld.append("request_id")
+        served = getattr(data, "model", None)
+        safe_served = safe_identifier(served, secret)
+        if served is not None and safe_served is None:
+            withheld.append("served_model")
         return ModelReply(
             content=content if isinstance(content, str) else None,
-            finish_reason=getattr(choice, "finish_reason", None),
-            model_id=self.config.model_id,
+            finish_reason=safe_finish_reason(getattr(choice, "finish_reason", None)),
+            model_id=c.model_id,
             live=True,
             usage=usage,
-            request_id=request_id if isinstance(request_id, str) else None,
-            served_model=getattr(data, "model", None),
+            request_id=safe_request_id,
+            served_model=safe_served,
+            withheld=tuple(withheld),
         )
 
 

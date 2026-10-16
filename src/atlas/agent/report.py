@@ -11,7 +11,7 @@ The report only reads the original run; it never changes it.
 import json
 from pathlib import Path
 
-from atlas.agent.execute import CandidateResult
+from atlas.agent.execute import EXEC_DIR, NOT_RUN, CandidateResult
 from atlas.contracts import RunOutcome
 from atlas.policy import POLICY_VERSION
 from atlas.reports import sha256_file
@@ -24,6 +24,14 @@ MIXED_BASIS = (
     "the candidates."
 )
 DOCKER_BASIS = "Original and candidates all executed in the isolated Docker runner."
+DOCKER_PARTIAL_BASIS = (
+    "The original executed in the isolated Docker runner; {ran} of {total} candidates executed "
+    "there and the others were not executed (see each candidate's execution status)."
+)
+ORIGINAL_NOT_EXECUTED_BASIS = (
+    "The original was not executed (execution status: {status}): it ran neither in the Docker "
+    "runner nor on the host, so there is no executed baseline to compare against."
+)
 READING_GUIDE = [
     "Execution status says whether the candidate ran, and how it ended, in the isolated runner.",
     (
@@ -70,11 +78,30 @@ def _evidence(run_dir: Path) -> dict[str, str]:
 
 
 def _execution(run_dir: Path) -> dict:
-    try:
-        record = json.loads((run_dir / "execution.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return record if isinstance(record, dict) else {}
+    """The run's execution record: the host-owned copy, else the Docker runner's own record
+    (present when the runner refused to start), else {} (no record: nothing is known to have
+    run)."""
+    for path in (run_dir / "execution.json", run_dir / EXEC_DIR / "execution.json"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict):
+            return record
+    return {}
+
+
+def _basis(original_execution: dict, candidates: list[CandidateResult]) -> str:
+    """The comparison basis, from observed execution only (never from a runner label alone)."""
+    status = original_execution.get("status")
+    if not original_execution or status in NOT_RUN:
+        return ORIGINAL_NOT_EXECUTED_BASIS.format(status=status or "no record")
+    if original_execution.get("runner") != dr.RUNNER_NAME:
+        return MIXED_BASIS
+    ran = sum(1 for c in candidates if c.evaluated)
+    if ran == len(candidates):
+        return DOCKER_BASIS
+    return DOCKER_PARTIAL_BASIS.format(ran=ran, total=len(candidates))
 
 
 def _limitations(run_dir: Path) -> list:
@@ -91,7 +118,7 @@ def comparison_report(
     original_run_dir = Path(original_run_dir)
     original_execution = _execution(original_run_dir)
     original_runner = original_execution.get("runner")
-    basis = DOCKER_BASIS if original_runner == dr.RUNNER_NAME else MIXED_BASIS
+    basis = _basis(original_execution, candidates)
     original_status = {a.assertion_id: a.status for a in original.assertions}
     entries = []
     for c in candidates:
@@ -132,6 +159,9 @@ def comparison_report(
         "reading_guide": READING_GUIDE,
         "original": {
             "runner": original_runner,
+            "executed": bool(original_execution)
+            and original_execution.get("status") not in NOT_RUN,
+            "execution_status": original_execution.get("status"),
             "capability": original_execution.get("capability"),
             "scientific_outcome": original.outcome,
             "outcome_reason": original.reason,

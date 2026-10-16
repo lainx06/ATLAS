@@ -98,7 +98,8 @@ def _agent(args) -> int:
     if result.reason:
         print(f"reason: {result.reason}")
     if result.original is not None:
-        print(f"original: {result.original.outcome.outcome} ({result.original.runner})")
+        where = result.original.runner if result.original.executed else "not executed"
+        print(f"original: {result.original.outcome.outcome} ({where})")
     for c in result.candidates:
         print(
             f"candidate {c.candidate_hash[:12]}: execution {c.execution.get('status')}, "

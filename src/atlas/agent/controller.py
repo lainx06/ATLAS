@@ -55,11 +55,15 @@ from atlas.agent.budget import (
     CostLedger,
 )
 from atlas.agent.client import (
+    USAGE_FIELDS,
     LiveModeUnavailable,
     ModelError,
     ModelRequest,
     TransientModelError,
     require_fixture_mode,
+    safe_finish_reason,
+    safe_identifier,
+    sanitize_usage,
 )
 from atlas.agent.execute import CandidateResult
 from atlas.agent.network import deny_network
@@ -150,11 +154,16 @@ class AgentResult:
 
 @dataclass
 class OriginalRun:
-    """The original's evaluation: `run_dir` holds its trusted outputs (`outcome.json`, checks)."""
+    """The original's evaluation: `run_dir` holds its trusted outputs (`outcome.json`, checks).
+
+    `runner` is the runner that was selected; `executed` says whether the code actually ran
+    there. Report prose is generated from `executed` and the execution status, never from the
+    selected runner alone."""
 
     run_dir: Path
     outcome: object
     runner: str
+    executed: bool
     execution: dict = field(default_factory=dict)
 
 
@@ -430,6 +439,7 @@ class _Run:
             run_dir=result.candidate_dir,
             outcome=result.outcome,
             runner="docker_isolated",
+            executed=result.evaluated,  # False: refused or not executed, nothing ran
             execution=dict(result.execution),
         )
         if not result.evaluated:
@@ -555,10 +565,18 @@ class _Run:
             try:
                 reply = self.client.complete(request)
             except ModelError as exc:
-                self.ledger.settle(attempt, exc.usage, dispatched=exc.dispatched)
+                # Only validated counts reach the ledger and the log (any client's error).
+                usage, invalid = sanitize_usage(exc.usage)
+                invalid = sorted(
+                    set(invalid) | {f for f in exc.invalid_fields if f in USAGE_FIELDS}
+                )
+                self.ledger.settle(attempt, usage, dispatched=exc.dispatched)
                 if not isinstance(exc, TransientModelError):
-                    self.log({**entry, "elapsed_s": _since(t0), "result": exc.code,
-                              "usage": exc.usage})  # fmt: skip
+                    record = {**entry, "elapsed_s": _since(t0), "result": exc.code,
+                              "usage": usage}  # fmt: skip
+                    if invalid:
+                        record["invalid_usage_fields"] = invalid
+                    self.log(record)
                     raise _Terminal(ERROR, exc.code) from None
                 self.log(
                     {
@@ -586,16 +604,33 @@ class _Run:
                      "detail": type(exc).__name__}
                 )  # fmt: skip
                 raise _Terminal(ERROR, f"client_error: {type(exc).__name__}") from None
-            self.ledger.settle(attempt, reply.usage, dispatched=True)
+            # Reply metadata is checked before accounting, logging or any action: invalid
+            # usage counts as unknown (conservative) and ends the run; provider identifiers
+            # that are not short plain identifiers are withheld, never logged.
+            usage, invalid = sanitize_usage(reply.usage)
+            self.ledger.settle(attempt, usage, dispatched=True)
+            served_model = safe_identifier(reply.served_model)
+            request_id = safe_identifier(reply.request_id)
+            withheld = set(reply.withheld) & {"request_id", "served_model"}
+            if reply.served_model is not None and served_model is None:
+                withheld.add("served_model")
+            if reply.request_id is not None and request_id is None:
+                withheld.add("request_id")
             entry.update(
                 elapsed_s=_since(t0),
-                served_model=reply.served_model,
-                request_id=reply.request_id,
-                usage=reply.usage,
-                finish_reason=reply.finish_reason,
+                served_model=served_model,
+                request_id=request_id,
+                usage=usage,
+                finish_reason=safe_finish_reason(reply.finish_reason),
                 reply_model_id=reply.model_id,
                 reply_live=reply.live,
             )
+            if withheld:
+                entry["withheld_fields"] = sorted(withheld)
+            if invalid:
+                self.log({**entry, "result": "invalid_usage",
+                          "invalid_usage_fields": list(invalid)})  # fmt: skip
+                raise _Terminal(ERROR, "invalid_usage")
             # A reply that returns after the active-time ceiling is not consumed: no action,
             # not even finish. (A request already in progress is not interrupted here; the
             # transport's own timeout bounds it.)
@@ -814,22 +849,53 @@ class _Run:
             items.append(
                 "Fixture responses only: this run says nothing about a real model's behavior."
             )
-        runner = getattr(self.original, "runner", None) if self.original else None
-        if runner == "docker_isolated":
-            items.append(
-                "The original and every candidate executed in the isolated Docker runner after "
-                "explicit authorization; the same trusted evaluator judged both."
-            )
-        elif self.original is not None:
-            other = runner or "trusted host fixture"
-            items.append(
-                f"The original was evaluated by another runner ({other}) than the Docker "
-                "candidates; the comparison mixes runners."
-            )
-        items.append(
-            "Container evidence is produced inside the executed code's process; the evaluator "
-            "checks its consistency, not its authenticity."
+        # Execution claims follow what was observed (`executed`, execution status), never the
+        # selected runner alone.
+        original = self.original
+        if original is not None:
+            if not original.executed:
+                status = original.execution.get("status") or "unknown"
+                items.append(
+                    f"The original was not executed (execution status: {status}): it ran "
+                    "neither in the Docker runner nor on the host, so there is no executed "
+                    "baseline and its required assertions are NOT_ASSESSED (not_executed)."
+                )
+            elif original.runner == "docker_isolated":
+                items.append(
+                    "The original executed in the isolated Docker runner after explicit "
+                    "authorization."
+                )
+            else:
+                items.append(
+                    f"The original was evaluated by another runner ({original.runner}) than "
+                    "the Docker candidates; the comparison mixes runners."
+                )
+        if self.candidates:
+            ran = sum(1 for c in self.candidates if c.evaluated)
+            total = len(self.candidates)
+            if ran == total:
+                items.append(
+                    f"Every candidate ({total}) executed in the isolated Docker runner after "
+                    "explicit authorization."
+                )
+            else:
+                items.append(
+                    f"{ran} of {total} candidates executed in the isolated Docker runner; the "
+                    "others were not executed (see each candidate's execution status)."
+                )
+            if ran and original is not None and original.executed:
+                items.append(
+                    "The same trusted evaluator judged the original and each executed "
+                    "candidate."
+                )
+        executed_any = (original is not None and original.executed) or any(
+            c.evaluated for c in self.candidates
         )
+        if executed_any:
+            items.append(
+                "Container evidence is produced inside the executed code's process; the "
+                "evaluator checks its consistency, not its authenticity."
+            )
         return items
 
     def _minimal_report(

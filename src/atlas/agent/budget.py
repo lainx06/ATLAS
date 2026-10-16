@@ -15,6 +15,7 @@ is recorded with every attempt and is not a reviewed or enforced spending ceilin
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
+from decimal import Decimal
 
 MAX_ATTEMPTS = 6
 MAX_RETRIES_PER_CALL = 1
@@ -130,28 +131,54 @@ class Budget:
         }
 
 
+def _usd(amount: Decimal) -> str:
+    """Fixed-point text, never exponent notation such as 0E-7."""
+    return format(amount, "f")
+
+
+UNRESOLVED_NOTE = (
+    "Unresolved amounts are estimates from the configured ceilings, not a guaranteed maximum "
+    "charge: the input ceiling is enforced before sending only by an unverified token "
+    "estimate, so a provider could report more."
+)
+
+
 class CostLedger:
-    """Conservative per-run cost accounting at listed prices (DECISIONS.md 2026-10-15).
+    """Per-run cost accounting at listed prices (DECISIONS.md 2026-10-15).
 
     Before a request is dispatched, its ceiling cost (both token ceilings at listed prices) is
-    reserved. A reply with complete usage settles it at the usage cost. A dispatched request whose
-    usage is unknown (timeout, connection failure, missing usage) keeps the full ceiling
-    reserved; only a request refused before sending is released. Fixture clients have no provider
-    cost. This is accounting, not spending authorization: the $0.051 planning estimate authorizes
-    nothing.
+    reserved. After it, each **validated known** usage count is charged at its listed price,
+    even above its ceiling (known actual usage is never capped at an estimate). Each unknown
+    count (timeout, connection failure, missing or invalid usage) is reserved at its component
+    ceiling, and an entry with any unknown count never drops below the original reservation.
+    Only a request refused before sending is released. Fixture clients have no provider cost.
+
+    `known_usd` is reported usage at listed prices. `unresolved_usd` is the estimate held for
+    unknown counts; it is not a guaranteed maximum (UNRESOLVED_NOTE). This is accounting, not
+    spending authorization: the $0.051 planning estimate authorizes nothing.
     """
 
     def __init__(self, client):
         ceiling = getattr(client, "ceiling_cost", None)
         self.applicable = callable(ceiling)
+        if self.applicable and not all(
+            callable(getattr(client, name, None))
+            for name in ("component_costs", "component_ceilings")
+        ):
+            raise TypeError("a priced client must provide component costs and ceilings")
         self.ceiling = ceiling() if self.applicable else None
-        self._usage_cost = getattr(client, "usage_cost", None)
+        self._client = client
         self.entries: list[dict] = []
 
     def reserve(self, attempt: int) -> None:
         if self.applicable:
             self.entries.append(
-                {"attempt": attempt, "status": "reserved", "usd": self.ceiling}
+                {
+                    "attempt": attempt,
+                    "status": "reserved",
+                    "known_usd": Decimal(0),
+                    "unresolved_usd": self.ceiling,
+                }
             )
 
     def settle(self, attempt: int, usage, dispatched: bool) -> None:
@@ -159,13 +186,26 @@ class CostLedger:
             return
         entry = next(e for e in self.entries if e["attempt"] == attempt)
         if not dispatched:
-            entry.update(status="released", usd=0)
+            entry.update(
+                status="released", known_usd=Decimal(0), unresolved_usd=Decimal(0)
+            )
             return
-        cost = self._usage_cost(usage) if isinstance(usage, dict) and usage else None
-        if cost is None:
-            entry.update(status="unknown_usage")  # the ceiling stays reserved
-        else:
-            entry.update(status="settled", usd=cost)
+        # component_costs validates the counts itself: invalid ones count as unknown.
+        costs = self._client.component_costs(usage)
+        ceilings = self._client.component_ceilings()
+        known = sum((c for c in costs if c is not None), Decimal(0))
+        if None not in costs:
+            entry.update(status="settled", known_usd=known, unresolved_usd=Decimal(0))
+            return
+        held = sum((m for c, m in zip(costs, ceilings) if c is None), Decimal(0))
+        total = max(self.ceiling, known + held)  # never below the original reservation
+        entry.update(
+            status="partial_usage"
+            if any(c is not None for c in costs)
+            else "unknown_usage",
+            known_usd=known,
+            unresolved_usd=total - known,
+        )
 
     def summary(self) -> dict:
         if not self.applicable:
@@ -173,14 +213,29 @@ class CostLedger:
                 "applicable": False,
                 "reason": "fixture replies: no provider request",
             }
+        known = sum((e["known_usd"] for e in self.entries), Decimal(0))
+        unresolved = sum((e["unresolved_usd"] for e in self.entries), Decimal(0))
         return {
             "applicable": True,
-            "basis": "listed prices from configuration; ceiling cost kept when usage is unknown",
-            "ceiling_per_request_usd": str(self.ceiling),
-            "conservative_total_usd": str(sum(e["usd"] for e in self.entries)),
-            "unknown_usage_attempts": sum(
-                e["status"] == "unknown_usage" for e in self.entries
+            "basis": (
+                "validated reported usage at listed prices; each unknown count held at its "
+                "configured ceiling, never below the request's original reservation"
             ),
-            "entries": [{**e, "usd": str(e["usd"])} for e in self.entries],
+            "ceiling_per_request_usd": _usd(self.ceiling),
+            "known_usd": _usd(known),
+            "unresolved_usd": _usd(unresolved),
+            "estimated_total_usd": _usd(known + unresolved),
+            "unknown_usage_attempts": sum(
+                e["status"] in ("unknown_usage", "partial_usage") for e in self.entries
+            ),
+            "entries": [
+                {
+                    **e,
+                    "known_usd": _usd(e["known_usd"]),
+                    "unresolved_usd": _usd(e["unresolved_usd"]),
+                }
+                for e in self.entries
+            ],
+            "unresolved_note": UNRESOLVED_NOTE,
             "note": "accounting only; not a spending authorization",
         }

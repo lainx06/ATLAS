@@ -113,7 +113,10 @@ def host_fixture_original(run):
     except trusted.UntrustedFixtureError as exc:
         raise ctl._Terminal(ctl.NOT_SUPPORTED, str(exc)) from None
     return ctl.OriginalRun(
-        run_dir=result.run_dir, outcome=result.outcome, runner=trusted.RUNNER_NAME
+        run_dir=result.run_dir,
+        outcome=result.outcome,
+        runner=trusted.RUNNER_NAME,
+        executed=True,
     )
 
 

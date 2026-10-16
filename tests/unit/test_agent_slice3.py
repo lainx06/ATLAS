@@ -121,7 +121,10 @@ def host_fixture_original(run):
     run.enter("CHECK", "test-only host-fixture baseline")
     result = audit(run.project, run.runs_root)
     return ctl.OriginalRun(
-        run_dir=result.run_dir, outcome=result.outcome, runner=trusted.RUNNER_NAME
+        run_dir=result.run_dir,
+        outcome=result.outcome,
+        runner=trusted.RUNNER_NAME,
+        executed=True,
     )
 
 
@@ -382,7 +385,9 @@ def test_unexpected_choices_are_rejected_and_missing_usage_is_unknown():
     assert raised.value.code == "bad_response"
     c, _ = client([(200, ok_body(FINISH, None))])
     reply = c.complete(ModelRequest(MESSAGES, {}))
-    assert reply.usage == {} and c.usage_cost(reply.usage) is None
+    assert set(reply.usage.values()) == {None}  # every count unknown
+    assert c.usage_cost(reply.usage) is None
+    assert c.component_costs(reply.usage) == (None, None)
 
 
 def test_cost_figures_follow_the_configured_prices():
@@ -466,8 +471,8 @@ def test_a_mocked_live_run_reports_live_and_settles_cost(tmp_path):
     )
     cost = report["cost"]
     per = Decimal("0.0003") + Decimal("0.00018")
-    assert Decimal(cost["conservative_total_usd"]) == 2 * per
-    assert cost["unknown_usage_attempts"] == 0
+    assert Decimal(cost["known_usd"]) == Decimal(cost["estimated_total_usd"]) == 2 * per
+    assert Decimal(cost["unresolved_usd"]) == 0 and cost["unknown_usage_attempts"] == 0
     assert "not a spending authorization" in cost["note"]
     attempts = [
         json.loads(x)
@@ -499,7 +504,9 @@ def test_timeouts_keep_the_ceiling_reserved_and_end_after_one_retry(tmp_path):
     cost = result.report["cost"]
     ceiling = Decimal(cost["ceiling_per_request_usd"])
     assert cost["unknown_usage_attempts"] == 2
-    assert Decimal(cost["conservative_total_usd"]) == 2 * ceiling
+    assert Decimal(cost["unresolved_usd"]) == Decimal(cost["estimated_total_usd"])
+    assert Decimal(cost["estimated_total_usd"]) == 2 * ceiling
+    assert "not a guaranteed maximum" in cost["unresolved_note"]
     assert KEY not in json.dumps(result.report)
 
 
@@ -549,9 +556,9 @@ def test_usage_above_the_ceiling_ends_the_run_and_is_charged(tmp_path):
     assert result.terminal_state == ctl.ERROR and result.reason == "usage_over_ceiling"
     (entry,) = result.report["cost"]["entries"]
     assert entry["status"] == "settled"
-    assert Decimal(entry["usd"]) == 10 * Decimal("0.0000003") + 9_000 * Decimal(
-        "0.0000009"
-    )
+    assert Decimal(entry["unresolved_usd"]) == 0 and Decimal(
+        entry["known_usd"]
+    ) == 10 * Decimal("0.0000003") + 9_000 * Decimal("0.0000009")
 
 
 def test_a_reporting_failure_in_a_live_run_is_finalized(tmp_path, monkeypatch):
@@ -655,10 +662,12 @@ def test_original_and_candidate_both_run_in_docker_after_authorization(
     assert report["comparison"]["comparison_basis"].startswith(
         "Original and candidates all executed"
     )
-    assert any(
-        "original and every candidate executed in the isolated Docker" in x
-        for x in report["limitations"]
+    limitations = report["limitations"]
+    assert "The original executed in the isolated Docker runner" in " ".join(
+        limitations
     )
+    assert any("Every candidate (1) executed" in x for x in limitations)
+    assert report["comparison"]["original"]["executed"] is True
     states = [s["state"] for s in report["states"]]
     assert states.index("APPROVAL") < states.index("CHECK") < states.index("MODEL")
 
