@@ -56,6 +56,72 @@ Full hosted execution would have to meet the actual contract (SPEC §10; T-05): 
 
 Bounded conclusion (**proposed**): do not pursue full hosted execution for the submission; the local build demonstrates patch execution (SPEC §13). This note does not design an execution platform.
 
+### 3a. One separate-worker option: a DigitalOcean Droplet (documentation only, 2026-10-16)
+
+A bounded check of the one unanswered part of the isolated-worker question: the cost and delivery time of a separate worker. **Limited hosted remains the V1 mode** (DECISIONS.md 2026-10-16), and full hosted is a stretch goal. Nothing was created, no account was opened, and nothing was spent or called. All sources were fetched 2026-10-16 (§10).
+
+**A VM that runs Docker does not establish compliance with the isolation contract** (SPEC §10). The VM only provides a Linux Docker host. Whether a worker on it meets the contract is shown only by running the T-05 contract suite there, plus a security review of the new service. T-05 was accepted on the Windows / Docker Desktop host only.
+
+**Smallest suitable configuration (proposed, untested).** The runner gives each candidate container 1 GiB of memory (no swap), 1 CPU and 128 processes (`DEFAULT_LIMITS`, `src/atlas/runner/docker.py`). The host also needs memory for the OS, the Docker daemon and the worker service.
+- The 1 GiB plan cannot hold a 1 GiB container plus the host, so it is excluded.
+- The smallest plausible plan is **Basic Regular, 2 GiB, 1 vCPU**. On 1 vCPU, `--cpus 1` leaves the daemon and worker competing with the candidate for the same CPU.
+- **4 GiB, 2 vCPU** is the more comfortable choice.
+
+Neither has been measured.
+
+| Item | Fact | Label and source |
+| --- | --- | --- |
+| Plan, 2 GiB | 1 vCPU, 2 GiB, 50 GiB SSD, 2,000 GiB transfer; **$12.00/month, $0.01786/hour** | documented (Droplet pricing page) |
+| Plan, 4 GiB | 2 vCPUs, 4 GiB, 80 GiB SSD, 4,000 GiB transfer; **$24.00/month, $0.03571/hour** | documented (same) |
+| Docker | A Docker 1-Click image: Ubuntu 22.04 with Docker Engine and Docker Compose preinstalled. Docker version "latest"; no minimum size or firewall defaults stated | documented (Marketplace listing, no date shown) |
+| Billing granularity | "billed per second with a minimum charge of 60 seconds or $0.01, whichever is higher"; per-second billing since 1 January 2026 | documented (Droplet pricing docs, last verified 25 Aug 2026; pricing page) |
+| Monthly cap | Bundled-plan CPU Droplets are capped at **672 hours (28 days)** per month; v5 Droplets have no cap | documented. **The docs do not say which category the Basic plans are.** The listed monthly price equals 672 × the hourly price ($0.01786 × 672 = $12.00), which suggests the cap applies. That is an inference, so the estimate below also gives the uncapped figure |
+| Powered off | Still billed: "compute resources stay reserved". Only destroying the Droplet stops billing | documented (Droplet pricing docs) |
+| Included | A public IPv4 address; inbound transfer free | documented (pricing page) |
+| Extra charges | Outbound transfer beyond the team's pooled allowance $0.01/GiB (docs last verified 14 Sep 2026); snapshots $0.06/GB-month; backups 20% (weekly) or 30% (daily) of the Droplet price | documented. None is assumed below |
+| Taxes | "We're required by law to apply taxes in some countries" | documented; **whether tax applies to this account is unknown** |
+| Provisioning restrictions | "You must have a valid payment method associated with your default team to ... create resources" (Team limits, last verified 30 Sep 2026). Teams have a Droplet limit, raised on request, by prepayment or by payment history (search summary of DigitalOcean docs) | documented. **The default limit for a new account and any identity verification are not stated** on the pages read |
+| Provisioning time | Not stated for standard Droplets on the pages read (GPU Droplets are said to take longer) | **unknown** |
+
+**Hosting cost through 15 December (estimate, arithmetic only).** Assumptions:
+- created at 00:00 UTC on the start date, running **24 hours a day**, destroyed at 2026-12-16 00:00 UTC;
+- billed per calendar month;
+- no transfer overage, snapshots, backups or tax.
+
+| Start, uptime | October | November | December 1–15 | **Total, 2 GiB** | **Total, 4 GiB** |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-19, 24/7 (1,392 h) | 312 h | 720 h, capped at 672 h if the cap applies | 360 h | **$24.00** (uncapped: $24.86) | **$48.00** (uncapped: $49.71) |
+| 2026-11-01, 24/7 (1,080 h) | none | as above | 360 h | **$18.43** (uncapped: $19.29) | **$36.86** (uncapped: $38.57) |
+
+Against the $20 hosting planning allowance (not an authorization):
+- With a start on 19 October, both sizes exceed it.
+- The 2 GiB plan fits only with a 1 November start, and the hosting is not authorized in either case.
+- An account with DigitalOcean would be a new billing relationship, which needs explicit approval.
+
+Running the worker only during judging windows would cost less but adds re-provisioning each time.
+
+**Delivery time: two separate things.**
+1. **Provider provisioning** (account, payment method, a Droplet from the Docker image) is **not established**. The docs give no creation time for standard Droplets or any default limit for new accounts. It is not part of the estimate below.
+2. **Our implementation and verification effort.** This is a rough builder estimate, **not a demonstrated delivery time**:
+
+   | Work | Rough effort | Assumption |
+   | --- | --- | --- |
+   | Worker service wrapping `execute_and_reevaluate` (receive the approved candidate and approval record, run the T-05 runner, return the evidence) | 1–2 days | The existing T-06 local path is reused unchanged |
+   | Authentication between the Streamlit app and the worker, TLS, and failing closed to limited mode on any worker error | 1–2 days | Server-to-server shared secret; no browser access to the worker |
+   | Host setup and hardening: Docker daemon not exposed, firewall, updates, no credentials reachable by candidates | 0.5–1 day | The Docker image is a starting point, not a hardened host |
+   | Re-verifying the T-05 contract suite on Linux Docker Engine, and fixing platform differences | 1–3 days | T-05 was accepted only on Windows / Docker Desktop. Differences (cgroups, user namespaces, paths) are possible but unknown |
+   | Codex security review of the new service and repair passes | 2–5 days elapsed | This project's history: T-05 needed two repair passes, T-06 slice 2 needed four |
+
+   That totals about **5.5–13 working days** before any acceptance, competing with T-07 to T-13 before 15 December. The figure carries the uncertainty of every row.
+
+**What this settles and what it does not:**
+- **Settles:** one plausible worker host exists, with dated official prices, billing rules and a preinstalled Docker image.
+- **Does not settle:**
+  - that a worker there meets the isolation contract;
+  - how long provisioning takes, the new-account limits and the tax;
+  - whether the 672-hour cap applies to these plans;
+  - our delivery time, which is estimated, not observed.
+
 ## 4. Costs
 
 ### 4.1 Verified current model price
@@ -426,7 +492,7 @@ T-03 requires each open check answered by a dated source or an observed test. An
 | Nebius promotional credit amount, arrival and **expiry** relative to 15 Dec 2026 | Amount and arrival: $50 awarded (user-reported); balance $50.00 on the owner's billing view. Expiry: **unknown**, handled under criterion 3 | Owner's screenshot, 2026-10-15 (§6); Builder terms, fetched 2026-10-15 | Yes for amount and arrival; expiry under criterion 3 |
 | Per-token prices for the selected model; cost per bounded demo run | $0.30 / $0.90 per 1M tokens. About $0.021 per normal run and $0.051 worst case at the **proposed** per-stage ceilings | Authenticated `GET /models`, 2026-10-14 (observed); `hosting_probe/cost_calc.py`, 2026-10-15 | Yes, as a dated estimate. The per-call ceilings themselves are an open T-06 lead decision (per-stage $0.051 vs. uniform $0.0648), so the run cost is not yet a configured figure |
 | Cost and reliability of keeping judging access available through 15 Dec (plan limits, sleep/cold-start) | Hosting $0; 12-hour sleep; one observed wake in about 23–24 s; plan accepted with fallbacks, no uptime guarantee | Streamlit docs, 2026-10-15; observation 2026-10-16 (§7a); lead decision 3 | Yes. Reliability is answered by documentation plus one observation, not by a long-term test |
-| Whether a candidate host can run a separately isolated worker meeting the execution contract; its cost and delivery time | Community Cloud: no supported route (documented absence). HF Docker Space: documented constraints, not demonstrated. Separate worker VM: not demonstrated, and **its cost and delivery time were not researched** | Docs fetched 2026-10-15 (§3); lead decision 1 | **Partly.** Answered for the two hosts considered. For a separate worker, cost and delivery time are recorded as unknown, not answered. Q5 adopts full hosted only "if demonstrated", so the V1 decision does not depend on them, and decision 1 makes it a stretch goal. See the readiness note below |
+| Whether a candidate host can run a separately isolated worker meeting the execution contract; its cost and delivery time | **Community Cloud:** no supported route (documented absence). **HF Docker Space:** documented constraints; not demonstrated. **Separate worker on a DigitalOcean Droplet (§3a):** the 2 GiB / 4 GiB plans at $12 / $24 a month, about $24.00 / $48.00 from 19 Oct to 15 Dec at 24/7. Contract compliance is **not demonstrated**: a VM with Docker does not establish it. Provider provisioning time is **unknown**; our effort is a rough estimate of about 5.5–13 working days, not demonstrated | Docs fetched 2026-10-15 (§3) and 2026-10-16 (§3a); lead decision 1 | **Yes, as a documentation-level answer.** Cost is now answered by dated sources. Whether the contract is met is answered as "not demonstrated"; only an observed test could show it. Delivery time is split into an unknown provisioning time and a labelled estimate |
 | Judge-access route or reserved capacity, and the restoration procedure when budgets run out | Private judge code checked server-side with a separate judge pool; restoration by the owner raising a cap (needs spending approval) | Design, 2026-10-15 (§5); the probe's code gate and reservation primitives observed on the host, 2026-10-16 (§5b); lead decision 4 | Yes, for planning scope. Not built |
 | Server-side cost-control implementation (per-session, per-route, daily caps) and how exhaustion is shown | Reserve-before-call on Neon with atomic conditional updates; on exhaustion, labelled recorded examples, then "Unavailable" | Design (§5, §5a); five scenarios observed on Neon 18, 2026-10-16 (§5b); lead decisions 2 and 4 | Yes, for planning scope. Implementation and verification are T-12/T-06 work |
 
@@ -436,12 +502,20 @@ T-03 requires each open check answered by a dated source or an observed test. An
 
 **Moved to T-12, not T-03 criteria:** Nebius connectivity from the host (stage B) and the full locked-environment build on the host (stage C). Both must be tested before the hosted app is declared ready (decision 6).
 
-**Readiness (builder's assessment, 2026-10-16):** T-03 is ready for the lead's acceptance decision within its research-and-feasibility scope, with one residue the lead must judge. Criteria 2 and 3 are met as written. Criterion 1 is met for every open check except one: the cost and delivery time of a separate isolated worker are recorded as unknown, not answered. The criterion is not reworded to cover that. Accepting T-03 therefore means the lead judges the residue acceptable because full hosted is a stretch goal; the alternative is a short, documentation-only price search before acceptance. **T-03 is not accepted.**
+**Readiness (builder's assessment, 2026-10-16, after the worker check in §3a):** criteria 1, 2 and 3 are met as written. Each open check now has a dated source or an observed test, with every remaining unknown labelled as such. The criteria were not changed. T-03 is ready for the lead's acceptance decision within its research-and-feasibility scope. Remaining uncertainty is recorded, not resolved:
+- isolation-contract compliance of any hosted worker, which only an observed test could show;
+- the provider's provisioning time and new-account limits;
+- tax, and whether the 672-hour cap applies;
+- our delivery time, which is an estimate;
+- the credit expiry and eligibility.
 
-## 10. Sources (all fetched 2026-10-15)
+**T-03 is not accepted.**
+
+## 10. Sources (fetched 2026-10-15 unless marked)
 
 - Streamlit: [Status and limitations](https://docs.streamlit.io/deploy/streamlit-community-cloud/status) (supported Python versions, private repos: deploy key, `repo` scope, admin permission); [Share your app](https://docs.streamlit.io/deploy/streamlit-community-cloud/share-your-app) and [share apps with viewers outside an organization](https://docs.streamlit.io/knowledge-base/deploy/share-apps-with-viewers-outside-organization) (private by default; one private app; public toggle independent of the repo); [App dependencies](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies) (`uv.lock` first); [Manage your app](https://docs.streamlit.io/deploy/streamlit-community-cloud/manage-your-app) (12-hour sleep, Feb 2024 resource figures, restarts); [Secrets management](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management) (seen through a search summary, not fetched directly: its page URL returned 404).
 - Hugging Face: [Spaces overview](https://huggingface.co/docs/hub/spaces-overview) (visibility, plans, hardware, secrets, networking, lifecycle); [Docker Spaces](https://huggingface.co/docs/hub/spaces-sdks-docker) (user ID 1000, secrets, persistence); [Pricing](https://huggingface.co/pricing) (PRO $9/month).
 - Nebius: [Builder Program terms](https://nebius.com/builders-terms-and-conditions) (credit amounts, 90-day expiry, use restrictions); [Token Factory billing](https://docs.tokenfactory.nebius.com/other-capabilities/billing-new) (trial credit, usage tab, negative-balance charging); [promo codes](https://docs.nebius.com/signup-billing/payments/promo-codes). Price: the project's own authenticated `GET /models` on 2026-10-14 (local, git-ignored).
+- DigitalOcean (all fetched 2026-10-16): [Droplet pricing](https://www.digitalocean.com/pricing/droplets) (plans, hourly and monthly prices, per-second billing from 1 January 2026, IPv4, snapshots, backups, taxes); [Droplet pricing docs](https://docs.digitalocean.com/products/droplets/details/pricing/) (per-second billing, 60-second/$0.01 minimum, 672-hour cap for bundled plans, powered-off billing; last verified 25 Aug 2026); [Bandwidth billing](https://docs.digitalocean.com/platform/billing/bandwidth/) ($0.01/GiB overage, pooled allowance; last verified 14 Sep 2026); [Team limits](https://docs.digitalocean.com/platform/teams/limits/) (payment method required; last verified 30 Sep 2026); [Docker 1-Click](https://marketplace.digitalocean.com/apps/docker) (Ubuntu 22.04, Docker Engine and Compose; no date shown). The Droplet-limit and prepayment details come from a search summary of DigitalOcean's docs, not a page read in full.
 - Project: SPEC §10, §11, §13; DECISIONS.md "Open hosting and access checks"; playbook §22.5; docs/SUBMISSION_CHECKLIST.md; TASKS.md T-05.
 - Calculation: `hosting_probe/cost_calc.py` (committed; arithmetic only, no API calls).
