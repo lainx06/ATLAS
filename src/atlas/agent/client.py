@@ -20,10 +20,22 @@ MODE_ENV = "ATLAS_MODEL_MODE"
 
 
 class ModelError(Exception):
-    """A request that produced no usable reply."""
+    """A request that produced no usable reply.
+
+    `dispatched`: whether the request may have reached the provider (False only when it was
+    refused before sending); a dispatched request's cost stays reserved unless `usage` is
+    known. Messages are fixed text chosen here, never provider or SDK text.
+    """
 
     transient = False
     code = "model_error"
+
+    def __init__(self, message: str = "", *, code=None, dispatched=True, usage=None):
+        super().__init__(message or self.code)
+        if code is not None:
+            self.code = code
+        self.dispatched = dispatched
+        self.usage = usage
 
 
 class TransientModelError(ModelError):
@@ -55,6 +67,7 @@ class ModelReply:
     live: bool
     usage: dict = field(default_factory=dict)
     request_id: str | None = None
+    served_model: str | None = None  # the model the provider reports having used
 
 
 class ModelClient(Protocol):
@@ -62,6 +75,10 @@ class ModelClient(Protocol):
     live: bool
 
     def complete(self, request: ModelRequest) -> ModelReply: ...
+
+    # Optional (live clients): `check_request(request)` raises ModelError(dispatched=False)
+    # before anything is sent; `ceiling_cost()` and `usage_cost(usage)` return Decimal USD
+    # (None when usage is incomplete).
 
 
 _ERRORS = {
@@ -110,10 +127,10 @@ class FixtureClient:
 
 
 def require_fixture_mode(env=None) -> None:
-    """Refuse anything but fixture mode in this slice; never fall back to another mode."""
+    """Refuse anything but fixture mode; never fall back to another mode."""
     mode = (env if env is not None else os.environ).get(MODE_ENV, "fixture")
     if mode != "fixture":
         raise LiveModeUnavailable(
-            f"{MODE_ENV}={mode!r}: only fixture mode exists in T-06 slice 2; "
-            "live inference is not implemented or authorized"
+            f"{MODE_ENV}={mode!r}: live inference is not authorized in this build "
+            "(T-06 slice 4 needs explicit authorization); no fallback to fixture mode"
         )

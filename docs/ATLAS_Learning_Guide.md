@@ -41,7 +41,7 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-05 restricted runner | **Accepted at `eed73ee`** within its documented scope, after two repairs and Codex's independent verification of each. The documented limitations stand (section 7) | The runner's isolation contract on this host (28/28 contract tests with Docker required). It runs an approved candidate; it does not judge the result |
 | Candidate re-evaluation integration | **T-06 slice 1 implemented; Codex's review found three P2 defects; Codex verified the repairs (repair pass 2 at `1d58b20`, no remaining blocker), so slice 1 is independently verified within its documented scope; T-06 is not accepted.** An approved candidate runs in Docker, and the trusted evaluator re-evaluates the full required set from a *candidate view* whose trust is anchored outside the candidate's outputs (section 7). No model is involved yet | The builder's offline tests and four real Docker runs on `benchmarks/t01/s01_faulty`. Not independently verified |
 | Bounded agent controller (fixture replies) | **T-06 slice 2 implemented; Codex's review found four P2 defects; its verification of repair pass 1 found two more gaps; Codex's verification of repair pass 2 found one more finalization gap; repair pass 3 left one more gap (a first report-write failure); Codex verified repair pass 4 at `69042a1`, so slice 2 is independently verified within its documented scope; not accepted.** Strict one-action replies, 6 attempts including retries, an approval boundary, an in-process network guard for fixture runs (not a sandbox), every run labelled non-live | Offline tests and one real Docker run. No real model has been called by it |
-| Production model transport, CLI approval, live run | Planned (later T-06 slices; no inference authorized) | A smoke-test script is not a production agent |
+| Docker baseline, CLI approval, production model client | **T-06 slice 3 implemented and self-tested; awaiting Codex review; not accepted.** The original runs in Docker after a typed approval, like candidates; `--mode agent` with fixture replies; the Nebius client is tested only against a mocked transport | No real model request has been made by it. A live run (slice 4) needs separate authorization and two open ceiling decisions |
 | T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3), and the structural checks of that evidence (passes 4 and 5). **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope. The limitations stand | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | Memory comparison, real-data study, UI and hosted demo | Planned | Do not describe these as shipped |
 
@@ -235,6 +235,16 @@ action = parse_reply(reply.content).action  # the whole reply, or ReplyRejected
 **Counting attempts, not calls.** Six attempts per run, retries included. If attempts 1-5 succeed and attempt 6 times out, no seventh attempt may be sent to retry it, so the run ends `BUDGET_EXHAUSTED`. The attempt is reserved *before* the request is sent, because a request that times out may still have been processed (and billed) by the provider.
 
 **Who approves?** Not the model. A proposed diff is shown to an `Approver` object, a stand-in for the human; the candidate runs only with an approval bound to its exact hash. Without an approver the run stops at `NEEDS_INPUT`. Time spent waiting for the human is excluded from the 5-minute budget.
+
+**Slice 3: approval at the terminal, and Docker for the original too (self-tested, awaiting review).** `python -m atlas.cli audit benchmarks/t01/s01_faulty --mode agent --fixture-script script.json` first asks before running even the *unmodified* original: the original is code too, so it runs only in Docker, after you type the first 12 characters of its hash. Then the same for each candidate. A subtle point: the diff on screen is written by the model, and a terminal obeys control characters, so a diff containing `"\x1b[2J"` (clear screen) or a carriage return could hide what you are approving. `approval.inert()` prints every such character as a visible escape instead:
+
+```python
+from atlas.agent.approval import inert
+
+print(inert("ok\x1b[2J\rAPPROVED"))  # ok\x1b[2J\x0dAPPROVED
+```
+
+**Counting money when the answer never arrived.** If a request times out, the provider may still have processed (and billed) it. `budget.CostLedger` therefore reserves the most a request could cost *before* sending it, and keeps that amount whenever the real usage is unknown. That is why two timeouts in a row show twice the per-request ceiling in the report, even though no reply came back. The production client (`agent/nebius.py`) has only been exercised against a fake HTTP transport; its ceilings are deliberately left for the lead to set before any live run.
 
 **Accepted in T-05:** `validate_diff` in `src/atlas/candidates.py` accepts a proposal only as a unified diff of the one permitted entry-point file. A diff that touches the manifest, the table, the evaluator or a second file is rejected, so a proposal cannot change the evaluator to award itself a pass.
 
@@ -487,6 +497,7 @@ These were bounded reproductions. The review did not demonstrate a container esc
 | `src/atlas/docker_evidence.py` | Which container evidence does the evaluator trust, and why (T-06 slice 1)? |
 | `src/atlas/agent/execute.py`, `src/atlas/agent/report.py` | How does an approved candidate become a re-evaluated, reported result? |
 | `src/atlas/agent/controller.py`, `schemas.py`, `budget.py`, `client.py` | How does a (fixture) model reply become at most one bounded action (T-06 slice 2)? |
+| `src/atlas/agent/approval.py`, `src/atlas/agent/nebius.py`, `src/atlas/cli.py` | How are the original and candidates approved at the terminal, and how would a real model request be bounded and accounted (T-06 slice 3)? |
 | `scripts/nebius_smoke.py` | How does a bounded model request work? |
 | `benchmarks/t01/`, `benchmarks/t02/` | Which small synthetic fixtures demonstrate each rule? |
 | `tests/unit/`, `tests/integration/` | What behavior has executable evidence? |

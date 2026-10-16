@@ -3,8 +3,12 @@
 Most tests use a recording executor, so they test the controller's decisions, not execution.
 `test_end_to_end_through_the_slice_1_executor` drives the real slice 1 executor with the fake
 Docker harness of tests/unit/test_candidate_reevaluation.py; the real-Docker version is in
-tests/integration/test_agent_fixture_docker.py. The original is always audited for real by the
-trusted host-fixture runner (allowlisted s01_faulty).
+tests/integration/test_agent_fixture_docker.py.
+
+Baseline (slice 3): production agent mode runs the original in Docker after explicit
+authorization (tests/unit/test_agent_slice3.py). These tests are about the model loop, so an
+autouse fixture swaps in a **test-only** baseline: the trusted host-fixture audit of the
+allowlisted s01_faulty, run for real. Production code has no host baseline.
 """
 
 import difflib
@@ -21,6 +25,7 @@ from atlas.agent import controller as ctl
 from atlas.agent.budget import Budget
 from atlas.agent.client import FixtureClient, LiveModeUnavailable
 from atlas.agent.execute import CandidateResult, execute_and_reevaluate
+from atlas.audit import audit
 from atlas.candidates import Approval
 from atlas.contracts import Outcome, RunOutcome, Status
 from atlas.runner import trusted
@@ -98,6 +103,23 @@ class RecordingExecutor:
             outcome=RunOutcome(outcome=self.outcome, policy_version="policy-v1.3"),
             timing={},
         )
+
+
+def host_fixture_original(run):
+    """TEST-ONLY baseline: the trusted host-fixture audit (allowlisted fixtures only)."""
+    run.enter("CHECK", "test-only host-fixture baseline")
+    try:
+        result = audit(run.project, run.runs_root)
+    except trusted.UntrustedFixtureError as exc:
+        raise ctl._Terminal(ctl.NOT_SUPPORTED, str(exc)) from None
+    return ctl.OriginalRun(
+        run_dir=result.run_dir, outcome=result.outcome, runner=trusted.RUNNER_NAME
+    )
+
+
+@pytest.fixture(autouse=True)
+def host_fixture_baseline(monkeypatch):
+    monkeypatch.setattr(ctl, "docker_original", host_fixture_original)
 
 
 def tree_hashes(root: Path) -> dict:

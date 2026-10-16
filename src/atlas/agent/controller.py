@@ -19,21 +19,23 @@ propagates with a note that no report was saved. A failing approver is a recorde
   retry. No action can change the required assertion set, approve a candidate or set an
   outcome: outcomes come only from the trusted evaluator, and model text is reported as
   model-written.
-- **Approval is a separate boundary.** A proposed candidate runs only if the `Approver` (a
-  human-facing component, never the model client) returns an approval bound to exactly that
-  candidate and snapshot. No approver means NEEDS_INPUT and no execution. Execution goes only
-  through the slice 1 executor (Docker, no host fallback), which revalidates the approved bytes.
+- **Approval is a separate boundary.** The original and every proposed candidate run only if
+  the `Approver` (a human-facing component, never the model client; `approval.TerminalApprover`
+  at the CLI) returns an approval bound to exactly that code and snapshot. No approver means
+  NEEDS_INPUT and no execution. Binding and the time budget are checked again after approval.
+- **Docker for both (slice 3).** The unmodified original runs through the same slice 1 executor
+  as candidates (Docker, no host fallback; the approved bytes are revalidated) and is evaluated
+  by the same trusted path. If isolation is unavailable the original is not executed, the run
+  ends ERROR (`original_not_executed`) and no model request is made.
 - **Ceilings** (`budget.py`): 6 model attempts including retries, at most 1 retry per transient
   call while attempts remain, 12 tool operations, 2 revisions, 5 active minutes (approval waits
   excluded).
-- **Fixture mode:** only non-live clients are accepted in this slice, and the whole run executes
-  under `deny_network()` (an in-process safeguard for fixture tests, not a sandbox).
-  Reports and the log label the run non-live with model ID
-  `fixture:<script>`.
-
-Limitation of this slice: the original is audited by the trusted host-fixture runner
-(allowlisted projects only), so original-versus-candidate comparisons mix runners and are
-labelled as such; the finished workflow runs the original in Docker too (later slice).
+- **Modes:** a non-live (fixture) client needs `ATLAS_MODEL_MODE=fixture` and the whole run
+  executes under `deny_network()` (an in-process safeguard for fixture tests, not a sandbox);
+  logs and reports label it non-live with model ID `fixture:<script>`. A live client
+  (`nebius.NebiusClient`) is refused unless the caller passes `live_authorized=True`, which
+  nothing in this build does (slice 4 needs explicit authorization). Cost is accounted
+  conservatively (`budget.CostLedger`).
 """
 
 import hashlib
@@ -44,7 +46,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
-from atlas.agent.budget import PROPOSED_MAX_COMPLETION_TOKENS, Budget, BudgetExhausted
+from atlas.agent import execute as _execute
+from atlas.agent.approval import ApprovalUnavailable
+from atlas.agent.budget import (
+    PROPOSED_MAX_COMPLETION_TOKENS,
+    Budget,
+    BudgetExhausted,
+    CostLedger,
+)
 from atlas.agent.client import (
     LiveModeUnavailable,
     ModelError,
@@ -52,7 +61,7 @@ from atlas.agent.client import (
     TransientModelError,
     require_fixture_mode,
 )
-from atlas.agent.execute import CandidateResult, execute_and_reevaluate
+from atlas.agent.execute import CandidateResult
 from atlas.agent.network import deny_network
 from atlas.agent.report import comparison_report
 from atlas.agent.schemas import (
@@ -67,9 +76,10 @@ from atlas.agent.schemas import (
     parse_reply,
     schema_text,
 )
-from atlas.audit import AuditResult, audit
 from atlas.candidates import (
+    MAX_ENTRY_BYTES,
     Approval,
+    Candidate,
     CandidateRejected,
     SnapshotError,
     _permitted_file,
@@ -82,7 +92,6 @@ from atlas.candidates import (
 )
 from atlas.intake import load_project
 from atlas.reports import sha256_file, write_json
-from atlas.runner.trusted import UntrustedFixtureError
 
 REPORT = "REPORT"
 NEEDS_INPUT = "NEEDS_INPUT"
@@ -110,10 +119,7 @@ class ApprovalRequest:
     candidate_hash: str
     base_snapshot_hash: str
     model_rationale: str  # model-written
-
-
-class ApprovalUnavailable(Exception):
-    """No approver can be asked (e.g. no terminal): the run needs input."""
+    kind: str = "candidate"  # or "original": the unmodified project code
 
 
 class Approver(Protocol):
@@ -134,12 +140,22 @@ class AgentResult:
     run_dir: Path
     terminal_state: str
     reason: str | None
-    original: AuditResult | None
+    original: "OriginalRun | None"
     candidates: list[CandidateResult] = field(default_factory=list)
     report: dict = field(default_factory=dict)
     transcript: list[dict] = field(
         default_factory=list
     )  # tool results shown to the model
+
+
+@dataclass
+class OriginalRun:
+    """The original's evaluation: `run_dir` holds its trusted outputs (`outcome.json`, checks)."""
+
+    run_dir: Path
+    outcome: object
+    runner: str
+    execution: dict = field(default_factory=dict)
 
 
 class _Terminal(Exception):
@@ -158,30 +174,61 @@ def run_agent(
     client,
     approver: Approver | None = None,
     *,
-    executor=execute_and_reevaluate,
+    executor=None,
     budget: Budget | None = None,
     env=None,
+    original=None,
+    live_authorized: bool = False,
 ) -> AgentResult:
-    """One bounded agent run with a non-live (fixture) client. Always writes a report."""
-    require_fixture_mode(env)
-    if getattr(client, "live", True) is not False:
-        raise LiveModeUnavailable(
-            "only non-live (fixture) clients exist in T-06 slice 2"
-        )
+    """One bounded agent run. Always writes a report (or says that it could not).
+
+    `executor` defaults to the slice 1 executor and `original` to running the unmodified
+    original in Docker after explicit authorization; both are resolved when called. A live
+    client is refused unless `live_authorized` is True; no caller in this build sets it.
+    """
+    live = getattr(client, "live", None)
+    if live is True:
+        if not live_authorized:
+            raise LiveModeUnavailable(
+                "a live model client needs explicit authorization (T-06 slice 4)"
+            )
+    elif live is False:
+        require_fixture_mode(env)
+    else:
+        raise LiveModeUnavailable("the client does not declare whether it is live")
+    run = _Run(
+        project,
+        runs_root,
+        client,
+        approver or NoApprover(),
+        executor or _execute.execute_and_reevaluate,
+        budget,
+        original or docker_original,
+    )
+    if live:
+        return run.run()
     with deny_network():
-        return _Run(
-            project, runs_root, client, approver or NoApprover(), executor, budget
-        ).run()
+        return run.run()
+
+
+def docker_original(run: "_Run") -> OriginalRun:
+    """The production original runner: explicit authorization, then Docker (no fallback)."""
+    return run._docker_original()
 
 
 class _Run:
-    def __init__(self, project, runs_root, client, approver, executor, budget):
+    def __init__(
+        self, project, runs_root, client, approver, executor, budget, original
+    ):
         self.project = Path(project).resolve()
         self.runs_root = Path(runs_root)
         self.client = client
         self.approver = approver
         self.executor = executor
         self.budget = budget or Budget()
+        self.original_runner = original
+        self.live = bool(client.live)
+        self.ledger = CostLedger(client)
         stamp = hashlib.sha256(f"{self.project}{time.time_ns()}".encode()).hexdigest()
         self.run_dir = (
             self.runs_root.resolve() / f"agent-{self.project.name}-{stamp[:12]}"
@@ -189,7 +236,7 @@ class _Run:
         self.run_dir.mkdir(parents=True)
         self.log_path = self.run_dir / "agent_log.jsonl"
         self.states: list[dict] = []
-        self.original: AuditResult | None = None
+        self.original: OriginalRun | None = None
         self.snapshot = None
         self.manifest = None
         self.candidates: list[CandidateResult] = []
@@ -200,7 +247,7 @@ class _Run:
     def log(self, entry: dict) -> None:
         entry = {
             "time_utc": _now(),
-            "live": False,
+            "live": self.live,
             "model_id": self.client.model_id,
             **entry,
         }
@@ -340,27 +387,95 @@ class _Run:
         if not intake.supported:
             raise _Terminal(NOT_SUPPORTED, intake.reason)
         self.manifest = intake.manifest
-        self.enter(
-            "CHECK", "deterministic audit of the original, before any model request"
-        )
-        try:
-            self.original = audit(self.project, self.runs_root)
-        except UntrustedFixtureError as exc:
-            raise _Terminal(
-                NOT_SUPPORTED,
-                f"{exc}; running the original in Docker is a later T-06 slice",
-            ) from None
-        self.log(
-            {
-                "event": "original_audit",
-                "run_dir": str(self.original.run_dir),
-                "outcome": self.original.outcome.outcome,
-            }
-        )
         try:
             self.snapshot = build_snapshot(self.project, self.run_dir / "snapshot")
         except SnapshotError as exc:
             raise _Terminal(NOT_SUPPORTED, f"snapshot refused: {exc}") from None
+        self.original = self.original_runner(self)
+        self.log(
+            {
+                "event": "original",
+                "runner": getattr(self.original, "runner", None),
+                "run_dir": str(self.original.run_dir),
+                "outcome": self.original.outcome.outcome,
+            }
+        )
+
+    def _docker_original(self) -> OriginalRun:
+        """Authorize, then run the unmodified original exactly like a candidate."""
+        entry = self.snapshot.entry_point
+        entry_bytes = _permitted_file(self.snapshot.root, entry, MAX_ENTRY_BYTES)
+        code = Candidate(entry, entry_bytes, sha256_bytes(b""))
+        code_hash = candidate_hash(self.snapshot.base_hash, entry_bytes)
+        request = ApprovalRequest(
+            entry_point=entry,
+            diff="",
+            candidate_hash=code_hash,
+            base_snapshot_hash=self.snapshot.base_hash,
+            model_rationale="",
+            kind="original",
+        )
+        self.enter("APPROVAL", f"original {code_hash}")
+        decision = self._decide(request)
+        if decision is None:
+            raise _Terminal(NEEDS_INPUT, "execution of the original was not authorized")
+        self.budget.check_time()  # revalidated after the (excluded) wait
+        self.enter(
+            "CHECK", "original in Docker; trusted evaluation of the full required set"
+        )
+        result = self.executor(
+            self.snapshot, code, decision, self.run_dir / "original", proposed_at=None
+        )
+        original = OriginalRun(
+            run_dir=result.candidate_dir,
+            outcome=result.outcome,
+            runner="docker_isolated",
+            execution=dict(result.execution),
+        )
+        if not result.evaluated:
+            self.original = original
+            raise _Terminal(
+                ERROR,
+                f"original_not_executed: {result.execution.get('status')}: "
+                f"{result.execution.get('reason')}; no host fallback",
+            )
+        return original
+
+    def _decide(self, request: ApprovalRequest) -> Approval | None:
+        """Ask the approver; an approval counts only if bound to exactly this code and snapshot.
+        Returns None if declined or unbound; raises _Terminal if nobody can be asked."""
+        try:
+            with (
+                self.budget.paused()
+            ):  # only the human wait is excluded from active time
+                decision = self.approver.decide(request)
+        except ApprovalUnavailable as exc:
+            self.log({"event": "approval", "kind": request.kind,
+                      "candidate_hash": request.candidate_hash, "decision": "unavailable"})  # fmt: skip
+            raise _Terminal(
+                NEEDS_INPUT,
+                f"{request.kind} {request.candidate_hash[:12]} awaits approval: {exc}",
+            ) from None
+        except Exception as exc:  # noqa: BLE001 - a failing approver ends the run, recorded
+            # The approver is the human-facing boundary (e.g. a closed console). Its failure
+            # is an operational error, never an approval: nothing executes.
+            self.log({"event": "approval", "kind": request.kind,
+                      "candidate_hash": request.candidate_hash, "decision": "approver_error"})  # fmt: skip
+            raise _Terminal(ERROR, f"approver_error: {type(exc).__name__}") from None
+        bound = (
+            isinstance(decision, Approval)
+            and decision.candidate_hash == request.candidate_hash
+            and decision.base_snapshot_hash == self.snapshot.base_hash
+            and request.base_snapshot_hash == self.snapshot.base_hash
+        )
+        self.log(
+            {"event": "approval", "kind": request.kind,
+             "candidate_hash": request.candidate_hash,
+             "decision": "approved" if bound else ("declined" if decision is None else "unbound"),
+             "approver_reason": getattr(self.approver, "last_reason", None),
+             "approval": decision.to_dict() if isinstance(decision, Approval) else None}
+        )  # fmt: skip
+        return decision if bound else None
 
     # -- model ------------------------------------------------------------------------------
     def _messages(self) -> list[dict]:
@@ -402,6 +517,20 @@ class _Run:
         messages = self._messages()
         prompt_sha = sha256_bytes(json.dumps(messages, sort_keys=True).encode("utf-8"))
         params = {"max_completion_tokens": PROPOSED_MAX_COMPLETION_TOKENS, "n": 1}
+        if self.live:
+            config = self.client.config
+            params = {"max_completion_tokens": config.max_completion_tokens, "n": 1}
+        request = ModelRequest(messages, params)
+        check = getattr(self.client, "check_request", None)
+        if callable(check):
+            try:
+                check(
+                    request
+                )  # refused before sending: not an attempt, nothing reserved
+            except ModelError as exc:
+                self.log({"event": "model_request_refused", "result": exc.code,
+                          "prompt_sha256": prompt_sha})  # fmt: skip
+                raise _Terminal(ERROR, exc.code) from None
         retry = False
         while True:
             try:
@@ -422,9 +551,15 @@ class _Run:
                 "started_utc": _now(),
             }
             t0 = time.monotonic()
+            self.ledger.reserve(attempt)
             try:
-                reply = self.client.complete(ModelRequest(messages, params))
-            except TransientModelError as exc:
+                reply = self.client.complete(request)
+            except ModelError as exc:
+                self.ledger.settle(attempt, exc.usage, dispatched=exc.dispatched)
+                if not isinstance(exc, TransientModelError):
+                    self.log({**entry, "elapsed_s": _since(t0), "result": exc.code,
+                              "usage": exc.usage})  # fmt: skip
+                    raise _Terminal(ERROR, exc.code) from None
                 self.log(
                     {
                         **entry,
@@ -442,17 +577,19 @@ class _Run:
                         f"{exc.code}, and no model attempt remains for its retry",
                     ) from None
                 raise _Terminal(ERROR, f"{exc.code} (after one retry)") from None
-            except ModelError as exc:
-                self.log({**entry, "elapsed_s": _since(t0), "result": exc.code})
-                raise _Terminal(ERROR, exc.code) from None
             except Exception as exc:  # noqa: BLE001 - any client failure ends the run, recorded
+                self.ledger.settle(
+                    attempt, None, dispatched=True
+                )  # unknown: stays reserved
                 self.log(
                     {**entry, "elapsed_s": _since(t0), "result": "client_error",
                      "detail": type(exc).__name__}
                 )  # fmt: skip
                 raise _Terminal(ERROR, f"client_error: {type(exc).__name__}") from None
+            self.ledger.settle(attempt, reply.usage, dispatched=True)
             entry.update(
                 elapsed_s=_since(t0),
+                served_model=reply.served_model,
                 request_id=reply.request_id,
                 usage=reply.usage,
                 finish_reason=reply.finish_reason,
@@ -468,9 +605,12 @@ class _Run:
                 self.log({**entry, "result": "late", "detail": str(exc)})
                 raise
             try:
-                if reply.live is not False or reply.model_id != self.client.model_id:
+                if (
+                    reply.live is not self.live
+                    or reply.model_id != self.client.model_id
+                ):
                     raise ReplyRejected(
-                        "mislabelled", "reply is not the fixture's reply"
+                        "mislabelled", "reply is not this client's reply"
                     )
                 if reply.finish_reason != "stop":
                     raise ReplyRejected(
@@ -582,36 +722,17 @@ class _Run:
         )
         self.enter("APPROVAL", computed)
         try:
-            with self.budget.paused():  # a human wait is not active run time
-                decision = self.approver.decide(request)
-        except ApprovalUnavailable as exc:
-            self._record_tool(op, "propose_patch", args, {"approval": "unavailable"})
-            raise _Terminal(
-                NEEDS_INPUT, f"candidate {computed[:12]} awaits approval: {exc}"
-            ) from None
-        except Exception as exc:  # noqa: BLE001 - a failing approver ends the run, recorded
-            # The approver is the human-facing boundary (e.g. a closed console). Its failure
-            # is an operational error, never an approval: nothing executes.
-            self._record_tool(op, "propose_patch", args, {"approval": "approver_error"})
-            raise _Terminal(ERROR, f"approver_error: {type(exc).__name__}") from None
-        bound = (
-            isinstance(decision, Approval)
-            and decision.candidate_hash == computed
-            and decision.base_snapshot_hash == self.snapshot.base_hash
-        )
-        self.log(
-            {"event": "approval", "candidate_hash": computed,
-             "decision": "approved" if bound else ("declined" if decision is None else "unbound"),
-             "approval": decision.to_dict() if isinstance(decision, Approval) else None}
-        )  # fmt: skip
-        if not bound:
-            outcome = (
-                "declined"
-                if decision is None
-                else "approval not bound to this candidate"
-            )
+            decision = self._decide(request)
+        except _Terminal as end:
+            outcome = "unavailable" if end.state == NEEDS_INPUT else "approver_error"
+            self._record_tool(op, "propose_patch", args, {"approval": outcome})
+            raise
+        if decision is None:
             self._record_tool(
-                op, "propose_patch", args, {"approval": outcome, "executed": False}
+                op,
+                "propose_patch",
+                args,
+                {"approval": "not approved", "executed": False},
             )
             return
         exec_op = self.budget.reserve_tool_operation("evaluate_candidate")
@@ -643,14 +764,9 @@ class _Run:
     def _report(self, terminal: str, reason: str | None) -> dict:
         report = {
             "report": "t06-agent-run",
-            "banner": (
-                f"NON-LIVE RUN: every model reply came from fixture script "
-                f"{self.client.model_id!r}; no model was called. Python networking in this "
-                "process was guarded during the run (an in-process fixture-testing safeguard, "
-                "not a sandbox; it does not govern other processes)."
-            ),
-            "mode": "fixture",
-            "live": False,
+            "banner": self._banner(),
+            "mode": "live" if self.live else "fixture",
+            "live": self.live,
             "model_id": self.client.model_id,
             "terminal_state": terminal,
             "terminal_reason": reason,
@@ -666,17 +782,8 @@ class _Run:
                 {**t, "label": "model-written text; not evidence and not an outcome"}
                 for t in self.model_text
             ],
-            "limitations": [
-                "Fixture responses only: this run says nothing about a real model's behavior.",
-                (
-                    "Approval in this slice is programmatic (an Approver object); the interactive "
-                    "CLI approval is a later slice."
-                ),
-                (
-                    "The original is audited by the trusted host-fixture runner; candidates run in "
-                    "Docker. Final agent acceptance requires Docker for both."
-                ),
-            ],
+            "cost": self.ledger.summary(),
+            "limitations": self._limitations(),
         }
         if self.original is not None:
             report["scientific_outcomes"] = {
@@ -689,6 +796,42 @@ class _Run:
             )
         return report
 
+    def _banner(self) -> str:
+        if self.live:
+            return (
+                f"LIVE RUN: model {self.client.model_id!r} via the production client."
+            )
+        return (
+            f"NON-LIVE RUN: every model reply came from fixture script "
+            f"{self.client.model_id!r}; no model was called. Python networking in this "
+            "process was guarded during the run (an in-process fixture-testing safeguard, "
+            "not a sandbox; it does not govern other processes)."
+        )
+
+    def _limitations(self) -> list[str]:
+        items = []
+        if not self.live:
+            items.append(
+                "Fixture responses only: this run says nothing about a real model's behavior."
+            )
+        runner = getattr(self.original, "runner", None) if self.original else None
+        if runner == "docker_isolated":
+            items.append(
+                "The original and every candidate executed in the isolated Docker runner after "
+                "explicit authorization; the same trusted evaluator judged both."
+            )
+        elif self.original is not None:
+            other = runner or "trusted host fixture"
+            items.append(
+                f"The original was evaluated by another runner ({other}) than the Docker "
+                "candidates; the comparison mixes runners."
+            )
+        items.append(
+            "Container evidence is produced inside the executed code's process; the evaluator "
+            "checks its consistency, not its authenticity."
+        )
+        return items
+
     def _minimal_report(
         self, terminal: str, reason: str | None, failures: list[dict]
     ) -> dict | None:
@@ -699,9 +842,9 @@ class _Run:
         try:
             report = {
                 "report": "t06-agent-run (minimal: the full report could not be built)",
-                "banner": f"NON-LIVE RUN: fixture script {self.client.model_id!r}.",
-                "mode": "fixture",
-                "live": False,
+                "banner": self._banner(),
+                "mode": "live" if self.live else "fixture",
+                "live": self.live,
                 "model_id": self.client.model_id,
                 "terminal_state": terminal,
                 "terminal_reason": reason,

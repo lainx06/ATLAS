@@ -274,7 +274,7 @@ A valid FAIL in one assertion is preserved regardless of ERRORs or NOT_ASSESSED 
 3. **Validation (hygiene, not the boundary):** allowed-path check, rejection of symlinks and path escapes, rejection of new files and deletions, a size cap, `ast.parse` of the result, and checking that the diff applies cleanly.
 4. **Candidate hash:** `sha256(base_snapshot_hash ‖ resulting entry_point bytes)`.
 5. **Approval:** the user explicitly approves one exact candidate. The record is `{candidate_hash, base_snapshot_hash, approved_at}`. The runner refuses to execute unless the hash matches, so any change needs fresh approval.
-   - **CLI approval (T-06 lead disposition):** the CLI shows the diff and requires the first 12 hex characters of the candidate hash; the full hash is recorded. With no terminal, the run ends `NEEDS_INPUT` and nothing executes.
+   - **CLI approval (T-06 lead disposition):** the CLI shows the diff and requires the first 12 hex characters of the candidate hash; the full hash is recorded. With no terminal, the run ends `NEEDS_INPUT` and nothing executes. Implemented in T-06 slice 3 (`agent/approval.py`): the same step authorizes the original before it runs; model-written text is displayed inert (control characters shown as escapes); any input other than the 12-character prefix declines.
    - Waiting for approval is excluded from the active execution budget; total elapsed time is recorded separately. The approved bytes are revalidated before execution.
    - **Preflight (T-06 repair passes 1 and 2):** first, the supplied snapshot must be the approved one (its recorded inventory hashes to its base hash, which is the approval's). Otherwise nothing runs, and the outcome states that the approved required set cannot be reconstructed and lists no assertion: the unapproved snapshot's manifest is never used, intact or offered for recovery. Then the snapshot's manifest must still have the hash recorded when the snapshot was built. A missing, changed or invalid manifest is a recorded refusal before Docker is touched (an execution record, outcome and report). The required set then comes only from a manifest whose canonical bytes have that recorded hash; otherwise the outcome states that the set cannot be reconstructed and lists no assertion.
 6. **Execution and re-checking:** the candidate runs only in the isolated runner (§10). The controller then schedules the full required set (§6) on the result. The model never declares success.
@@ -323,6 +323,7 @@ Any other runtime must pass the same contract tests before it replaces Docker. I
 - **Tools (typed, normalized paths, no shell):** `list_project_files`, `read_project_file`, `profile_table`, `run_check`, `propose_patch`, `evaluate_candidate` (approval-gated), `inspect_evidence`, `retrieve_procedure`, `propose_procedure`. `run_check` can add inspection; it cannot remove scheduled assertions.
 - **Ceilings (initial; tune only with measurements, recorded in DECISIONS.md):** 6 model calls, 12 tool operations, 1 retry per transient model call, 2 candidate revisions, 5 min per run, 30 s per candidate execution. On exhaustion, unscheduled or incomplete required assertions are materialized as NOT_ASSESSED `not_executed`. Waiting for human approval is excluded from the active run budget; total elapsed time is recorded separately (T-06 lead disposition). The per-stage token ceilings in `docs/HOSTING_PROBE.md` remain proposed until reviewed before live execution.
 - **Model:** one verified NVIDIA model via Nebius (`NEBIUS_BASE_URL`, `ATLAS_MODEL_PRIMARY`; `.env.example`). IDs come only from the authenticated `GET /models`.
+  - **Client (T-06 slice 3, offline-verified only):** `agent/nebius.py`, SDK retries disabled (the controller owns retries and the six-attempt limit), explicit timeout, every ceiling and price required in configuration, a conservative pre-send input bound, usage above a ceiling failing closed, errors classified by type and status only, and conservative cost accounting (`budget.CostLedger`: the ceiling cost stays reserved when a dispatched request's usage is unknown). The per-call ceiling values and the input-bound approach are open lead decisions before any live run (TASKS.md T-06 slice 3).
   - Structured JSON output where supported, validated by Pydantic, with a deterministic dispatcher.
   - Invalid output is a recorded schema failure, never an unconstrained fallback. A schema failure terminates the model attempt without an action and without a format-repair retry; completed audit results remain intact (T-06 lead disposition).
   - `ATLAS_MODEL_MODE=fixture` runs are visibly labeled non-live.
@@ -395,7 +396,9 @@ Closed by the lead on 2026-10-15 (DECISIONS.md, "Repeated-measures scope for V1"
 - Held-out evidence comes from two cases: limited and descriptive. Their separation is procedural, not access-enforced.
 - Container isolation reduces risk; it is not proof of safety, provenance integrity or scientific correctness.
 
-## 16 Proposed CLI (not implemented; playbook §10)
+## 16 Proposed CLI (playbook §10)
+
+Implemented: `python -m atlas.cli audit <project> --mode audit` (T-01) and `--mode agent --fixture-script FILE` (T-06 slice 3: fixture replies only; live mode refused). The rest is proposed.
 
 ```text
 atlas doctor

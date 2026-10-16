@@ -128,3 +128,59 @@ class Budget:
             "total_elapsed_s": round(self.total_s(), 3),
             "approval_wait_s": round(self._paused_s, 3),
         }
+
+
+class CostLedger:
+    """Conservative per-run cost accounting at listed prices (DECISIONS.md 2026-10-15).
+
+    Before a request is dispatched, its ceiling cost (both token ceilings at listed prices) is
+    reserved. A reply with complete usage settles it at the usage cost. A dispatched request whose
+    usage is unknown (timeout, connection failure, missing usage) keeps the full ceiling
+    reserved; only a request refused before sending is released. Fixture clients have no provider
+    cost. This is accounting, not spending authorization: the $0.051 planning estimate authorizes
+    nothing.
+    """
+
+    def __init__(self, client):
+        ceiling = getattr(client, "ceiling_cost", None)
+        self.applicable = callable(ceiling)
+        self.ceiling = ceiling() if self.applicable else None
+        self._usage_cost = getattr(client, "usage_cost", None)
+        self.entries: list[dict] = []
+
+    def reserve(self, attempt: int) -> None:
+        if self.applicable:
+            self.entries.append(
+                {"attempt": attempt, "status": "reserved", "usd": self.ceiling}
+            )
+
+    def settle(self, attempt: int, usage, dispatched: bool) -> None:
+        if not self.applicable:
+            return
+        entry = next(e for e in self.entries if e["attempt"] == attempt)
+        if not dispatched:
+            entry.update(status="released", usd=0)
+            return
+        cost = self._usage_cost(usage) if isinstance(usage, dict) and usage else None
+        if cost is None:
+            entry.update(status="unknown_usage")  # the ceiling stays reserved
+        else:
+            entry.update(status="settled", usd=cost)
+
+    def summary(self) -> dict:
+        if not self.applicable:
+            return {
+                "applicable": False,
+                "reason": "fixture replies: no provider request",
+            }
+        return {
+            "applicable": True,
+            "basis": "listed prices from configuration; ceiling cost kept when usage is unknown",
+            "ceiling_per_request_usd": str(self.ceiling),
+            "conservative_total_usd": str(sum(e["usd"] for e in self.entries)),
+            "unknown_usage_attempts": sum(
+                e["status"] == "unknown_usage" for e in self.entries
+            ),
+            "entries": [{**e, "usd": str(e["usd"])} for e in self.entries],
+            "note": "accounting only; not a spending authorization",
+        }

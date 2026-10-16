@@ -1,19 +1,25 @@
-"""T-06 slice 2 integration: a fixture-driven agent run through the real slice 1 executor.
+"""T-06 integration (slices 2-3): fixture-driven agent runs through the real isolated runner.
 
     ATLAS_REQUIRE_DOCKER=1 uv run --locked pytest tests/integration/test_agent_fixture_docker.py
 
-Fixture model replies (no model, no network) -> audit of s01_faulty (trusted host-fixture
-runner) -> the fold-local patch -> an explicit test approver bound to the exact candidate ->
-the isolated Docker runner -> trusted re-evaluation -> a report labelled non-live.
+Fixture model replies (no model, no network) on the s01_faulty development fixture (not
+independent benchmark evidence). Since slice 3 the unmodified original and the candidate both
+run in Docker, each after an explicit approval bound to its hash, and the same trusted evaluator
+judges both. The second test drives the complete local path from the CLI, with the approvals
+typed at a (simulated) terminal.
 """
 
 import difflib
+import io
 import json
 import os
+import re
+import sys
 from pathlib import Path
 
 import pytest
 
+from atlas import cli
 from atlas.agent import controller as ctl
 from atlas.agent.client import FixtureClient
 from atlas.candidates import Approval
@@ -24,6 +30,19 @@ ROOT = Path(__file__).resolve().parents[2]
 S01 = ROOT / "benchmarks" / "t01" / "s01_faulty"
 S02 = ROOT / "benchmarks" / "t01" / "s02_clean"
 REQUIRE_DOCKER = os.environ.get("ATLAS_REQUIRE_DOCKER") == "1"
+DIFF = "".join(
+    difflib.unified_diff(
+        (S01 / "evaluate.py").read_text(encoding="utf-8").splitlines(True),
+        (S02 / "evaluate.py").read_text(encoding="utf-8").splitlines(True),
+        "a/evaluate.py",
+        "b/evaluate.py",
+    )
+)
+SCRIPT = [
+    {"content": json.dumps({"action": {"tool": "inspect_evidence", "check": "split_integrity"}})},
+    {"content": json.dumps({"action": {"tool": "propose_patch", "diff": DIFF, "rationale": "fold-local selection, grouped folds"}})},
+    {"content": json.dumps({"action": {"tool": "finish", "summary": "done"}})},
+]  # fmt: skip
 
 
 @pytest.fixture(scope="module")
@@ -46,39 +65,87 @@ class ApproveExactly:
         return Approval(
             request.candidate_hash,
             request.base_snapshot_hash,
-            "2026-10-15T00:00:00+00:00",
+            "2026-10-16T00:00:00+00:00",
         )
 
 
-def test_fixture_agent_run_through_the_isolated_executor(isolation, tmp_path):
-    original = (S01 / "evaluate.py").read_text(encoding="utf-8")
-    fix = (S02 / "evaluate.py").read_text(encoding="utf-8")
-    diff = "".join(
-        difflib.unified_diff(
-            original.splitlines(True),
-            fix.splitlines(True),
-            "a/evaluate.py",
-            "b/evaluate.py",
-        )
-    )
-    script = [
-        {"content": json.dumps({"action": {"tool": "inspect_evidence", "check": "split_integrity"}})},
-        {"content": json.dumps({"action": {"tool": "propose_patch", "diff": diff, "rationale": "fold-local selection, grouped folds"}})},
-        {"content": json.dumps({"action": {"tool": "finish", "summary": "done"}})},
-    ]  # fmt: skip
+def test_original_and_candidate_run_in_docker(isolation, tmp_path):
     approver = ApproveExactly()
     result = ctl.run_agent(
-        S01, tmp_path / "runs", FixtureClient("s01-docker", script), approver, env={}
+        S01, tmp_path / "runs", FixtureClient("s01-docker", SCRIPT), approver, env={}
     )
 
     assert result.terminal_state == ctl.REPORT, result.reason
-    assert result.original.outcome.outcome is Outcome.VIOLATION_FOUND
+    assert [r.kind for r in approver.requests] == ["original", "candidate"]
+    original = result.original
+    assert original.runner == "docker_isolated"
+    assert original.execution["status"] == "completed"
+    assert original.execution["container_removed"] is True
+    assert original.outcome.outcome is Outcome.VIOLATION_FOUND
     (candidate,) = result.candidates
-    assert candidate.candidate_hash == approver.requests[0].candidate_hash
+    assert candidate.candidate_hash == approver.requests[1].candidate_hash
     assert candidate.execution["status"] == "completed"
     assert candidate.execution["container_removed"] is True
     assert candidate.outcome.outcome is Outcome.NO_VIOLATION_FOUND
     report = result.report
     assert (report["live"], report["model_id"]) == (False, "fixture:s01-docker")
-    assert report["scientific_outcomes"]["candidates"] == [Outcome.NO_VIOLATION_FOUND]
+    assert report["comparison"]["comparison_basis"].startswith(
+        "Original and candidates all executed in the isolated Docker runner"
+    )
+    assert report["scientific_outcomes"] == {
+        "source": "trusted evaluator only",
+        "original": Outcome.VIOLATION_FOUND,
+        "candidates": [Outcome.NO_VIOLATION_FOUND],
+    }
     assert report["budget"]["used"]["attempts"] == 3
+
+
+class TypedAtTerminal:
+    """A terminal whose user types the first 12 characters of the hash shown on screen."""
+
+    def __init__(self, screen: io.StringIO):
+        self.screen = screen
+
+    def isatty(self):
+        return True
+
+    def readline(self):
+        shown = re.findall(r"Code hash:\s+([0-9a-f]{64})", self.screen.getvalue())
+        return shown[-1][:12] + "\n"
+
+
+def test_cli_complete_local_path(isolation, tmp_path, monkeypatch):
+    script = tmp_path / "script.json"
+    script.write_text(
+        json.dumps({"name": "cli-docker", "replies": SCRIPT}), encoding="utf-8"
+    )
+    screen = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", screen)
+    monkeypatch.setattr(sys, "stdin", TypedAtTerminal(screen))
+    monkeypatch.setenv("ATLAS_MODEL_MODE", "fixture")
+
+    code = cli.main(
+        ["audit", str(S01), "--mode", "agent", "--fixture-script", str(script),
+         "--runs-dir", str(tmp_path / "runs")]
+    )  # fmt: skip
+
+    out = screen.getvalue()
+    assert code == 0, out
+    assert out.count("APPROVAL REQUIRED") == 2
+    assert "ORIGINAL, unmodified project code" in out
+    assert "original: VIOLATION_FOUND (docker_isolated)" in out
+    assert "execution completed, outcome NO_VIOLATION_FOUND" in out
+    (report_path,) = (tmp_path / "runs").glob("agent-*/agent_report.json")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    approvals = [
+        json.loads(line)
+        for line in report_path.with_name("agent_log.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if '"event": "approval"' in line
+    ]
+    assert [a["approver_reason"] for a in approvals] == ["confirmed", "confirmed"]
+    assert all(
+        len(a["approval"]["candidate_hash"]) == 64 for a in approvals
+    )  # full hash
+    assert report["terminal_state"] == "REPORT"
