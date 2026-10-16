@@ -13,8 +13,12 @@ collection, and every file is created exclusively, so nothing the candidate wrot
 a host-owned record. Time spent waiting for a human approval happens before this function is
 called and is not part of `active_s`; the total since the proposal is recorded separately.
 
-Preflight: the snapshot's manifest is read (bounded) and must still have the hash recorded when
-the snapshot was built, before anything runs. A missing, changed or invalid manifest is a
+Preflight, before any required assertion set is derived: the supplied snapshot must be the one
+the approval identifies (its recorded inventory hashes to its base hash, and that base hash is
+the approval's). If not, nothing runs and the approved required set cannot be reconstructed:
+the supplied, unapproved snapshot's manifest is never used, intact or not. Then the snapshot's
+manifest is read (bounded) and must still have the hash recorded when the snapshot was
+built. A missing, changed or invalid manifest is a
 recorded refusal: Docker is never touched, an execution record and a final outcome and report
 are written, and the required assertion set comes only from a trusted source (a manifest whose
 canonical bytes have the snapshot's recorded hash); otherwise the outcome says that the set
@@ -36,6 +40,7 @@ from atlas.candidates import (
     SnapshotError,
     _permitted_file,
     candidate_hash,
+    inventory_hash,
     sha256_bytes,
 )
 from atlas.contracts import Manifest, Outcome, RunOutcome
@@ -97,8 +102,9 @@ def execute_and_reevaluate(
 ) -> CandidateResult:
     """Run one approved candidate in Docker and evaluate the full required set on the result.
 
-    `trusted_manifest` (optional) is used only if the snapshot's own manifest is unusable, and
-    only when its canonical bytes have the hash recorded in the snapshot inventory.
+    `trusted_manifest` (optional) is used only if the snapshot's own manifest is unusable, only
+    when the snapshot is the approved one, and only when its canonical bytes have the hash
+    recorded in that snapshot's inventory.
     """
     started = time.monotonic()
     candidate_dir = Path(candidate_dir)
@@ -121,20 +127,29 @@ def execute_and_reevaluate(
         },
     )
 
-    manifest_bytes, manifest, problem = _snapshot_manifest(snapshot)
+    # 1. The snapshot must be the approved one before anything is derived from it.
+    binding = _approval_binding_problem(snapshot, approval)
+    if binding is not None:
+        manifest_bytes, manifest, problem = None, None, binding
+        required = None  # the approved snapshot's manifest is not available here
+    else:
+        # 2. Its manifest must still be the bytes recorded when it was built.
+        manifest_bytes, manifest, problem = _snapshot_manifest(snapshot)
+        if problem is not None:
+            problem = f"snapshot_manifest_invalid: {problem}"
+            required = _trusted_required_set(snapshot, trusted_manifest)
     if problem is not None:
         record = {
             "stage": "preflight",
             "runner": None,
             "status": "refused",
-            "reason": f"snapshot_manifest_invalid: {problem}",
+            "reason": problem,
             "docker_used": False,
             "approval": approval.to_dict(),
             "base_snapshot_hash": snapshot.base_hash,
             "candidate_hash": computed_hash,
         }
         _new_json(candidate_dir / "execution.json", record)
-        required = _trusted_required_set(snapshot, trusted_manifest)
         return _result(
             candidate_dir,
             computed_hash,
@@ -186,6 +201,20 @@ def _canonical_manifest_bytes(manifest: Manifest) -> bytes:
     """The serialization `candidates.build_snapshot` writes into a snapshot."""
     text = json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
     return text.encode("utf-8")
+
+
+def _approval_binding_problem(snapshot: Snapshot, approval: Approval) -> str | None:
+    """Why the supplied snapshot is not the approved one, or None. The approval names the
+    snapshot by its base hash; the snapshot object must also be internally consistent (its
+    recorded inventory hashes to that base hash), since the manifest check reads that inventory.
+    The bytes on disk are re-hashed later by the runner, before anything executes."""
+    if inventory_hash(snapshot.inventory) != snapshot.base_hash:
+        return "snapshot_inconsistent: the recorded inventory does not hash to the base hash"
+    if approval.base_snapshot_hash != snapshot.base_hash:
+        return (
+            "approval_for_other_snapshot: the supplied snapshot is not the approved one"
+        )
+    return None
 
 
 def _snapshot_manifest(snapshot: Snapshot):
@@ -277,8 +306,8 @@ def _not_executed(
         outcome = RunOutcome(
             outcome=Outcome.INCONCLUSIVE,
             policy_version=POLICY_VERSION,
-            reason=f"{reason}; required assertion set could not be reconstructed: "
-            "no trusted manifest bound to the snapshot",
+            reason=f"{reason}; the approved required assertion set could not be "
+            "reconstructed: no trusted manifest bound to the approved snapshot",
             incomplete_coverage=["required_assertion_set"],
         )
     else:

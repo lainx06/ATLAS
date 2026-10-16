@@ -699,7 +699,12 @@ def test_approval_for_another_snapshot_never_runs(tmp_path, monkeypatch):
     )
     _refusing_docker(monkeypatch)
     result = execute_and_reevaluate(snap, cand, other, tmp_path / "c1")
-    _not_executed(result, "approval_for_other_snapshot")
+    # Repair pass 2: nothing is derived from the unapproved snapshot; the approved set cannot be
+    # reconstructed here (see the s11b regressions below for a detectable substitution).
+    assert not result.evaluated
+    assert "approval_for_other_snapshot" in result.execution["reason"]
+    assert result.outcome.outcome is Outcome.INCONCLUSIVE
+    assert result.outcome.assertions == []
 
 
 def test_unavailable_isolation_means_not_executed_and_no_host_run(
@@ -1127,3 +1132,133 @@ def test_preflight_refusal_uses_only_a_manifest_bound_to_the_snapshot(
     )
     assert result2.outcome.assertions == []
     assert "could not be reconstructed" in result2.outcome.reason
+
+
+# =============================================================================================
+# Repair pass 2 (Codex verification of 75f7000, runs/r6v/review.md): approval binding.
+# =============================================================================================
+
+S11B = ROOT / "benchmarks" / "t02" / "s11b_future_time_clean"
+
+
+def _foreign_case(tmp_path, monkeypatch, *, missing_manifest, trusted=None):
+    """Approval A (s01) with a valid snapshot B (s11b, a different required set)."""
+    from atlas.intake import MANIFEST_NAME
+
+    approved, cand, approval = prepared(tmp_path / "approved")
+    foreign = build_snapshot(S11B, tmp_path / "foreign")
+    if missing_manifest:
+        (foreign.root / MANIFEST_NAME).unlink()
+    _refusing_docker(monkeypatch)
+    result = execute_and_reevaluate(
+        foreign, cand, approval, tmp_path / "c1", trusted_manifest=trusted
+    )
+    return approved, foreign, result
+
+
+def _required(project):
+    from atlas.intake import load_project
+    from atlas.policy import required_assertions
+
+    return required_assertions(load_project(project).manifest)
+
+
+def test_the_two_snapshots_have_detectably_different_required_sets():
+    assert _required(S01) != _required(S11B)
+    assert set(_required(S01)) - set(_required(S11B))
+    assert set(_required(S11B)) - set(_required(S01))
+
+
+@pytest.mark.parametrize("missing_manifest", [False, True], ids=["intact", "missing"])
+def test_foreign_snapshot_never_supplies_the_required_set(
+    tmp_path, monkeypatch, missing_manifest
+):
+    from atlas.intake import load_project
+
+    original = audit(S01, tmp_path / "runs")
+    before = _tree_hashes(original.run_dir)
+    # Recovery is offered B's own manifest, which is bound to B's inventory: still refused.
+    trusted = load_project(S11B).manifest if missing_manifest else None
+    _, _foreign, result = _foreign_case(
+        tmp_path / "x", monkeypatch, missing_manifest=missing_manifest, trusted=trusted
+    )
+    cdir = result.candidate_dir
+    record = json.loads((cdir / "execution.json").read_text(encoding="utf-8"))
+    assert (record["stage"], record["status"], record["docker_used"]) == (
+        "preflight",
+        "refused",
+        False,
+    )
+    assert record["reason"].startswith("approval_for_other_snapshot")
+    assert not (cdir / "exec").exists()  # the runner (and Docker) never started
+    out = result.outcome
+    assert not result.evaluated
+    assert out.outcome is Outcome.INCONCLUSIVE
+    assert out.assertions == []  # neither B's set nor an invented one
+    assert "approved required assertion set could not be reconstructed" in out.reason
+    assert out.incomplete_coverage == ["required_assertion_set"]
+    saved = json.loads((cdir / "outcome.json").read_text(encoding="utf-8"))
+    assert saved["assertions"] == []
+    assert _tree_hashes(original.run_dir) == before
+
+
+def test_foreign_snapshot_with_the_approved_manifest_offered_is_still_refused(
+    tmp_path, monkeypatch
+):
+    """A's manifest does not match B's inventory, and B is not approved: nothing is derived."""
+    from atlas.intake import load_project
+
+    _, _, result = _foreign_case(
+        tmp_path,
+        monkeypatch,
+        missing_manifest=True,
+        trusted=load_project(S01).manifest,
+    )
+    assert result.outcome.assertions == []
+    assert "approval_for_other_snapshot" in result.execution["reason"]
+
+
+@pytest.mark.parametrize("missing_manifest", [False, True], ids=["intact", "missing"])
+def test_matching_pair_controls_keep_the_approved_required_set(
+    tmp_path, monkeypatch, missing_manifest
+):
+    """Controls: approval A with snapshot A. Intact manifest, candidate bytes changed after
+    approval (runner refusal); missing manifest with A's bound manifest (preflight recovery)."""
+    from atlas.intake import MANIFEST_NAME, load_project
+
+    snap, cand, appr = prepared(tmp_path / "x")
+    if missing_manifest:
+        (snap.root / MANIFEST_NAME).unlink()
+        used = cand
+    else:
+        used = Candidate(cand.entry_point, cand.entry_bytes + b"#\n", cand.diff_sha256)
+    _refusing_docker(monkeypatch)
+    result = execute_and_reevaluate(
+        snap,
+        used,
+        appr,
+        tmp_path / "x" / "c1",
+        trusted_manifest=load_project(S01).manifest,
+    )
+    assert not result.evaluated
+    assert [a.assertion_id for a in result.outcome.assertions] == _required(S01)
+    assert all(
+        a.status is Status.NOT_ASSESSED and a.reason is Reason.NOT_EXECUTED
+        for a in result.outcome.assertions
+    )
+
+
+def test_inconsistent_snapshot_object_is_refused_before_anything_is_derived(
+    tmp_path, monkeypatch
+):
+    """A snapshot whose recorded inventory does not hash to its base hash cannot vouch for its
+    manifest hash, even with the approval's base hash."""
+    from dataclasses import replace
+
+    snap, cand, appr = prepared(tmp_path / "x")
+    foreign = build_snapshot(S11B, tmp_path / "foreign")
+    forged = replace(snap, inventory=foreign.inventory)  # A's base hash, B's inventory
+    _refusing_docker(monkeypatch)
+    result = execute_and_reevaluate(forged, cand, appr, tmp_path / "x" / "c1")
+    assert "snapshot_inconsistent" in result.execution["reason"]
+    assert result.outcome.assertions == []
