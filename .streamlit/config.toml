@@ -40,6 +40,14 @@ orangeColor = "#B45309"
 violetColor = "#7E22CE"
 grayColor = "#44403C"
 blueColor = "#1D4ED8"
+# Text in these colours uses the exact spec values (Streamlit otherwise derives darker
+# shades; NOT_SUPPORTED rendered near-black). All pass 4.5:1 on white.
+redTextColor = "#B91C1C"
+greenTextColor = "#15803D"
+orangeTextColor = "#B45309"
+violetTextColor = "#7E22CE"
+grayTextColor = "#44403C"
+blueTextColor = "#1D4ED8"
 dataframeBorderColor = "#E7E5E4"
 
 [theme.sidebar]

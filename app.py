@@ -154,7 +154,7 @@ def remember_script(name: str) -> None:
 if pending is not None:
     V.approval_panel(handle.channel, pending)
 
-    @st.fragment(run_every=3.0)
+    @st.fragment(run_every=1.0)
     def keep_alive(handle_id: str, seq: int) -> None:
         """The session heartbeat while the panel waits; reruns the page once it is answered."""
         h = REG.current()
@@ -187,7 +187,12 @@ with st.container(key="card-claim", border=True):
         st.error(f"Project unreadable: {claim.reason}", icon=":material/error:")
         claim = None
     if claim is not None:
-        left, right = st.columns([5, 4], gap="large")
+        # Once this project has results, the claim fields fold away so the analysis and the
+        # finding sit near the top (the 30-second read, UI_SPEC §2).
+        compact = handle is not None and handle.project == project
+        left, right = (
+            st.columns([5, 4], gap="large") if not compact else (st.container(), None)
+        )
         with left:
             with st.container(key="claim-statement"):
                 st.markdown(f"#### {claim.statement}")
@@ -248,8 +253,12 @@ with st.container(key="card-claim", border=True):
                 st.caption(
                     f"Run in progress (started {short_time(handle.started_utc)})."
                 )
-        with right:
-            V.claim_fields(claim)
+        if right is not None:
+            with right:
+                V.claim_fields(claim)
+        else:
+            with st.expander("Claim fields (read-only, from atlas_manifest.json)"):
+                V.claim_fields(claim)
 
 if handle is None:
     with st.container(key="card-empty", border=True):

@@ -1,0 +1,114 @@
+"""Page helpers for the acceptance tests (imported by the test modules)."""
+
+import os
+import re
+import time
+from pathlib import Path
+
+HASH = re.compile(r"[0-9a-f]{64}")
+
+
+# -- page helpers ------------------------------------------------------------------------------
+def open_app(page, app) -> None:
+    page.goto(app.url)
+    page.get_by_role("button", name="Confirm & run").wait_for(timeout=60_000)
+
+
+def select_project(page, name: str) -> None:
+    page.get_by_test_id("stSidebar").get_by_text(name, exact=True).click()
+    page.locator(".st-key-claim-statement").wait_for()
+    wait_idle(page)
+
+
+def select_mode(page, label: str) -> None:
+    page.get_by_role("radiogroup", name="Mode").get_by_role("radio", name=label).click()
+    wait_idle(page)
+
+
+def select_script(page, title: str) -> None:
+    page.get_by_label("Fixture replies").click()
+    page.get_by_role("option", name=title).click()
+    wait_idle(page)
+
+
+def wait_idle(page, timeout: float = 30) -> None:
+    """Until Streamlit reports no script run in progress."""
+    deadline = time.time() + timeout
+    time.sleep(0.3)
+    while time.time() < deadline:
+        if page.get_by_test_id("stStatusWidget").count() == 0:
+            return
+        time.sleep(0.2)
+
+
+def shown_hash(page, previous: str | None, timeout: float = 180) -> str:
+    """The code hash in the approval panel, once it differs from `previous`."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        panel = page.locator(".st-key-approval-code-hash")
+        if panel.count():
+            m = HASH.search(re.sub(r"\s", "", panel.inner_text()))
+            if m and m.group(0) != previous:
+                return m.group(0)
+        time.sleep(0.3)
+    raise AssertionError("no new approval request appeared")
+
+
+def answer(page, typed: str) -> None:
+    page.get_by_label(re.compile("Type the first 12 characters")).fill(typed)
+    page.get_by_role("button", name="Submit confirmation").click()
+
+
+_STARTED: dict[int, float] = {}
+
+
+def click_run(page, name: str = "Confirm & run", double: bool = False) -> None:
+    """Start a run from the page, remembering when, so wait_finished waits for this run."""
+    _STARTED[id(page)] = time.time()
+    button = page.get_by_role("button", name=name)
+    button.dblclick() if double else button.click()
+
+
+def wait_finished(page, app, timeout: float = 240) -> Path:
+    """Until the page shows the finished run that click_run started; returns its directory."""
+    since = _STARTED[id(page)] - 1
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        new = [
+            d for d in (app.runs.iterdir() if app.runs.is_dir() else [])
+            if d.is_dir() and not d.name.startswith(".") and d.stat().st_ctime >= since
+        ]  # fmt: skip
+        label = page.locator(".st-key-results-label")
+        if new and label.count():
+            newest = max(new, key=lambda d: d.stat().st_ctime)
+            if newest.name in label.inner_text():
+                page.locator(".st-key-card-trust").wait_for(timeout=30_000)
+                wait_idle(page)
+                return newest
+        time.sleep(0.5)
+    raise AssertionError("the run did not finish on the page")
+
+
+def text(page, key: str) -> str:
+    return page.locator(f".st-key-{key}").inner_text()
+
+
+def table_rows(page, key: str) -> list[list[str]]:
+    """Body rows of the st.table inside the keyed container, as cell texts."""
+    rows = page.locator(f".st-key-{key} table tbody tr")
+    return [
+        [c.strip() for c in rows.nth(i).locator("td, th").all_inner_texts()]
+        for i in range(rows.count())
+    ]
+
+
+def shot(page, name: str) -> None:
+    """A screenshot of the current viewport for review, if ATLAS_UI_SCREENS names a folder."""
+    folder = os.environ.get("ATLAS_UI_SCREENS")
+    if not folder:
+        return
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    vp = page.viewport_size or {}
+    page.screenshot(
+        path=str(Path(folder) / f"{name}_{vp.get('width')}x{vp.get('height')}.png")
+    )
