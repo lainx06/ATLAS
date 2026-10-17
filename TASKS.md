@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress. Slices 1–3 verified; slice 4a controls verified at `8c79e5a` (Gate 1 PASS); Gate 2 decisions recorded; Gate 3 live entry point and pre-run check implemented offline, awaiting Codex review. No pre-run call or live run authorized | Bounded live agent loop end to end |
+| T-06 | 11 | In progress. Slices 1–3 verified; slice 4a controls verified at `8c79e5a` (Gate 1 PASS); Gate 2 decisions recorded; Gate 3 review FAILED (three P2), repair pass 1 awaiting Codex verification. No pre-run call or live run authorized | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1609,6 +1609,70 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - the base URL is the documented one, not read from `.env`;
     - the key is read from the repository `.env` by `load_api_key` only after every refusal check;
     - nothing was run against Nebius.
+- **GATE 3 REVIEW (`runs/g3v/review.md`, Codex, at `54feca6`): FAIL, three P2 and one P3.**
+  - **P2-1, unbounded evidence formatting** (`preflight.py:40, :150, :180`; `money.py:131`): a listed price was length-checked as text but not range-checked. `"1E+100000"` (9 characters) was formatted into 100,001 characters, about 200 KB of evidence. It failed closed (abort, no completion), but resource use was unbounded.
+  - **P2-2, test gap: authorization compared as floats** (variant b, `cli.py:207`): a scratch mutation `float(amount) != float(decided)` passed all 70 existing live-entry and control tests. `0.51000000000000001` would have been accepted.
+  - **P2-3, test gap: a raised pre-run check** (variant c, `cli.py:237`): a scratch mutation that caught an exception and substituted passing evidence passed all 70 existing tests and reached the client. The production code failed closed with an uncaught exception, not a sanitized exit 6.
+  - **P3, fixture report field:** fixture reports gained `"preflight": {"applicable": false, ...}`, so the report is not byte-for-byte unchanged. *Accepted by the lead* (DECISIONS.md, Gate 3 dispositions, 2026-10-17).
+  - **Lead confirmations requested:** the 60 s timeout, and the base URL and model coming only from the constant. *Both decided* (DECISIONS.md, Gate 3 dispositions).
+  - **Codex's harness limitations (not product defects):**
+    - its outer network guard conflicted with the tests that check the guard is restored (13 assertion failures and 1 refused loopback setup);
+    - its `.env*` guard blocked the synthetic `.env` key-file test;
+    - `docker` was not on its PATH, so the Docker integrations were not run;
+    - early trusted-fixture child processes were not covered by its guard.
+
+    Codex verified the refusal order, the constant-only configuration source, the real listing's shape (it passes), and five other weakened variants (a, d, e, f, g caught).
+- **GATE 3 REPAIR PASS 1 RESULT (2026-10-17): self-tested; awaiting Codex verification; nothing live authorized.** No network request, `.env` read, pre-run call, live run or spending.
+  - **Files:** `src/atlas/agent/preflight.py`, `src/atlas/agent/money.py`, `src/atlas/cli.py`, `tests/unit/test_agent_slice4_live_entry.py`. Commit 1 (`0a601d9`) recorded the dispositions and relabelled the timeout as decided.
+  - **P2-1, bounds as implemented:**
+    - **Body:** read incrementally with `client.stream`, capped at `MAX_BODY_BYTES` = 1 MiB (`preflight.py:48`, `_read_capped` `:144`). The cap applies to both the declared Content-Length and the bytes actually received. Over the cap is `response_too_large`, with no parse.
+    - **JSON:** a `ValueError` (bad JSON or UTF-8, or the 4,300-digit integer limit) or a `RecursionError` (deep nesting) is `response_malformed` (`_listed_values` `:234`), never an exception.
+    - **Prices** (`_price` `:77`):
+      - absent is `missing_field`;
+      - a non-string, a string over 64 characters or an unparseable value is `price_malformed`;
+      - an integer over 400 bits is never converted;
+      - anything else must pass `money.price_problem` **before** any formatting or comparison: finite, non-negative, no negative zero, at most 30 decimal places, at most 1e100 USD per token. That check (`money._decimal_problem` `:67`) now works from the `Decimal` tuple alone: `adjusted = len(digits) - 1 + exponent` (`:81`), with no comparison or formatting. It is the same range `NebiusConfig` enforces, and it now enforces it the same way. Failures are `price_out_of_range`.
+    - **Context length** (`_context_length` `:100`): a genuine `int`, not a bool, from 2 to 10**100. Otherwise `context_length_out_of_range`; absent is `missing_field`.
+    - **Evidence:** a rejected value is recorded as `{"field", "raw"}`, with the raw text cut to 64 characters (large integers as `<int of N bits>`), never a formatted expansion. The whole record is kept under `MAX_EVIDENCE_BYTES` = 16 KiB (`:49`) by `_bounded` (`:260`), a fallback that cannot trigger with these bounds. Previously the abort code for bad JSON was `malformed_json`, and a float context length was `missing_field`.
+  - **P2-3:** `cli.py:239` wraps `run_preflight`. Any `Exception` becomes abort evidence (`preflight.error_evidence`: `preflight_error: <TypeName>`, the type name only) and exit 6; no client, `run_agent`, Docker call or completion follows. `BaseException` is not caught.
+  - **P2-2:** amount-refusal tests for `0.51000000000000001` and `0.50999999999999999` (distinct Decimals, equal floats), with the existing tripwires.
+  - **Tests (logs in git-ignored `runs/g3r/`):**
+    - `tests/unit/test_agent_slice4_live_entry.py` → **72 passed** (46 + 26 new):
+      - the 2 near-equal amounts;
+      - 3 raised pre-run checks (`RuntimeError`, `OSError`, `ValueError`, each with a synthetic marker, exit 6, the marker and key in no output or evidence);
+      - 19 bounded cases, each exiting 6 with one GET, no completion, a fixed code and evidence ≤ 16 KiB:
+        - prices `1E+100000`, `1E-100000`, `1e101`, `-0`, `-1E-7`, NaN, a 10**200 integer, 31 decimal places and a 65-character string;
+        - in-range `1E+31` and a 64-digit string, which reach the normal mismatch;
+        - context lengths 10**100+1, 1, negative and bool;
+        - a 5,000-digit integer;
+        - a body just over 1 MiB, an understated Content-Length and 100,000-deep nesting;
+      - 2 controls (the synthetic listing, and the archived real listing read only from `runs/nebius_smoke/`, which **passed**, not skipped).
+
+      Every existing abort test now also asserts evidence ≤ 16 KiB.
+    - **Focused** (`uv run --locked pytest tests/unit/test_agent_slice4_live_entry.py tests/unit/test_agent_slice4_controls.py tests/unit/test_agent_slice4_prompt.py tests/unit/test_agent_controller.py -q -p no:cacheprovider --basetemp=runs/g3r/t/u -rs`): **240 passed**, exit 0 (`focused.log`).
+    - **Red at `54feca6`** (fresh `git archive` plus this file; `red.log`): **25 failed, 46 passed, 1 skipped** (the archived-listing control; the archive copy has no `runs/`).
+      - **9 behavioural:**
+        - three raised checks escaped as exceptions;
+        - 100,000-deep nesting crashed with `RecursionError`;
+        - the over-1 MiB and understated-length bodies were accepted and the run was reached;
+        - `1E+100000` and `1E-100000` wrote 200,834- and 200,836-byte evidence;
+        - a 31-decimal price equal in value was accepted and the run was reached.
+      - **13 reason-code differences** (the parent already aborted safely, under `mismatch`, `missing_field` or `malformed_json`).
+      - **2 new-interface failures** (the `rejected` evidence field).
+      - **1 label** (the timeout now decided).
+      - The two near-equal amounts **passed** at the parent, which already compared Decimals: Codex's P2-2 was a test gap, shown only by the mutation.
+    - **Codex's variants rerun from a scratch copy** (`runs/g3r/m/`, made by `make_g3r_mutations.py` from `runs/g3v/mutations.py`; the adaptations are in `ADAPTATIONS.txt`: paths, `ROOT`, its review guard not imported, and variant c targeting the repaired call site). Both are now **caught**:
+      - **b** (float comparison): 2 failed, 94 passed (`mut-b.log`), namely the two near-equal amounts;
+      - **c** (passing evidence substituted): 3 failed, 93 passed (`mut-c.log`), namely the three raised checks.
+    - **Full suite** with Docker required (`docker info` → linux 29.8.2; `$env:ATLAS_REQUIRE_DOCKER='1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/g3r/t/f -rs`; `full.log`): **1117 passed, 1 skipped (the existing symlink-permission skip) in 856.05 s, exit 0**.
+    - `uv run --locked ruff check .` and `uv run --locked ruff format --check .` are clean.
+  - **Not changed (not owned in this pass):** `scripts/live_preflight.py` still prints the timeout as "(proposed)" in its dry-run plan; the label is stale since the Gate 3 dispositions.
+  - **Limitations:**
+    - the bounds protect the pre-run check, not the completion path (bounded separately by the slice 3 usage checks);
+    - the 1 MiB cap and 64-character raw cut are builder choices;
+    - the 12,000 input figure remains an estimate;
+    - provider enforcement and actual billing remain unverified;
+    - nothing was run against Nebius.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
@@ -1624,7 +1688,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
        - the live entry point design.
 
        The timeout (60 s) is still proposed. Gate 3 implementation is next.
-    3. Implementation of the entry point and pre-run check (**implemented offline**, "GATE 3 IMPLEMENTATION RESULT"), Codex review of it (**pending**), then the lead's explicit go-ahead for the one live run.
+    3. Implementation of the entry point and pre-run check (**implemented offline**). Codex review **FAILED** (three P2, `runs/g3v/review.md`); repair pass 1 is self-tested and awaits Codex verification. Then the lead's explicit go-ahead for the one live run.
     4. After the run: Codex review of the live evidence before T-06 acceptance is considered.
   - **INPUT STATE:** slices 1–3 verified; the controls at `96f6fc6` reviewed; Docker running; the `.env` key present (never printed).
   - **CHANGE (owned paths):**

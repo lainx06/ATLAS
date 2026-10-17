@@ -48,6 +48,7 @@ LISTING = json.loads(
     )
 )
 MODEL = "nvidia/nemotron-3-super-120b-a12b"
+MAX_EVIDENCE = 16 * 1024  # bytes (Gate 3 repair pass 1)
 DECIDED = getattr(budget, "DECIDED_SLICE4", {})
 
 
@@ -189,7 +190,21 @@ def test_flag_and_mode_refusals(tmp_path, monkeypatch, no_side_effects, argv, mo
 
 
 @pytest.mark.parametrize(
-    "amount", [None, "0.50", "0.52", "abc", "NaN", "Infinity", "-0.51", "", "5.1e-1x"]
+    "amount",
+    [
+        None,
+        "0.50",
+        "0.52",
+        "abc",
+        "NaN",
+        "Infinity",
+        "-0.51",
+        "",
+        "5.1e-1x",
+        # Gate 3 P2-2: distinct from 0.51 as Decimals, equal to it as floats
+        "0.51000000000000001",
+        "0.50999999999999999",
+    ],
 )
 def test_amount_refusals(tmp_path, monkeypatch, no_side_effects, amount):
     argv = ["--mode", "agent", "--live"]
@@ -276,11 +291,14 @@ ABORTS = {
     "status-401": ({"status": 401}, "http_401"),
     "timeout": ({"error": httpx2.ReadTimeout}, "timeout"),
     "connection": ({"error": httpx2.ConnectError}, "transport_error"),
-    "malformed-json": ({"raw": b"{not json"}, "malformed_json"),
+    "malformed-json": ({"raw": b"{not json"}, "response_malformed"),
     "missing-data": ({"raw": b'{"object": "list"}'}, "missing_field: data"),
     "missing-price": ({"change": _drop(("pricing", "completion"))}, "missing_field"),
     "missing-context": ({"change": _drop(("context_length",))}, "missing_field"),
-    "float-context": ({"change": _set(("context_length",), 262144.0)}, "missing_field"),
+    "float-context": (
+        {"change": _set(("context_length",), 262144.0)},
+        "context_length_out_of_range",
+    ),
 }  # fmt: skip
 
 
@@ -313,6 +331,7 @@ def test_every_preflight_abort_exits_6_without_a_completion(
     text = out + err + path.read_text(encoding="utf-8")
     assert KEY not in text and "mock failure" not in text
     assert "authorization" not in path.read_text(encoding="utf-8").lower()
+    assert len(path.read_bytes()) <= MAX_EVIDENCE  # Gate 3 P2-1: bounded evidence
 
 
 @pytest.mark.parametrize(
@@ -382,6 +401,138 @@ def test_a_key_shaped_request_id_is_withheld():
 
     evidence = preflight_once(Echo())
     assert evidence["request_id"] is None and KEY not in json.dumps(evidence)
+
+
+# =============================================================================================
+# Gate 3 repair pass 1 (runs/g3v/review.md): bounded provider values, a raised pre-run check
+# =============================================================================================
+
+MARKER = "synthetic-marker-7f3a"
+
+
+@pytest.mark.parametrize("error", [RuntimeError, OSError, ValueError])
+def test_a_raised_preflight_is_an_abort(tmp_path, monkeypatch, key_file, error):
+    """P2-3: an exception from the check exits 6 with only its type name; nothing follows."""
+    provider = Provider(completions=[S.ok_body(FINISH, None, model=MODEL)])
+
+    def raising(*args, **kwargs):
+        raise error(MARKER + " " + KEY)
+
+    monkeypatch.setattr(preflight, "run_preflight", raising)
+    monkeypatch.setattr(nebius, "NebiusClient", tripwire("client built"))
+    monkeypatch.setattr(ctl, "run_agent", tripwire("run_agent"))
+    monkeypatch.setattr(dr, "probe", tripwire("Docker probe"))
+    monkeypatch.setattr(dr, "_docker", tripwire("Docker CLI"))
+    code, out, err = run_cli(tmp_path, monkeypatch, LIVE)
+    assert code == 6 and provider.requests == []  # no completion (nor any request)
+    (path,) = (tmp_path / "runs").glob("preflight-*.json")
+    assert not list((tmp_path / "runs").glob("agent-*"))
+    evidence = json.loads(path.read_text(encoding="utf-8"))
+    assert evidence["result"] == "abort"
+    assert evidence["reason"] == f"preflight_error: {error.__name__}"
+    text = out + err + path.read_text(encoding="utf-8")
+    assert MARKER not in text and KEY not in text
+    assert len(path.read_bytes()) <= MAX_EVIDENCE
+
+
+def _over_mib():
+    body = json.dumps(LISTING).encode("utf-8")
+    return body + b" " * (
+        1024 * 1024 + 1 - len(body)
+    )  # valid JSON, one byte over 1 MiB
+
+
+BOUNDED = {
+    # prices (the prompt field unless stated)
+    "price-1E+100000": ({"change": _set(("pricing", "prompt"), "1E+100000")}, "price_out_of_range"),
+    "price-1E-100000": ({"change": _set(("pricing", "prompt"), "1E-100000")}, "price_out_of_range"),
+    "price-1e101": ({"change": _set(("pricing", "prompt"), "1e101")}, "price_out_of_range"),
+    "price-1E+31": ({"change": _set(("pricing", "prompt"), "1E+31")}, "mismatch"),
+    "price-minus-zero": ({"change": _set(("pricing", "prompt"), "-0")}, "price_out_of_range"),
+    "price-negative": ({"change": _set(("pricing", "completion"), "-1E-7")}, "price_out_of_range"),
+    "price-64-digits": ({"change": _set(("pricing", "prompt"), "9" * 64)}, "mismatch"),
+    "price-65-chars": ({"change": _set(("pricing", "prompt"), "9" * 65)}, "price_malformed"),
+    "price-31-decimals": (
+        {"change": _set(("pricing", "prompt"), "0.0000003" + "0" * 24)},
+        "price_out_of_range",
+    ),
+    "price-huge-int": ({"change": _set(("pricing", "completion"), 10**200)}, "price_out_of_range"),
+    "price-NaN": ({"change": _set(("pricing", "prompt"), "NaN")}, "price_out_of_range"),
+    # context length
+    "context-1e100+1": ({"change": _set(("context_length",), 10**100 + 1)}, "context_length_out_of_range"),
+    "context-1": ({"change": _set(("context_length",), 1)}, "context_length_out_of_range"),
+    "context-negative": ({"change": _set(("context_length",), -262144)}, "context_length_out_of_range"),
+    "context-bool": ({"change": _set(("context_length",), True)}, "context_length_out_of_range"),
+    # bodies
+    "context-5000-digits": (
+        {"raw": b'{"data": [{"id": "' + MODEL.encode() + b'", "context_length": '
+                + b"9" * 5000 + b"}]}"},
+        "response_malformed",
+    ),
+    "body-over-1MiB": ({"raw": None, "body": "over"}, "response_too_large"),
+    "body-understated-length": ({"raw": None, "body": "understated"}, "response_too_large"),
+    "body-nested-100000": ({"raw": b"[" * 100_000 + b"]" * 100_000}, "response_malformed"),
+}  # fmt: skip
+
+
+class SizedProvider(Provider):
+    """A provider whose /models body is over 1 MiB, optionally with an understated length."""
+
+    def __init__(self, mode):
+        super().__init__()
+        self.mode = mode
+
+    def __call__(self, request):
+        self.requests.append(request)
+        body = _over_mib()
+        headers = {"content-type": "application/json"}
+        if self.mode == "understated":
+            headers["content-length"] = "100"
+        return httpx2.Response(200, content=body, headers=headers)
+
+
+@pytest.mark.parametrize("case", sorted(BOUNDED))
+def test_listed_values_and_bodies_are_bounded(tmp_path, monkeypatch, key_file, case):
+    """P2-1: out-of-range or oversized provider data aborts with a fixed code and bounded
+    evidence, before any expansion; in-range values still reach the normal comparison."""
+    spec, reason = BOUNDED[case]
+    if "body" in spec:
+        provider = SizedProvider(spec["body"])
+    else:
+        listing = copy.deepcopy(LISTING)
+        if "change" in spec:
+            spec["change"](listing)
+        provider = Provider(listing, models_raw=spec.get("raw"))
+    wire(monkeypatch, provider)
+    monkeypatch.setattr(ctl, "run_agent", tripwire("run_agent"))
+    monkeypatch.setattr(dr, "probe", tripwire("Docker probe"))
+    code, out, err = run_cli(tmp_path, monkeypatch, LIVE)
+    assert code == 6
+    assert len(provider.gets()) == 1 and provider.posts() == []
+    (path,) = (tmp_path / "runs").glob("preflight-*.json")
+    raw = path.read_bytes()
+    assert len(raw) <= MAX_EVIDENCE and len(out + err) <= MAX_EVIDENCE
+    evidence = json.loads(raw)
+    assert evidence["result"] == "abort" and evidence["reason"].startswith(reason)
+    if evidence["rejected"] is not None:
+        assert len(evidence["rejected"]["raw"]) <= 64
+    assert KEY not in out + err + raw.decode("utf-8")
+
+
+def test_the_archived_real_listing_still_passes():
+    """Control: the real listing's shape (read-only, if present) still passes."""
+    real = Path(__file__).parents[2] / "runs/nebius_smoke/models-verbose-20261014.json"
+    if not real.is_file():
+        pytest.skip("archived listing absent; the synthetic control covers the shape")
+    evidence = preflight_once(Provider(models_raw=real.read_bytes()))
+    assert evidence["result"] == "pass" and evidence["mismatches"] == []
+    assert len(json.dumps(evidence).encode("utf-8")) <= MAX_EVIDENCE
+
+
+def test_the_synthetic_listing_still_passes_within_the_bound():
+    evidence = preflight_once(Provider())
+    assert evidence["result"] == "pass"
+    assert len(json.dumps(evidence).encode("utf-8")) <= MAX_EVIDENCE
 
 
 # =============================================================================================
@@ -463,9 +614,7 @@ def test_only_the_cli_and_the_script_read_the_decided_constant():
         assert "DECIDED_SLICE4" not in source, module
     signature = __import__("inspect").signature(ctl.run_agent).parameters
     assert signature["spend"].default is None and signature["preflight"].default is None
-    assert (
-        DECIDED["timeout_s"] == 60.0 and "timeout_s" in budget.DECIDED_SLICE4_PROPOSED
-    )
+    assert DECIDED["timeout_s"] == 60.0 and budget.DECIDED_SLICE4_PROPOSED == ()
 
 
 def _script():

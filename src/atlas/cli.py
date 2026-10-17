@@ -17,7 +17,8 @@ after the person at the terminal types the first 12 characters of its hash.
   4. the decided spending limits do not cover the provider-enforced worst case.
 
   Then the key is read from `.env` (`load_api_key`, never printed), the pre-run model check runs
-  (`agent.preflight`). If it aborts, the CLI exits `PREFLIGHT_ABORT_EXIT` (6) with no completion
+  (`agent.preflight`). If it aborts or raises (recorded as `preflight_error: <type name>`, never
+  the message), the CLI exits `PREFLIGHT_ABORT_EXIT` (6) with no completion
   sent and the sanitized evidence in `<runs-dir>/preflight-<UTC time>.json`. Only after it
   passes is the production client built and the run started with the decided limits; the
   evidence goes into the run's report and `preflight.json`.
@@ -233,7 +234,11 @@ def _live(args) -> int:
         key = nebius.load_api_key(LIVE_ENV_FILE)
     except (OSError, ValueError) as exc:
         return _refuse(f"the API key is not available ({type(exc).__name__}).")
-    evidence = pf.run_preflight(config, key)
+    try:
+        evidence = pf.run_preflight(config, key)
+    except Exception as exc:  # noqa: BLE001 - any failure of the check is an abort, never a pass
+        # Only the type name is kept (never the message); no key-dependent step follows.
+        evidence = pf.error_evidence(config, type(exc))
     for line in pf.summary_lines(evidence):
         print(line)
     if evidence["result"] != pf.PASS:

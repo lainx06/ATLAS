@@ -3,10 +3,14 @@
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
 CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4.
-- Gate 1 passed at `8c79e5a`; Gate 2 decisions recorded (DECISIONS.md 2026-10-16).
-- **Gate 3 implementation done offline:** the live entry point (`--mode agent --live --authorize-spend-usd 0.51`, refusals exit 2 before anything) and the pre-run `GET /models` check (`agent/preflight.py`, abort exit 6), with `scripts/live_preflight.py` (dry run by default). Awaiting Codex's Gate 3 review (TASKS.md T-06 "GATE 3 IMPLEMENTATION RESULT").
-- Tests: 46 new, focused 347 passed; full suite with Docker required: 1091 passed, 1 skipped (the existing symlink-permission skip) in 832.52 s, exit 0.
-- **No pre-run call, live run, network request or spending has been made or authorized.** The 60 s timeout is proposed. **T-06 is not accepted.**
+- Gate 1 passed at `8c79e5a`; Gate 2 decisions recorded (2026-10-16); Gate 3 dispositions recorded (2026-10-17: 60 s timeout and base URL decided; the fixture report field accepted).
+- **Gate 3 review FAILED** (`runs/g3v/review.md`, at `54feca6`: three P2, namely unbounded price formatting in the pre-run evidence, and two test gaps for float comparison and a raised pre-run check; one P3, accepted).
+- **Gate 3 repair pass 1 is self-tested and awaits Codex verification** (TASKS.md T-06 "GATE 3 REPAIR PASS 1 RESULT"):
+  - bounded listed values and body;
+  - a raised check is an exit-6 abort;
+  - near-equal amount tests.
+- Tests: live-entry 72 passed, focused 240 passed; Codex's variants b and c are now caught; full suite with Docker required: 1117 passed, 1 skipped (the existing symlink-permission skip) in 856.05 s, exit 0.
+- **Gate 3 is not passed.** No pre-run call, live run, network request or spending has been made or authorized. **T-06 is not accepted.**
 - **Accepted:** T-01 (`f5aa4dc`), T-02 (`75a98f4`), T-03 (`51d3dd8`, research and feasibility), T-04 (smoke-test scope), T-05 (`eed73ee`), each within its documented scope.
 - **T-06, independently verified by Codex within documented scope:**
   - slice 1 at `1d58b20` (`runs/r6w/review.md`);
@@ -223,7 +227,7 @@ LAST UPDATED: 2026-10-16
 - **T-06 slice 4 (gates, not defects):**
   1. Codex review of the controls: **resolved (Gate 1 PASS at `8c79e5a`, `runs/g1v3/review.md`)** after review 1 failed with two P2 (`runs/g1-1016/review.md`);
   2. the lead's decisions: **recorded** (DECISIONS.md, 2026-10-16); the 60 s timeout is still proposed;
-  3. the Gate 3 implementation: **done offline**; its Codex review is **pending**; then explicit live authorization (not given).
+  3. the Gate 3 implementation: **done offline**. Codex review **FAILED** (three P2); repair pass 1 is self-tested and awaits Codex verification. Then explicit live authorization (not given).
 
   **Open review defects:** none for slice 4a.
 - **Nebius:** none. $50 in Token Factory credits awarded in total (user-reported; balance and expiry not verified), key set, text and JSON-validation smoke calls succeeded.
@@ -293,7 +297,7 @@ LAST UPDATED: 2026-10-16
 1. **Next task card: T-06 SLICE 4 (one authorized live run)**, TASKS.md T-06 "NEXT CARD: SLICE 4". It has acceptance criteria, owned paths, verification commands and four review gates.
    - **Gate 1:** **passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired). **Gate 2 is next.**
    - **Gate 2:** the lead's decisions: **recorded 2026-10-16** (DECISIONS.md "T-06 slice 4 live-run decisions (lead)").
-   - **Gate 3:** the entry point and pre-run check are **implemented offline** (TASKS.md "GATE 3 IMPLEMENTATION RESULT"). **Codex review is next**, then the lead's explicit go-ahead for the pre-run call and the one live run, and confirmation of the 60 s timeout.
+   - **Gate 3:** the entry point and pre-run check are implemented offline. The review FAILED (`runs/g3v/review.md`); repair pass 1 is self-tested. **Codex verification of the repair is next**, then the lead's explicit go-ahead for the pre-run call and the one live run.
    - **Gate 4:** Codex review of the live evidence before T-06 acceptance is considered.
    - **Target milestone:** the playbook's *live-agent milestone*, "Working NVIDIA model on Nebius" (playbook §23 checklist: a sanitized runtime trace, the model ID and a reproduced code-edit/check workflow). It is scheduled in the playbook §12 window **Oct 17–18** ("original-versus-revised comparison"), alongside the first end-to-end UI by Oct 18 (T-07, not started), so the schedule is tight.
    - **Owner-observed NON-LIVE demonstration (2026-10-16):** the owner ran the fixture CLI on s01 with both approvals (`runs/demo-s01/runs/agent-s01_faulty-6face8361824`). It ended REPORT: original VIOLATION_FOUND; candidate `81f691409a67` completed with NO_VIOLATION_FOUND; the hash matched; four FAILs became PASS.

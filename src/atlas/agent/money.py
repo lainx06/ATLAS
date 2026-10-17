@@ -61,31 +61,40 @@ def exact():
         raise MoneyError("amount not exactly representable") from None
 
 
-def _decimal_problem(value, maximum: Decimal, unit: str) -> str | None:
+MAX_EXPONENT = 100  # MAX_PRICE is 10**MAX_EXPONENT
+
+
+def _decimal_problem(value, unit: str) -> str | None:
+    """Why `value` is outside the supported range, decided from its tuple alone: no
+    arithmetic, comparison or formatting, so a short input such as "1E+100000" is rejected
+    without ever being expanded."""
     if not isinstance(value, Decimal):
         return "must be a Decimal"
     if not value.is_finite():
         return "must be finite"
-    sign, _, exponent = value.as_tuple()
+    sign, digits, exponent = value.as_tuple()
     if sign:  # negative, or a negative zero (which would print as -0)
         return "must be non-negative"
     if exponent < -PRICE_DECIMALS:
         return f"must have at most {PRICE_DECIMALS} decimal places"
-    with exact():
-        if value > maximum:
-            return f"must be at most 1e100 {unit}"
+    # The value is d0.d1d2... x 10**adjusted (d0 >= 1 unless the value is zero).
+    adjusted = len(digits) - 1 + exponent
+    if adjusted > MAX_EXPONENT or (
+        adjusted == MAX_EXPONENT and (digits[0] > 1 or any(digits[1:]))
+    ):
+        return f"must be at most 1e100 {unit}"
     return None
 
 
 def price_problem(value) -> str | None:
     """Why `value` is not a supported price, or None."""
-    return _decimal_problem(value, MAX_PRICE, "USD per token")
+    return _decimal_problem(value, "USD per token")
 
 
 def amount_problem(value) -> str | None:
     """Why `value` is not a supported USD amount (a spending limit), or None. Same range as a
     price: finite, non-negative, at most 1e100 and at most 30 decimal places."""
-    return _decimal_problem(value, MAX_PRICE, "USD")
+    return _decimal_problem(value, "USD")
 
 
 def exceeds(a: Decimal, b: Decimal) -> bool:
