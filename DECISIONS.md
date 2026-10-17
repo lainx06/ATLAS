@@ -279,3 +279,11 @@ After Codex's Gate 3 review (`runs/g3v/review.md`, at `54feca6`: FAIL, three P2 
 3. **Fixture reports carrying `"preflight": {"applicable": false, ...}`: ACCEPTED** as an additive, honest report field (Codex P3). Fixture execution and evaluation are unchanged.
 
 **Still not authorized:** the pre-run call, the live run, any spending.
+
+### Gate 3 re-verification dispositions (lead, 2026-10-17)
+These dispositions resolve the prompt-outcome findings in `runs/g3w/review.md` and `runs/g3x/review.md`. Codex's confirmation, `runs/g3y/review.md`, records **GATE 3 PASS at `f327565`** under them.
+1. **P2-1 acceptance criterion: REVISED.** The earlier wording, "no expanded value anywhere", contradicted the required in-range mismatch case. Out-of-range or malformed listed values are rejected from their tuple or raw form without expansion; fixed-point rendering happens only after the range check accepts that same value, is at most **132 characters** per value, and preflight evidence stays within **16 KiB**.
+2. **`money.py` rejecting `"0E+200"`: known limitation, DEFERRED (P3).** This is a zero with a large exponent; the rejection fails closed.
+3. **Listed price strings longer than 64 characters rejected as `price_malformed` (`preflight.py:77`): ACCEPTED.** The rejection fails closed and replaces the follow-up prompt's requested mismatch outcome for the maximum-digit input.
+
+**Still not authorized:** the preflight call, the live run, any spending. Gate 3 PASS means ready for the lead's explicit go-ahead; it is not that go-ahead.

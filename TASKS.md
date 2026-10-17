@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress. Slices 1–3 verified; slice 4a controls verified at `8c79e5a` (Gate 1 PASS); Gate 2 decisions recorded; Gate 3 review FAILED (three P2), repair pass 1 awaiting Codex verification. No pre-run call or live run authorized | Bounded live agent loop end to end |
+| T-06 | 11 | In progress. Slices 1–3 verified; slice 4 controls verified (Gate 1 PASS at `8c79e5a`); Gate 2 decisions recorded; slice 4 entry point and preflight verified (Gate 3 PASS at `f327565`). Awaiting the lead's explicit live go-ahead; nothing live run | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1473,7 +1473,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - the live request itself.
 
     The input figure remains an estimate; the worst case relies on provider enforcement that has not been verified.
-- **SLICE STATUS (reconciled 2026-10-16 at `96f6fc6`):**
+- **SLICE STATUS (reconciled 2026-10-17; Gate 3 PASS at `f327565`):**
 
   | Slice | Commit | State | Evidence |
   | --- | --- | --- | --- |
@@ -1481,7 +1481,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   | 2. Offline fixture controller | `69042a1` | **Verified** by Codex within scope | `runs/r6x/review.md` |
   | 3. Docker baseline, CLI approval, offline Nebius client | `5e63fc4` | **Verified** by Codex within its offline scope | `runs/s3y/review.md`: 370 passed, 1 skipped; Docker 10 passed |
   | 4a. Prompt budget and spending controls (offline) | `96f6fc6`, repaired at `8c79e5a` | **Verified by Codex within its offline scope (Gate 1 PASS)** | `runs/g1-1016/review.md` (FAIL); `runs/g1v3/review.md` (PASS) |
-  | 4b. One authorized live run | none | **Not started; not authorized** | "NEXT CARD: SLICE 4" below |
+  | 4b. Entry point, preflight and one live run | `f327565` (offline implementation) | **Entry point and preflight verified by Codex (Gate 3 PASS)**; live run **not started**, awaiting the lead's separate explicit go-ahead for ONE pre-run call and ONE live run (at most $0.51) | `runs/g3w/review.md` (FAIL); `runs/g3x/review.md` (FAIL); `runs/g3y/review.md` (PASS); "NEXT CARD: SLICE 4" below |
 
 - **FULL-SUITE VERIFICATION AT `96f6fc6` (2026-10-16, builder):** after `docker info` → `linux 29.8.2`, PowerShell `$env:ATLAS_REQUIRE_DOCKER = '1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/status-20261016/t -rs` gave **965 passed, 1 skipped** (the existing symlink-permission skip) in 743.88 s, exit 0. `ruff check` and `ruff format --check` are clean. Logs: `runs/status-20261016/`. This includes the Docker runner contract suite and all T-06 integration tests. It is the builder's run, not an independent verification.
 
@@ -1558,7 +1558,9 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Safety:** no network call, `.env*` read or hash, spend, permission change, elevated retry, reparse-point traversal or tracked-file change.
   - Codex also corrected its earlier NumPy note: 2.4.6 is the correct lock variant for Python 3.11.
   - **Scope:** this verifies only the slice 4a controls repair. It is not T-06 acceptance and authorizes nothing live. All ceilings and amounts remain **PROPOSED** (no DECISIONS.md record).
-- **FOLLOW-UP (low priority, not scheduled):** the junction test in `tests/unit/test_candidates.py` leaves junctions in pytest base-temp directories under `runs/`, and 117 `runs/` paths are unreadable from Codex's sandbox. Both reduce future preservation coverage. No action in this task.
+- **FOLLOW-UPS (low priority, not scheduled):**
+  - Junction teardown: the junction test in `tests/unit/test_candidates.py` leaves junctions in pytest base-temp directories under `runs/`, and 117 `runs/` paths were unreadable from Codex's sandbox in that review. Both reduce future preservation coverage. No action in this task.
+  - `0E+200` rejection (`money.py`; deferred P3): an unsigned zero with a large exponent is rejected; fails closed. Accepted as a known limitation in DECISIONS.md "Gate 3 re-verification dispositions (lead, 2026-10-17)".
 - **GATE 3 IMPLEMENTATION RESULT (2026-10-16): the live entry point and pre-run model check, offline. Awaiting Codex Gate 3 review; no pre-run call or live run executed or authorized; no network request, `.env` read or spending.**
   - **Files:**
     - `src/atlas/cli.py`: `--live`, `--authorize-spend-usd`, `_live`, exit codes;
@@ -1673,13 +1675,24 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - the 12,000 input figure remains an estimate;
     - provider enforcement and actual billing remain unverified;
     - nothing was run against Nebius.
+- **GATE 3 RE-VERIFICATION (`runs/g3w/review.md`, Codex, at `f327565`): FAIL on one literal criterion.** The three original P2s were verified closed: unbounded listed-value expansion, the float-comparison test gap, and the raised-preflight test gap. No new P1/P2 was found.
+  - **Two P3s:** in-range `1E+31` renders as a bounded 32-digit fixed-point value, contrary to the old "no expanded value anywhere" wording; `money.py` rejects `0E+200` despite its zero value. Both fail closed. The lead's re-verification dispositions revise the first criterion and defer the second limitation.
+  - **Verification:** **213 focused tests passed**, exit 0; selected Ruff check passed. The initial attempt had 97 passed and 116 setup errors because the temporary parent directory was missing; the unchanged selection passed after that directory was created.
+  - **Mutations caught:** b (float comparison), **2 failed / 70 passed**; c (substituted passing evidence), **3 failed / 69 passed**; both exit 1, with precisely the intended regression tests failing.
+  - **Controls and safety:** archived real-listing control **PASS** through a mocked transport; **0 probe network attempts**. Preservation: **7,388 hashes unchanged**, 0 added/removed/changed, 7 identical inaccessible paths, 0 reparse points. The builder's full-suite and earlier mutation evidence was inspected, not rerun.
+- **GATE 3 FOLLOW-UP (`runs/g3x/review.md`): FAIL on one requested probe outcome.** The revised P2-1 criterion clauses (a)–(d) pass; no new P1/P2 was found.
+  - **Trace and bounds:** **14 relevant formatting calls and paths** traced; longest rendered value **101 characters**, largest evidence **1,699 bytes**; **0 network attempts**.
+  - **P3:** the 64-character raw-string cap rejects the maximum-digit input as `price_malformed`, instead of the prompt's requested normal mismatch. Four cases produced three normal mismatches and one outcome assertion failure, with 0 errors; all exited 6 with one mocked GET and no completion. This fail-closed outcome is accepted by the lead's third re-verification disposition.
+- **GATE 3 CONFIRMATION (`runs/g3y/review.md`): GATE 3 PASS** at `f327565`, under DECISIONS.md "Gate 3 re-verification dispositions (lead, 2026-10-17)".
+  - The prior verified checks stand; no tests or prior probes were rerun. The single archived-listing check found **1** matching model: `pricing.prompt` and `pricing.completion` are strings of **9 characters each** (both within 64); `context_length` is an **int**. The string-length check precedes Decimal parsing and rendering.
+  - **No unresolved blocking findings.** PASS means ready for the lead's explicit go-ahead; it authorizes no preflight call, live run or spending. **T-06 is not accepted; nothing live run.**
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
   - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex High review.
   - **READ FIRST:** this entry's "SLICE 4 PROPOSAL" and "SLICE 4 CONTROLS RESULT"; SPEC §11; DECISIONS.md 2026-10-15 "Hosting probe decisions" (retries count, dispatched reservations kept) and 2026-10-16 "T-03 hosting decisions" (no additional spending authorized).
   - **REVIEW GATES (in order; each is a stop):**
-    1. Codex review of the controls at `96f6fc6`, with every finding dispositioned. **Passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired). Gate 2 is next.
+    1. Codex review of the controls at `96f6fc6`, with every finding dispositioned. **Passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired).
     2. The lead's recorded decisions (DECISIONS.md): **recorded 2026-10-16** ("T-06 slice 4 live-run decisions (lead)"). The decisions:
        - the ceilings (12,000 input estimate / 8,000 output);
        - the estimate cap ($0.0648);
@@ -1687,8 +1700,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
        - the pre-run `GET /models` check;
        - the live entry point design.
 
-       The timeout (60 s) is still proposed. Gate 3 implementation is next.
-    3. Implementation of the entry point and pre-run check (**implemented offline**). Codex review **FAILED** (three P2, `runs/g3v/review.md`); repair pass 1 is self-tested and awaits Codex verification. Then the lead's explicit go-ahead for the one live run.
+       The timeout (60 s) and base URL were decided in the Gate 3 dispositions (2026-10-17).
+    3. Implementation and Codex verification of the entry point and pre-run check: **GATE 3 PASS at `f327565`** (`runs/g3y/review.md`, under the lead's re-verification dispositions). The original three P2s are closed; the re-verification and follow-up prompt outcomes are dispositioned above. **Next: the lead's explicit go-ahead for ONE pre-run call and ONE live run (at most $0.51), as a separate instruction. Nothing live is authorized by this record.**
     4. After the run: Codex review of the live evidence before T-06 acceptance is considered.
   - **INPUT STATE:** slices 1–3 verified; the controls at `96f6fc6` reviewed; Docker running; the `.env` key present (never printed).
   - **CHANGE (owned paths):**
