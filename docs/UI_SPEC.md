@@ -57,7 +57,7 @@ One screen answers, top to bottom: **what was claimed**, **what ATLAS found**, *
 |                       +--------------------------------------------------------------------+
 | Capability            |  REVISION   candidate 81f691409a67 · executed in Docker · completed|
 |  Docker: available    |  ORIGINAL  VIOLATION_FOUND  ->  CANDIDATE  NO_VIOLATION_FOUND      |
-|  Live: not authorized |  4 checks FAIL -> PASS · 5 unchanged PASS   [View diff] [Compare]  |
+|  Live: needs go-ahead |  4 checks FAIL -> PASS · 5 unchanged PASS   [View diff] [Compare]  |
 |                       +--------------------------------------------------------------------+
 |                       |  TRUST  Fixture replies only · development fixture · limitations(5)|
 |                       |  Estimated cost (not a bill): none, fixture replies   [Export]     |
@@ -76,7 +76,7 @@ One screen answers, top to bottom: **what was claimed**, **what ATLAS found**, *
 | --- | --- | --- | --- |
 | Deterministic audit | `atlas.audit.audit(project, runs_dir)` (the CLI's `--mode audit`) | Allowlisted trusted fixtures | "Deterministic audit: no model" |
 | Agent, fixture replies | `controller.run_agent(..., FixtureClient)` (the CLI's `--fixture-script`) | Docker available (`runner.docker.probe().state`) | `banner` (NON-LIVE) |
-| Agent, live | the CLI `--live` path | **Disabled.** No live run is authorized (DECISIONS.md 2026-10-16/17; Gate 3 go-ahead pending) | Shown greyed out with "Live inference is not authorized in this build" |
+| Agent, live | the CLI `--live` path | **Disabled in the T-07 UI.** One authorized live run was completed on 2026-10-17 (`runs/live1`); any further live run needs the lead's explicit go-ahead. Live access in a hosted UI is T-12 | Shown greyed out with "Live runs need the lead's explicit go-ahead" |
 | Limited hosted | none | **GAP-5** | "not executed here" rules (§1.6) |
 
 **Capability state** (left rail) comes from `atlas.runner.docker.probe()`: `state`, and `reason` when unavailable. The UI never falls back to host execution when Docker is unavailable; it shows the engine's `original_not_executed` result (§5).
@@ -132,7 +132,7 @@ The run is started in a background worker. The UI follows `<run>/agent_log.jsonl
 | Refused before sending | `event=model_request_refused.result` (`input_over_ceiling`, `spend_cap`), and `.projected_usd` / `.estimate_cap_usd` for `spend_cap` |
 | Tool operations and revisions used | `budget.used.tool_operations` of `budget.limits.tool_operations` (12); `budget.used.revisions` of `budget.limits.candidate_revisions` (2) |
 | Active time (approval wait excluded) | `budget.active_s` of `budget.limits.active_s`; `budget.approval_wait_s` shown separately |
-| **Running cost estimate** | **GAP-3:** the per-attempt cost is not logged. During the run the trace shows token usage only, and the estimate appears when `agent_report.json:cost` exists. For fixture runs: "No provider cost (fixture replies)". |
+| **Running cost estimate** | `event=model_attempt.cost` (since slice 4c; GAP-3 closed). Live runs: that attempt's ledger entry (`status`, `known_usd`, `unresolved_usd`, the same values as `agent_report.json:cost.entries[]`), under "Estimated cost (not a bill)". Fixture runs: the value is "not applicable (fixture)", shown as "No provider cost (fixture replies)". |
 
 The running state disables the action buttons (§6, scenario 6). An approval request appears as a blocking panel (§4.5).
 
@@ -188,7 +188,14 @@ The engine already rechecks the binding (`controller.py` `_decide`: the hash and
 - Candidate hash: `comparison.candidates[].candidate_hash`.
 - Diff hash: `comparison.candidates[].diff_sha256`.
 - Approval record: `comparison.candidates[].approval` (`candidate_hash`, `base_snapshot_hash`, `approved_at`).
-- The diff itself: **GAP-4**. Only `diff_sha256` is persisted. The UI rebuilds the diff from `<run>/snapshot/<entry point>` and `<run>/candidates/cN/exec/stage/project/<entry point>`, and shows "executed bytes match the approved code hash: yes/no" by recomputing `candidates.candidate_hash(snapshot_hash, executed_bytes)` against `candidate_hash`.
+- The diff itself (GAP-4 closed by slice 4c): the persisted `<run>/proposals/r<N>.diff` named by `agent_report.json:proposals[revision=N].diff_path`, shown under "model-written (untrusted)" (`proposals[].files_label`). Its SHA-256 is recomputed from the file and shown against `proposals[].diff_sha256` (and, for an executed candidate, `comparison.candidates[].diff_sha256`). When the model sent the complete file, `source_kind` is `new_source`, and the diff is the one ATLAS generated; the file is `proposals[].new_source_path` (`r<N>.new_source.py`). The UI does not rebuild a diff.
+
+**Every proposal, including rejected ones.** One row per `agent_report.json:proposals[]` (mirrored by `agent_log.jsonl:event=tool,tool=propose_patch.outcome` / `.code`), so a run with zero executed candidates explains itself:
+- `revision`, `source_kind`, and `outcome` (`rejected`, `declined`, `unavailable` or `executed`);
+- `code`: the validator's rejection code (for example `malformed_diff`, `no_change`, `syntax_error`), the approver's reason, or `needs_input` / `approver_error`;
+- `detail` (at most 200 characters) under its own label `proposals[].detail_label`, "validator message; may quote model text";
+- the persisted diff (and `new_source` file, when used) under "model-written (untrusted)", with its SHA-256; a diff over the size limit has a hash but no file;
+- the run-level line from `limitations[]`: "N proposals: R rejected by validation, D declined, E executed".
 
 ### 4.6 Revision comparison (side by side)
 
@@ -230,7 +237,7 @@ The basis line comes first: `comparison.comparison_basis` (for example "Original
 | Claim | No project | n/a | n/a | `NOT_SUPPORTED`, its label, `terminal_reason`, and a next action (GAP-10) | The claim shown for confirmation |
 | Analyze | "Not run yet" | The trace (§4.3); buttons disabled; "Run in progress (started <time>)" | `terminal_state` ERROR, BUDGET_EXHAUSTED or NEEDS_INPUT with `terminal_reason`, verbatim. For example: `original_not_executed: … no host fallback` (Docker unavailable); `model_timeout (after one retry)`; `schema_failure: …`; `invalid_usage`; `spend_cap: …`; `execution of the original was not authorized`. The original's findings stay visible if they exist, and "Start a new run" is offered | `NOT_SUPPORTED` as above | `terminal_state` REPORT |
 | Finding | "No findings yet" | "Original under evaluation" while `state=CHECK` | Original not executed: `comparison.original.executed == false`, `comparison_basis` "The original was not executed …", and every assertion NOT_ASSESSED (`not_executed`) | n/a | The headline, table and metrics (§4.4) |
-| Revision | "No candidate proposed" (also the honest end state when the model finished without one) | The approval panel, or "Executing in Docker" while `state=EXECUTE` | Candidate refused or not executed: `execution.status` refused or not_executed; prose from `limitations` ("0 of 1 candidates executed …") | n/a | §4.5 detail |
+| Revision | "No candidate proposed" (also the honest end state when the model finished without one) | The approval panel, or "Executing in Docker" while `state=EXECUTE` | Candidate refused or not executed: `execution.status` refused or not_executed; prose from `limitations` ("0 of 1 candidates executed …"). Proposals rejected by validation, declined or unavailable: each `proposals[]` row with its `outcome`, `code` and labelled `detail` (§4.5) | n/a | §4.5 detail |
 | Comparison | Hidden until a candidate was evaluated | n/a | A candidate failed in execution: its execution status next to its outcome | n/a | §4.6 |
 | Export | Disabled until a report exists | Disabled | Partial report: `agent_report.json` with `finalization_failures`, or the minimal ERROR report, shown as such | n/a | Downloads and hashes |
 
@@ -302,7 +309,7 @@ Playwright Python against the running app, with deterministic offline fixture re
    - the attempts shown equal `budget.used.attempts`;
    - there is no hidden retry beyond the one recorded;
    - "Start a new run" works.
-5. **Procedure retrieval for the temporal mismatch case:** **not runnable**. Procedures do not exist yet (GAP-7, T-08). The scenario is kept as a pending test, marked expected-to-fail, until T-08.
+5. **Procedure retrieval for the temporal mismatch case:** **dropped** (T-08 cut by lead decision, 2026-10-17). It is not pending, and no test is built for it.
 6. **Refresh, rerun or double-click:**
    - double-clicking "Confirm & run" starts exactly one run (one new `runs/agent-*` directory);
    - a refresh during a run reattaches without starting another;
@@ -332,13 +339,13 @@ Plus the label checks:
 | --- | --- | --- | --- |
 | GAP-1 | Model pre-fill and user editing of the structured claim (PRD workflow step 2). The engine reads only `atlas_manifest.json:claim` | The claim is shown read-only for confirmation | Later engine task (claim translation stage) |
 | GAP-2 | A project catalogue (curated list, expected purpose) | A fixed list of development fixtures in the UI | UI build (T-07) |
-| GAP-3 | A per-attempt or running cost estimate in the log (the ledger is only in the final `agent_report.json:cost`) | The trace shows token usage; the estimate appears at the end | Engine (log the ledger entry per attempt) |
-| GAP-4 | The candidate diff text is not persisted (only `diff_sha256`) | The diff is rebuilt from the snapshot and the staged bytes, with a hash check | Engine (persist the approved diff) or keep the UI rebuild |
+| GAP-3 | **Closed by T-06 slice 4c.** Each `model_attempt` log event carries `cost` (the attempt's ledger entry on live runs; "not applicable (fixture)" otherwise) | The trace shows the per-attempt estimate (§4.3) | Done (slice 4c) |
+| GAP-4 | **Closed by T-06 slice 4c.** `agent_report.json:proposals[]` (outcome, code, bounded detail) and the persisted `<run>/proposals/r<N>.diff` (and `.new_source.py`) | The persisted diff is shown, rejected proposals included (§4.5); no rebuild | Done (slice 4c) |
 | GAP-5 | Limited hosted mode (trusted corrected-protocol functions; "not executed here" path) | Hosted labels specified (§8) but not exercisable | T-12 |
 | GAP-6 | A human-readable export (HTML or Markdown) | JSON downloads with hashes; a UI-rendered report from the same fields | UI build (T-07), with no new data |
-| GAP-7 | Procedures (admission, retrieval, refusal) | Playwright scenario 5 is pending | T-08 |
+| GAP-7 | Procedures (admission, retrieval, refusal) | Playwright scenario 5 is dropped | None: T-08 cut by lead decision, 2026-10-17 |
 | GAP-8 | A browser approver | A UI-side `BrowserApprover` implementing the unchanged `Approver.decide` | UI build (T-07) |
-| GAP-9 | A live run (not authorized; no live evidence exists) | The live mode is disabled and labelled | T-06 slice 4, after the Gate 3 go-ahead |
+| GAP-9 | Live runs from the UI. One authorized live run was completed on 2026-10-17 (`runs/live1`); no further live run is authorized | The T-07 UI keeps the live mode disabled, labelled "Live runs need the lead's explicit go-ahead" | Each live run: the lead's explicit go-ahead. Live access in a hosted UI: T-12 |
 | GAP-10 | A structured "next action" for `NOT_SUPPORTED` and `NOT_ASSESSED` reasons | UI copy keyed to the existing reason codes (`outcome.json:assertions[].reason`, `terminal_reason`) | UI build (T-07) |
 | GAP-11 | A streaming or asynchronous run API (`run_agent` is synchronous) | The run in a worker thread; progress by following `agent_log.jsonl` | UI build (T-07) |
 | GAP-12 | Duplicate-run and stale-result protection | UI policy (§6) | UI build (T-07) |
