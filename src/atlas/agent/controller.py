@@ -192,6 +192,74 @@ def _utf8_len(text: str) -> int:
     return len(text.encode("utf-8"))
 
 
+# A newest tool result is shortened rather than dropped only if at least this much of its
+# serialized text still fits (or all of it, if it is shorter): a few dozen characters of JSON
+# are not useful evidence.
+MIN_TOOL_PREFIX_CHARS = 200
+
+
+def _user_message(context: dict, history: list[dict], omitted: bool) -> str:
+    """The exact user message text: the context with this history and, if any result is
+    left out, the truncation marker."""
+    message = {**context, "history": history}
+    if omitted:
+        message["history_truncated"] = True
+    return json.dumps(message, sort_keys=True)
+
+
+def _envelope(prefix: str) -> dict:
+    return {"text": prefix, "truncated": True}
+
+
+def _envelope_bytes(prefix: str) -> int:
+    return _utf8_len(json.dumps(_envelope(prefix), sort_keys=True))
+
+
+def _bounded_envelope(text: str, limit: int) -> dict:
+    """{"text": the longest prefix of `text`, "truncated": True} whose serialization is at
+    most `limit` UTF-8 bytes (escaping included); the empty prefix if none fits."""
+    low, high = 0, len(text)  # the serialized size grows with the prefix length
+    while low < high:
+        mid = (low + high + 1) // 2
+        if _envelope_bytes(text[:mid]) <= limit:
+            low = mid
+        else:
+            high = mid - 1
+    return _envelope(text[:low])
+
+
+def _full_text(result) -> str:
+    """The serialized text a stored result stands for (a truncated envelope's prefix)."""
+    if (
+        isinstance(result, dict)
+        and set(result) == {"text", "truncated"}
+        and result["truncated"] is True
+        and isinstance(result["text"], str)
+    ):
+        return result["text"]
+    return json.dumps(result, sort_keys=True, default=str)
+
+
+def _largest_fitting_prefix(item: dict, fits) -> dict | None:
+    """`item` with its result cut to the longest prefix for which `fits(candidate)` holds,
+    or None if fewer than MIN_TOOL_PREFIX_CHARS (or all of a shorter text) would fit."""
+    full = _full_text(item.get("result"))
+
+    def candidate(k):
+        return {**item, "result": _envelope(full[:k])}
+
+    low, high = 0, len(full)
+    while low < high:  # fits() is monotone in the prefix length
+        mid = (low + high + 1) // 2
+        if fits(candidate(mid)):
+            low = mid
+        else:
+            high = mid - 1
+    if low < min(MIN_TOOL_PREFIX_CHARS, len(full)) or not fits(candidate(low)):
+        return None
+    return candidate(low)
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -561,18 +629,43 @@ class _Run:
             },
             "history": [],
         }
-        # Most recent results first, within the prompt budget (UTF-8 bytes of the exact
-        # message text); older ones are dropped.
-        for item in reversed(self.transcript):
-            context["history"].insert(0, item)
-            if _utf8_len(json.dumps(context, sort_keys=True)) > self.prompt_budget:
-                context["history"].pop(0)
-                context["history_truncated"] = True
-                break
+        history, omitted = self._fitting_history(context)
         return [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(context, sort_keys=True)},
+            {"role": "user", "content": _user_message(context, history, omitted)},
         ]
+
+    def _fitting_history(self, context: dict) -> tuple[list[dict], bool]:
+        """The most recent tool results that fit the prompt budget, newest first.
+
+        Every candidate is measured as the exact message that would be sent, including the
+        `history_truncated` marker whenever older results are left out, so adding the marker
+        can never push a fitting prompt over the budget. If the newest result does not fit
+        whole, a shorter prefix of it is kept when at least MIN_TOOL_PREFIX_CHARS of it fit,
+        rather than dropping it. If nothing fits, the prompt carries no history (and is
+        refused before sending if even that exceeds the estimate)."""
+
+        def fits(history, omitted):
+            text = _user_message(context, history, omitted)
+            return _utf8_len(text) <= self.prompt_budget
+
+        kept: list[dict] = []
+        for index in reversed(range(len(self.transcript))):
+            item = self.transcript[index]
+            omitted_after = index > 0  # older results would still be left out
+            if fits([item, *kept], omitted_after):
+                kept.insert(0, item)
+                continue
+            if (
+                not kept
+            ):  # the newest result: keep a fitting prefix if a useful one exists
+                shrunk = _largest_fitting_prefix(
+                    item, lambda candidate, o=omitted_after: fits([candidate], o)
+                )
+                if shrunk is not None:
+                    kept = [shrunk]
+            break
+        return kept, len(kept) < len(self.transcript)
 
     def _model_turn(self):
         self.enter("MODEL")
@@ -763,8 +856,10 @@ class _Run:
 
     def _record_tool(self, op, tool, args, result) -> None:
         text = json.dumps(result, sort_keys=True, default=str)
-        if len(text) > self.tool_result_chars:
-            result = {"truncated": True, "text": text[: self.tool_result_chars]}
+        if _utf8_len(text) > self.tool_result_chars:
+            # The prefix is chosen so that the envelope *as embedded in the prompt* (the
+            # prefix JSON-escaped again inside a string) fits; quotes and backslashes count.
+            result = _bounded_envelope(text, self.tool_result_chars)
         self.transcript.append({"tool": tool, "args": args, "result": result})
         self.log(
             {"event": "tool", "operation": op, "tool": tool, "args": args,

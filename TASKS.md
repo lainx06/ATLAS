@@ -1480,18 +1480,60 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   | 1. Approved candidate → Docker → trusted re-evaluation | `1d58b20` | **Verified** by Codex within scope | `runs/r6w/review.md` |
   | 2. Offline fixture controller | `69042a1` | **Verified** by Codex within scope | `runs/r6x/review.md` |
   | 3. Docker baseline, CLI approval, offline Nebius client | `5e63fc4` | **Verified** by Codex within its offline scope | `runs/s3y/review.md`: 370 passed, 1 skipped; Docker 10 passed |
-  | 4a. Prompt budget and spending controls (offline) | `96f6fc6` | **Implemented and self-tested; awaiting Codex review** | "SLICE 4 CONTROLS RESULT" above; full suite below |
+  | 4a. Prompt budget and spending controls (offline) | `96f6fc6`, repaired in the Gate 1 repair commit | **Gate 1 review FAILED (two P2); repair self-tested, awaiting Codex verification** | `runs/g1-1016/review.md`; "GATE 1 REPAIR PASS 1 RESULT" below |
   | 4b. One authorized live run | none | **Not started; not authorized** | "NEXT CARD: SLICE 4" below |
 
 - **FULL-SUITE VERIFICATION AT `96f6fc6` (2026-10-16, builder):** after `docker info` → `linux 29.8.2`, PowerShell `$env:ATLAS_REQUIRE_DOCKER = '1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/status-20261016/t -rs` gave **965 passed, 1 skipped** (the existing symlink-permission skip) in 743.88 s, exit 0. `ruff check` and `ruff format --check` are clean. Logs: `runs/status-20261016/`. This includes the Docker runner contract suite and all T-06 integration tests. It is the builder's run, not an independent verification.
 
+- **GATE 1 REVIEW (`runs/g1-1016/review.md`, Codex, 2026-10-16, on an archive of `96f6fc6`): FAIL, two P2 prompt-truncation defects.** Not T-06 acceptance; no inference, metadata request or spending authorized.
+  - **P2-1 (controller `_messages`):** after evicting an older history item, the 27-byte `history_truncated` marker was added without re-measuring. A fitting prompt then exceeded the budget, and a valid run ended `ERROR input_over_ceiling`. It failed closed; nothing over budget was sent. Reproduced at input estimate 4,824 (final 4,320 bytes vs a 4,303 budget) and at 12,000 (11,469 → 11,496 vs 11,479).
+  - **P2-2 (controller `_record_tool`):** the truncated result was a character slice of already-serialized JSON, escaped again when embedded. A 5,739-character quote-heavy read became 11,450 bytes, and `_messages` then dropped the newest result entirely.
+  - **Codex's other results:**
+    - focused units 393 passed, 1 failed (`WinError 5` accessing Docker in the sandbox; the targeted escalated retry passed), 1 skipped;
+    - Docker integrations 10 passed;
+    - independent probes confirmed the spending and worst-case arithmetic (including a 495-case Fraction oracle) and found only the two defects.
+  - **Codex's environment note:** NumPy 2.4.6 installed "versus lockfile 2.5.4". *[Builder, 2026-10-16: `uv.lock` has two NumPy entries, 2.4.6 for Python < 3.12 and 2.5.4 for Python ≥ 3.12. The environment (Python 3.11.17) is lock-matched: `uv sync --locked --dry-run` → "Would make no changes".]*
+- **GATE 1 REPAIR PASS 1 RESULT (2026-10-16): self-tested; awaiting independent Codex verification. Gate 1 is not passed; T-06 not accepted.** Only `src/atlas/agent/controller.py` changed in production code; spending, approval, retry, fixture-mode and fail-closed behaviour are unchanged. No provider request, credential, spending or live execution.
+  - **P2-1:** `_fitting_history` builds every candidate as the exact user message that would be sent (`_user_message`), including the marker whenever older results are left out. A prompt that is accepted is therefore never enlarged afterwards, and eviction continues until it fits. If even the base context plus the marker does not fit, the prompt is refused before sending (fail closed, unchanged).
+  - **P2-2:**
+    - `_record_tool` bounds a too-large result as it is embedded: `_bounded_envelope` gives the longest prefix whose envelope `{"text", "truncated": true}` serializes, escaping included, to at most `tool_result_chars` UTF-8 bytes. Small results are stored unchanged.
+    - When the newest result still does not fit beside the base context, `_messages` keeps the longest prefix that does (`_largest_fitting_prefix`), provided at least `MIN_TOOL_PREFIX_CHARS` (200) characters of it fit. Older results are evicted whole.
+  - **Tests (logs in git-ignored `runs/g1r/`):**
+    - **New `tests/unit/test_agent_slice4_prompt.py`, 80 tests:**
+      - Codex's end-to-end marker reproduction;
+      - marker boundaries at the 12,000 estimate with 0/1/26/27/28/40 spare bytes, plus an exact fit with no marker;
+      - large reads of plain, quote, backslash, quote-backslash, accented, emoji, control and mixed content, each checked for the embedded envelope ≤ the limit, true prefix, kept in the prompt, and whole prompt within the estimate;
+      - Codex's quote-heavy `_read` shape;
+      - the newest result shortened rather than dropped (four content kinds);
+      - controls: no usable space, several results, small result unchanged;
+      - 56 maximality and limit checks of the bounding helper.
+    - **Red at `96f6fc6`** (fresh `git archive` plus this file, `red.log`): **73 failed, 7 passed.**
+      - 17 behavioural failures: `input_over_ceiling` refusals, embedded sizes of 5,777 to 11,451 bytes against 5,739, and the newest result dropped.
+      - 56 new-interface failures (`_bounded_envelope` absent).
+      - The 7 passes are controls.
+    - **Codex's three probes, byte-identical fresh copies** (`runs/g1r/codex/`, helpers from a `git archive HEAD` copy): **39 passed** (previously 4 failed).
+      - The marker case gives REPORT, 3 requests, final 4,303 bytes = budget.
+      - At 12,000 the final prompt is 8,430 bytes with the newest result kept.
+      - The quote-heavy envelope is 5,738 ≤ 5,739 bytes, with the newest result kept.
+    - **Affected unit suites** (controller, slice 3 and both repairs, both slice 4 files, candidate re-evaluation, schemas, candidates; `unit.log`): **474 passed, 1 skipped** (the existing symlink skip), exit 0.
+    - **Docker** (`docker info` → linux 29.8.2; `ATLAS_REQUIRE_DOCKER=1`): the three focused integration files **10 passed** (`docker.log`).
+    - Ruff check and format clean.
+    - Environment: Python 3.11.17, NumPy 2.4.6, openai 3.31.0, httpx2 2.13.1, pydantic 2.14.1, pandas 3.0.6, scikit-learn 1.9.1, pytest 9.1.1, all lock-matched (`environment.txt`).
+    - No environment failures in these runs.
+  - **Limitations:**
+    - the input figure is still an estimate (unverified tokenizer and template);
+    - a base context that cannot fit with the marker is refused, not trimmed;
+    - an evicted older result is dropped whole;
+    - the 200-character minimum prefix is a builder choice;
+    - the full suite and mutation check were not rerun.
+  - **Values:** Codex's review refers to "the user's decided values". DECISIONS.md has no slice 4 decision record yet, so these records keep them labelled proposed until the lead records them.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
   - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex High review.
   - **READ FIRST:** this entry's "SLICE 4 PROPOSAL" and "SLICE 4 CONTROLS RESULT"; SPEC §11; DECISIONS.md 2026-10-15 "Hosting probe decisions" (retries count, dispatched reservations kept) and 2026-10-16 "T-03 hosting decisions" (no additional spending authorized).
   - **REVIEW GATES (in order; each is a stop):**
-    1. Codex review of the controls at `96f6fc6`, with every finding dispositioned.
+    1. Codex review of the controls at `96f6fc6`, with every finding dispositioned. *(Review 1 FAILED with two P2; repair pass 1 awaits Codex verification.)*
     2. The lead's recorded decisions (DECISIONS.md):
        - the ceilings (proposed 12,000 input estimate / 8,000 output);
        - the estimate cap (proposed $0.0648);
