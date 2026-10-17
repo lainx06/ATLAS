@@ -1364,7 +1364,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - the identifier checks do not protect against a malicious trusted client implementation or secret-bearing operator configuration;
     - the 10**100 / 1e100 limits are representational, not operational token caps or spending authorization.
   - **Slice 4 is still not authorized.** It needs explicit per-call token-ceiling and cost-authorization decisions, a justified prompt-token bound (or another safe enforcement design) aligned with `MAX_PROMPT_CHARS`, and separate explicit live authorization. **T-06 is not accepted.**
-- **SLICE 4 PROPOSAL (2026-10-16; builder's proposal for the lead; nothing decided, enabled or sent).** One live run on the s01 development fixture.
+- **SLICE 4 PROPOSAL (2026-10-16; builder's proposal for the lead; nothing decided, enabled or sent).** *[Gate 2, 2026-10-16: the ceilings, estimate cap, $0.51 authorization, pre-run check and entry-point design are now **decided**; see DECISIONS.md "T-06 slice 4 live-run decisions (lead)". The 60 s timeout remains proposed. Nothing live is authorized.]* One live run on the s01 development fixture.
   - **Per-call ceilings (proposed): uniform for all six attempts.** The controller's turns are uniform (each reply chooses one action), so the per-stage table ($0.0510) does not map onto them.
     - **Output:** `max_completion_tokens = 8,000`, sent with every request. The Nebius API reference documents it as an upper bound on generated tokens, reasoning included (STATUS.md). This is provider-enforced and documented, not verified by us.
     - **Input:** an *estimated* ceiling `max_input_tokens = 12,000`, with the estimate = UTF-8 bytes + `template_overhead_tokens = 16` per message.
@@ -1566,12 +1566,14 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **READ FIRST:** this entry's "SLICE 4 PROPOSAL" and "SLICE 4 CONTROLS RESULT"; SPEC §11; DECISIONS.md 2026-10-15 "Hosting probe decisions" (retries count, dispatched reservations kept) and 2026-10-16 "T-03 hosting decisions" (no additional spending authorized).
   - **REVIEW GATES (in order; each is a stop):**
     1. Codex review of the controls at `96f6fc6`, with every finding dispositioned. **Passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired). Gate 2 is next.
-    2. The lead's recorded decisions (DECISIONS.md):
-       - the ceilings (proposed 12,000 input estimate / 8,000 output);
-       - the estimate cap (proposed $0.0648);
-       - the maximum authorized expenditure (proposed $0.51 for one run);
+    2. The lead's recorded decisions (DECISIONS.md): **recorded 2026-10-16** ("T-06 slice 4 live-run decisions (lead)"). The decisions:
+       - the ceilings (12,000 input estimate / 8,000 output);
+       - the estimate cap ($0.0648);
+       - the maximum authorized expenditure ($0.51 for one run);
        - the pre-run `GET /models` check;
        - the live entry point design.
+
+       The timeout (60 s) is still proposed. Gate 3 implementation is next.
     3. Implementation of the entry point and pre-run check, Codex review of it, then the lead's explicit go-ahead for the one live run.
     4. After the run: Codex review of the live evidence before T-06 acceptance is considered.
   - **INPUT STATE:** slices 1–3 verified; the controls at `96f6fc6` reviewed; Docker running; the `.env` key present (never printed).

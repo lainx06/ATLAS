@@ -2,7 +2,7 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4. **Gate 1 PASSED at `8c79e5a`** (`runs/g1v3/review.md`: Codex verified the repair of the two P2 prompt-truncation defects from `runs/g1-1016/review.md`; TASKS.md T-06 "CODEX VERIFICATION OF GATE 1 REPAIR PASS 1"). **Next is Gate 2: the lead's recorded decisions.** All token ceilings, caps and amounts remain **PROPOSED** (no DECISIONS.md record). No live request, provider metadata request or spending is authorized, and no live entry point exists. **T-06 is not accepted.**
+CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4. Gate 1 passed at `8c79e5a` (`runs/g1v3/review.md`). **Gate 2 recorded:** the lead's live-run decisions are in DECISIONS.md "T-06 slice 4 live-run decisions (lead)" (12,000 / 8,000 ceilings, $0.0648 estimate cap, $0.51 for one run, pre-run `GET /models`, live entry point). The 60 s timeout remains proposed. **Next: the Gate 3 implementation (offline), then Codex review.** No pre-run call, live request or spending is authorized. **T-06 is not accepted.**
 - **Accepted:** T-01 (`f5aa4dc`), T-02 (`75a98f4`), T-03 (`51d3dd8`, research and feasibility), T-04 (smoke-test scope), T-05 (`eed73ee`), each within its documented scope.
 - **T-06, independently verified by Codex within documented scope:**
   - slice 1 at `1d58b20` (`runs/r6w/review.md`);
@@ -218,8 +218,8 @@ LAST UPDATED: 2026-10-16
 ## Blockers
 - **T-06 slice 4 (gates, not defects):**
   1. Codex review of the controls: **resolved (Gate 1 PASS at `8c79e5a`, `runs/g1v3/review.md`)** after review 1 failed with two P2 (`runs/g1-1016/review.md`);
-  2. the lead's decisions on the proposed ceilings (12,000 / 8,000), the estimate cap ($0.0648) and the maximum authorized expenditure ($0.51), the pre-run `GET /models` check and a live entry point;
-  3. explicit live authorization.
+  2. the lead's decisions: **recorded** (DECISIONS.md, 2026-10-16); the 60 s timeout is still proposed;
+  3. the Gate 3 implementation and its Codex review, then explicit live authorization (not given).
 
   **Open review defects:** none for slice 4a.
 - **Nebius:** none. $50 in Token Factory credits awarded in total (user-reported; balance and expiry not verified), key set, text and JSON-validation smoke calls succeeded.
@@ -288,7 +288,7 @@ LAST UPDATED: 2026-10-16
 ## Next task
 1. **Next task card: T-06 SLICE 4 (one authorized live run)**, TASKS.md T-06 "NEXT CARD: SLICE 4". It has acceptance criteria, owned paths, verification commands and four review gates.
    - **Gate 1:** **passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired). **Gate 2 is next.**
-   - **Gate 2:** the lead's decisions (ceilings, estimate cap, $0.51 authorization, pre-run `GET /models`, live entry point).
+   - **Gate 2:** the lead's decisions: **recorded 2026-10-16** (DECISIONS.md "T-06 slice 4 live-run decisions (lead)"). **Gate 3 implementation is next.**
    - **Gate 3:** Codex review of the entry point and pre-run check, then the lead's explicit go-ahead for the one live run.
    - **Gate 4:** Codex review of the live evidence before T-06 acceptance is considered.
    - **Target milestone:** the playbook's *live-agent milestone*, "Working NVIDIA model on Nebius" (playbook §23 checklist: a sanitized runtime trace, the model ID and a reproduced code-edit/check workflow). It is scheduled in the playbook §12 window **Oct 17–18** ("original-versus-revised comparison"), alongside the first end-to-end UI by Oct 18 (T-07, not started), so the schedule is tight.
@@ -304,4 +304,4 @@ LAST UPDATED: 2026-10-16
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. T-02's assertions are closed (accepted at `75a98f4`). The remaining items are synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".
-- **T-06 before any live run (lead):** the proposed uniform ceilings, estimate cap and maximum authorized expenditure (TASKS.md T-06 "SLICE 4 PROPOSAL"); the input figure remains an estimate (UTF-8 bytes plus a per-message allowance, now aligned with the prompt budget), and the worst case relies on provider enforcement that has not been verified.
+- **T-06 before any live run (lead):** the ceilings, cap and $0.51 authorization are decided (DECISIONS.md 2026-10-16). Still open: confirming the 60 s timeout at Gate 3 and the go-ahead for the pre-run call and the live run. The input figure remains an estimate, and the worst case relies on provider enforcement that has not been verified.

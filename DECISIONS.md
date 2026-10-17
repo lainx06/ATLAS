@@ -245,3 +245,29 @@ Lead decisions after reading `docs/HOSTING_PROBE.md` §9, which includes the own
 - **Judge access and budget design:** accepted for T-03's **planning scope** only (`docs/HOSTING_PROBE.md` §5, §5a). Implementing and verifying the controls is later work (T-12, and T-06 for the run-level ledger). In-application caps are **planned controls, not an existing hard spending ceiling**. Billing stays unchanged, and **no additional spending is authorized**; raising a cap or topping up credits during restoration needs its own approval.
 - **Credits:** the expiry of the $50 and its eligibility for promotional use in a public judging demo stay **explicitly unknown**. Unknown eligibility is not approval.
 - **Stages B and C deferred to deployment integration (T-12):** the hosted app may not be declared ready until (a) Nebius connectivity from the host and (b) the full locked-environment build on the host have both been tested and recorded. Each test needs its own approval when it is run.
+
+## 2026-10-16 — T-06 slice 4 live-run decisions (lead)
+Lead decisions at Gate 2, based on TASKS.md T-06 "SLICE 4 PROPOSAL" and the Gate 1 PASS at `8c79e5a` (`runs/g1v3/review.md`). **This record authorizes neither the pre-run check, nor the live run, nor any spending;** those need the Gate 3 go-ahead after Codex reviews the implementation.
+1. **Per-call ceilings, uniform for all 6 attempts:**
+   - `max_input_tokens` 12,000. This is an ATLAS estimate (UTF-8 bytes + 16 tokens per message), **not a guarantee**.
+   - `max_completion_tokens` 8,000. The provider enforces it as documented; ATLAS has not verified that.
+
+   These replace the per-stage table for live runs.
+2. **Estimate cap:** $0.0648 per run, enforced by the per-request stop already implemented.
+3. **Maximum authorized expenditure:** $0.51 for **one** live run on `benchmarks/t01/s01_faulty`.
+   - This is the provider-enforced worst case ($0.5006592, rounded up), which ATLAS has not verified.
+   - Expected spend is about $0.005–$0.014.
+   - Billing is unchanged.
+   - Any further live run needs a new explicit go-ahead.
+4. **Pre-run check:** a free, authenticated `GET /models` immediately before the run. If the model is absent, or its listed input price, output price or context length differs from the configuration, the run aborts with no completion sent. The pre-run call itself needs the Gate 3 go-ahead.
+5. **Live entry point:** the CLI refuses unless `ATLAS_MODEL_MODE=live`, the explicit `--live` flag and `--authorize-spend-usd` equal to the decided $0.51 are all present, and the spending limits cover the provider-enforced worst case. The original and each candidate need typed approvals, as now.
+
+**Fixed configuration:**
+- model `nvidia/nemotron-3-super-120b-a12b`;
+- listed prices $0.30 / $0.90 per 1M input/output tokens (re-checked by the pre-run check);
+- context length 262,144;
+- template allowance 16;
+- `max_attempts` 6 (retries count; "Hosting probe decisions").
+- Request timeout 60 s is **PROPOSED** (the T-04 smoke value), to be confirmed by the lead at Gate 3.
+
+**Explicitly not authorized by this record:** the pre-run call, the live run, any spending.
