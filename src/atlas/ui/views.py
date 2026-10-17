@@ -26,12 +26,18 @@ CSS = """
   outline-offset: -2px; padding: 16px 24px 20px; }
 /* Wide diffs and tables scroll inside their own region (UI_SPEC §7 viewports). */
 [class*="st-key-scroll-"] { overflow-x: auto; }
+/* Hashes in trace and export tables wrap instead of being clipped (never truncated). */
+[class*="st-key-trace-"] td, .st-key-export td { word-break: break-all; }
 </style>
 """
 
 
 def inject_css() -> None:
     st.html(CSS)
+
+
+def _count(value) -> str:
+    return "n/a" if value is None else str(value)
 
 
 def badge(code: str, colors: dict) -> str:
@@ -123,7 +129,13 @@ def not_supported(reason: str | None, key: str = "not-supported") -> None:
 
 
 # -- trace ---------------------------------------------------------------------------------
-def trace(events: list[dict], report: dict | None, approvals_seen: list[dict]) -> None:
+def trace(
+    events: list[dict],
+    report: dict | None,
+    approvals_seen: list[dict],
+    collapsed: bool | None = None,
+) -> None:
+    """Stages and budget always; the tables inline (collapsed None) or in an expander."""
     t = A.trace(events)
     limits = ((report or {}).get("budget") or {}).get("limits") or {}
     used = ((report or {}).get("budget") or {}).get("used") or {}
@@ -149,6 +161,28 @@ def trace(events: list[dict], report: dict | None, approvals_seen: list[dict]) -
             f"Active time {budget.get('active_s')} s of {limits.get('active_s')} s "
             f"(approval wait excluded); approval wait {budget.get('approval_wait_s')} s."
         )
+    for d in approvals_seen:
+        if d["decision"] == "declined":
+            st.warning(f"{d['kind']}: Confirmation did not match: NOT approved.")
+    for r in t.refused:
+        st.warning(
+            f"Refused before sending: `{r.get('result')}`"
+            + (
+                f" (projected {r.get('projected_usd')}, cap {r.get('estimate_cap_usd')})"
+                if r.get("result") == "spend_cap"
+                else ""
+            )
+        )
+    if collapsed is None:
+        trace_tables(t)
+    else:
+        with st.expander(
+            "Agent trace: model attempts, tool calls, approvals", expanded=not collapsed
+        ):
+            trace_tables(t)
+
+
+def trace_tables(t: "A.Trace") -> None:
     if t.attempts:
         rows = []
         for a in t.attempts:
@@ -170,8 +204,8 @@ def trace(events: list[dict], report: dict | None, approvals_seen: list[dict]) -
                     or a.get("result"),
                     "retry": "yes" if a.get("retry") else "no",
                     "elapsed s": a.get("elapsed_s"),
-                    "prompt tokens": usage.get("prompt_tokens", "n/a"),
-                    "completion tokens": usage.get("completion_tokens", "n/a"),
+                    "prompt tokens": _count(usage.get("prompt_tokens")),
+                    "completion tokens": _count(usage.get("completion_tokens")),
                     "estimated cost (not a bill)": cost_text,
                 }
             )
@@ -214,18 +248,6 @@ def trace(events: list[dict], report: dict | None, approvals_seen: list[dict]) -
                 ),
                 hide_index=True,
             )
-    for d in approvals_seen:
-        if d["decision"] == "declined":
-            st.warning(f"{d['kind']}: Confirmation did not match: NOT approved.")
-    for r in t.refused:
-        st.warning(
-            f"Refused before sending: `{r.get('result')}`"
-            + (
-                f" (projected {r.get('projected_usd')}, cap {r.get('estimate_cap_usd')})"
-                if r.get("result") == "spend_cap"
-                else ""
-            )
-        )
 
 
 # -- approval panel -------------------------------------------------------------------------
@@ -309,6 +331,26 @@ def required_table(rows: list[dict], key: str) -> None:
         )
 
 
+def next_actions(rows: list[dict]) -> None:
+    """GAP-10: one next action per NOT_ASSESSED or ERROR reason code present."""
+    reasons = sorted(
+        {
+            r["reason"]
+            for r in rows
+            if r.get("status") in ("NOT_ASSESSED", "ERROR") and r.get("reason")
+        }
+    )
+    if not reasons:
+        return
+    with st.container(key="next-actions"):
+        st.markdown("**Next actions**")
+        for reason in reasons:
+            action = A.NEXT_ACTIONS.get(
+                reason, "See the check details for what is missing."
+            )
+            st.markdown(f"- `{reason}`: {action}")
+
+
 def counts_line(rows: list[dict]) -> str:
     c = A.status_counts(rows)
     return (
@@ -383,6 +425,16 @@ def baselines(outcome: dict | None) -> None:
         st.table(pd.DataFrame(rows), hide_index=True)
         for x in d.get("limitations") or []:
             st.caption(x)
+
+
+def class_support(outcome: dict | None) -> None:
+    d = A.descriptive(outcome, "split.class_support")
+    if not d:
+        return
+    with st.expander("Class support per fold (descriptive)"):
+        for x in d.get("limitations") or []:
+            st.caption(x)
+        st.json(d.get("observed") or {}, expanded=1)
 
 
 def reported_metric(outcome: dict | None) -> None:
@@ -536,7 +588,19 @@ def comparison(report: dict, run_dir: Path) -> None:
             )
         with st.container(key=f"status-changes-{i}"):
             st.markdown("**Per-assertion change**")
-            st.table(pd.DataFrame(changes), hide_index=True)
+            frame = pd.DataFrame(changes)
+            styled = frame.style.apply(
+                lambda row: (
+                    [
+                        "background-color: #EFF6FF; font-weight: 600"
+                        if row["change"] != "unchanged"
+                        else ""
+                    ]
+                    * len(row)
+                ),
+                axis=1,
+            ).hide(axis="index")
+            st.table(styled)
         with st.expander("Limitations and evidence hashes"):
             st.markdown("Original")
             bullet_list(orig.get("limitations"))

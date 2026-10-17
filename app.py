@@ -25,8 +25,13 @@ if handle is not None:
 # -- session defaults: a refresh reattaches to the active or last run -----------------------
 if "project" not in st.session_state:
     st.session_state.project = handle.project if handle else FIXTURES[0].name
-if "mode" not in st.session_state:
-    st.session_state.mode = (handle.mode if handle else AGENT) or AGENT
+# The user's choices live in plain keys, not widget keys: Streamlit drops a widget's state on
+# any rerun that does not render it (the approval panel stops the page early), so widgets are
+# seeded from these keys and write back to them (UI_SPEC §12).
+if "sel_mode" not in st.session_state:
+    st.session_state.sel_mode = (handle.mode if handle else AGENT) or AGENT
+if "sel_scripts" not in st.session_state:
+    st.session_state.sel_scripts = {}
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -111,7 +116,7 @@ elif handle is not None:
 V.banner(
     report,
     run_dir.name if run_dir else None,
-    handle.mode if handle else st.session_state.mode,
+    handle.mode if handle else st.session_state.sel_mode,
 )
 
 st.title("Does the evaluation support the claim?")
@@ -120,9 +125,29 @@ pending = handle.pending() if (handle and handle.active) else None
 
 
 def start_run() -> None:
-    mode = st.session_state.mode
-    script = st.session_state.get(f"script-{project}") if mode == AGENT else None
+    """Confirm & run: the selected project with the selected mode and fixture replies."""
+    mode = st.session_state.sel_mode
+    script = chosen_script(project) if mode == AGENT else None
     REG.start(project, mode, script)
+
+
+def restart_run() -> None:
+    """Start a new run with the finished run's own project, mode and fixture replies."""
+    REG.start(handle.project, handle.mode, handle.script)
+
+
+def chosen_script(name: str) -> str:
+    options = [s.key for s in scripts_for(name)]
+    choice = st.session_state.sel_scripts.get(name)
+    return choice if choice in options else default_script(name)
+
+
+def remember_mode() -> None:
+    st.session_state.sel_mode = st.session_state.mode_widget
+
+
+def remember_script(name: str) -> None:
+    st.session_state.sel_scripts[name] = st.session_state[f"script_widget-{name}"]
 
 
 # -- approval: a blocking panel, shown before anything else ---------------------------------------
@@ -181,23 +206,27 @@ with st.container(key="card-claim", border=True):
                     if m == AGENT
                     else "Deterministic audit: no model"
                 ),
-                key="mode",
+                default=st.session_state.sel_mode,
+                key="mode_widget",
+                on_change=remember_mode,
                 required=True,
                 disabled=running,
+                wrap=True,
             )
-            if st.session_state.mode == AGENT:
+            if st.session_state.sel_mode == AGENT:
                 options = [s.key for s in scripts_for(project)]
-                key = f"script-{project}"
-                if st.session_state.get(key) not in options:
-                    st.session_state[key] = default_script(project)
+                chosen = chosen_script(project)
                 st.selectbox(
                     "Fixture replies",
                     options,
+                    index=options.index(chosen),
                     format_func=lambda k: BY_KEY[k].title,
-                    key=key,
+                    key=f"script_widget-{project}",
+                    on_change=remember_script,
+                    args=(project,),
                     disabled=running,
                 )
-                st.caption(BY_KEY[st.session_state[key]].description)
+                st.caption(BY_KEY[chosen].description)
             with st.container(horizontal=True, vertical_alignment="center"):
                 st.button(
                     "Confirm & run",
@@ -284,12 +313,27 @@ if handle.crash:
             f"result.\n\n`{handle.crash_detail}`",
             icon=":material/error:",
         )
-        st.button("Start a new run", on_click=start_run, key="restart-crash")
+        st.button("Start a new run", on_click=restart_run, key="restart-crash")
     st.stop()
 
 terminal = report.get("terminal_state") if report else None
 terminal_reason = report.get("terminal_reason") if report else None
 comp = (report or {}).get("comparison") or {}
+
+if handle.mode == AUDIT:
+    with st.container(key="card-analysis", border=True):
+        st.subheader("2. Analysis")
+        execution = (A.read_json(run_dir / "report.json") or {}).get("execution") or {}
+        st.markdown(
+            "Deterministic audit: no model was called and there is no agent trace. The "
+            "trusted, repository-authored fixture pipeline ran once."
+        )
+        if execution:
+            st.caption(
+                f"Runner `{execution.get('runner')}` ({execution.get('capability')}), "
+                f"{execution.get('elapsed_s')} s, return code {execution.get('returncode')}."
+            )
+        st.button("Start a new run", on_click=restart_run, key="restart-audit")
 
 if handle.mode == AGENT:
     with st.container(key="card-analysis", border=True):
@@ -309,8 +353,13 @@ if handle.mode == AGENT:
                 f"({report['finalization_failures']}). It is shown as written.",
             )
         if terminal in A.FAILED_STATES or terminal is None:
-            st.button("Start a new run", on_click=start_run, key="restart")
-        V.trace(A.read_log(run_dir) if run_dir else [], report, handle.decisions())
+            st.button("Start a new run", on_click=restart_run, key="restart")
+        V.trace(
+            A.read_log(run_dir) if run_dir else [],
+            report,
+            handle.decisions(),
+            collapsed=terminal not in A.FAILED_STATES,
+        )
 
 # -- 3. Finding -------------------------------------------------------------------------------------
 with st.container(key="card-finding", border=True):
@@ -357,6 +406,7 @@ with st.container(key="card-finding", border=True):
         with st.container(key="finding-counts"):
             st.markdown(V.counts_line(rows))
         V.required_table(rows, "finding-checks")
+        V.next_actions(rows)
         if coverage:
             st.warning(
                 "Incomplete coverage: " + ", ".join(coverage), icon=":material/warning:"
@@ -365,6 +415,7 @@ with st.container(key="card-finding", border=True):
             V.assertion_details(outcome, rows)
         V.metric_block(outcome, "finding-metric")
         V.baselines(outcome)
+        V.class_support(outcome)
         V.reported_metric(outcome)
     if limitations:
         with st.expander("Limitations of this evaluation"):
