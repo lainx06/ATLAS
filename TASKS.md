@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress (slice 1 verified within scope; slice 2 verified within scope; slice 3: repair pass 1 verified in part by Codex, three P2 remained; repair pass 2 awaiting Codex verification) | Bounded live agent loop end to end |
+| T-06 | 11 | In progress (slice 1 verified within scope; slice 2 verified within scope; slice 3 verified within its offline scope at `5e63fc4`; slice 4 not authorized) | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1349,6 +1349,69 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - Ruff check and format clean. Not rerun: the full suite, the Docker contract suite and the mutation check. No evaluator, runner, check, schema, diff-parser or report code changed.
     - **Preservation:** all 83,523 paths in Codex's `runs/s3w/before.json` inventory are unchanged, with none missing (`runs/s3x/preservation.json`, read-only check). The newest file under `runs/s3w/` (20:04:48) predates this pass's first write (20:23). The root guide hash is `b08d74c4…`. Pass-local scratch test directories `runs/s3x-pre`, `-pre2`, `-new` and `-new2` are new and contain only test output.
 
+- **CODEX VERIFICATION OF REPAIR PASS 2 (`runs/s3y/review.md`, target `5e63fc4`, parent `756bb57`): slice 3 verified within its documented offline scope; no remaining P1/P2 blocker or new demonstrated defect.**
+  - All five original findings are now verified fixed within the supported contracts (P2-1 usage and metadata, P2-2 partial accounting, P2-3 configuration and derived arithmetic, P3-1 execution prose, P3-2 estimate wording), including the three defects left by repair pass 1.
+  - **Codex's independent results:**
+    - focused units **370 passed, 1 skipped** (the existing symlink-permission skip);
+    - Docker engine checked first (linux 29.8.2), then the focused Docker integrations **10 passed**;
+    - the copied original probe, the adapted edge probe and the finite controls exit 0. The unchanged edge probe exits 1 at the now-rejected `1e999999` configuration, which is expected;
+    - an in-memory sensitivity check (`money.exact` replaced by the ambient context) made the precision-1 regression fail, so the regression detects loss of context isolation;
+    - the new real-Docker artifacts (original VIOLATION_FOUND, candidate NO_VIOLATION_FOUND, executions completed, removal confirmed, hashes matching) were inspected;
+    - preservation: 98,632 entries, no changes.
+  - **Codex's qualifications:**
+    - this is development-fixture and mocked-transport evidence, not real-provider or independent benchmark evidence;
+    - the builder's parent-commit red run was inspected, not rerun, and its last nine failures (new bounds, an exception type and a new field) are not evidence of old behavioural defects;
+    - the identifier checks do not protect against a malicious trusted client implementation or secret-bearing operator configuration;
+    - the 10**100 / 1e100 limits are representational, not operational token caps or spending authorization.
+  - **Slice 4 is still not authorized.** It needs explicit per-call token-ceiling and cost-authorization decisions, a justified prompt-token bound (or another safe enforcement design) aligned with `MAX_PROMPT_CHARS`, and separate explicit live authorization. **T-06 is not accepted.**
+- **SLICE 4 PROPOSAL (2026-10-16; builder's proposal for the lead; nothing decided, enabled or sent).** One live run on the s01 development fixture.
+  - **Per-call ceilings (proposed): uniform for all six attempts.** The controller's turns are uniform (each reply chooses one action), so the per-stage table ($0.0510) does not map onto them.
+    - **Output:** `max_completion_tokens = 8,000`, sent with every request. The Nebius API reference documents it as an upper bound on generated tokens, reasoning included (STATUS.md). This is provider-enforced and documented, not verified by us.
+    - **Input:** an *estimated* ceiling `max_input_tokens = 12,000`, with the estimate = UTF-8 bytes + `template_overhead_tokens = 16` per message.
+  - **Prompt-size alignment (proposed code change for slice 4, to be reviewed):**
+    - Replace `MAX_PROMPT_CHARS = 96,000` with a budget derived from the input ceiling: 12,000 − 489 (system prompt bytes) − 2 × 16 = **11,479 bytes** for the user message.
+    - The user message is `json.dumps` output with ASCII escaping, so its characters equal its bytes. The existing history truncation then keeps every prompt inside the estimate, and a base context that cannot fit is refused before sending (not counted).
+    - Lower `MAX_TOOL_RESULT_CHARS` from 16,000 to 6,000 so one file read fits (s01's `evaluate.py` is 1,059 bytes).
+    - Measured s01 prompt estimates (slice 3): about 4,100 to 6,100 per turn over three turns.
+  - **Why the input figure stays an estimate, not a guarantee.**
+    - Every prompt byte is ASCII (the system prompt is ASCII; JSON escaping makes the rest ASCII). Byte-level BPE and SentencePiece-with-byte-fallback tokenizers produce at most one token per ASCII byte, plus template and special tokens.
+    - But the provider lists this model's tokenizer only as "Other" (model metadata, 2026-10-14), and the 16-token template allowance is unverified.
+    - Sample evidence fits the estimate but proves nothing: the two smoke calls used 32 prompt tokens for a 72-byte message and 47 for a 124-byte one, both well below bytes + 16.
+    - After each reply, reported `prompt_tokens` above 12,000 ends the run (`usage_over_ceiling`). That detects a failure afterwards; it does not prevent it.
+  - **Limits and what enforces them:**
+
+    | Limit | Enforced by | Status |
+    | --- | --- | --- |
+    | At most 6 requests per run (retries included), and one run | ATLAS code | Implemented and verified offline |
+    | Prompt bytes within the 11,479-byte budget | ATLAS code | Proposed change (above) |
+    | Output ≤ 8,000 tokens per request | Provider (`max_completion_tokens`) | Documented, not verified |
+    | Input + output ≤ 262,144 tokens per request | Provider (`context_length`, model metadata 2026-10-14) | Documented, not verified |
+    | Input ≤ 12,000 tokens per request | ATLAS estimate | **Not guaranteed** |
+    | Prices $0.30 / $0.90 per 1M tokens | Provider listing (2026-10-14) | Re-check before the run |
+
+  - **Expenditure at listed prices:**
+    - **Expected for s01:** about 3 requests of roughly 2,000–6,000 input and 1,000–3,000 output tokens, about **$0.005–$0.014** (estimate).
+    - **Estimated maximum, if the input estimate holds:** 6 × (12,000 × $0.30 + 8,000 × $0.90) / 1M = 6 × $0.0108 = **$0.0648**.
+    - **Provider-enforced maximum, if the input estimate failed entirely** (relying only on the documented context length and output bound): the worst single request is 254,144 input + 8,000 output tokens, which costs $0.0762432 + $0.0072 = $0.0834432. Six of them total **$0.5006592**.
+  - **Proposed authorization (the lead's decision):**
+    - **one live run, with a maximum authorized expenditure of $0.51** (the provider-enforced maximum, rounded up);
+    - expected spend about $0.005–$0.014; billing unchanged;
+    - the owner-observed balance is $50.00, so $0.51 is about 1% of it;
+    - credit expiry and promotional-use eligibility stay unknown.
+  - **Proposed run-level stop (code change):** before each dispatch, if the ledger's known plus unresolved amount plus the next request's ceiling would exceed **$0.0648**, end the run `BUDGET_EXHAUSTED` without sending. With uniform ceilings this never blocks a normal run.
+  - **Preconditions for the run:**
+    - a free authenticated `GET /models`, needing its own approval, run immediately before. Abort if the model is absent or its listed prices or context length differ from the configuration;
+    - the key read from `.env` only by `load_api_key`;
+    - Docker running;
+    - an explicit live entry point (proposed: the CLI refuses unless `ATLAS_MODEL_MODE=live` and `--authorize-spend-usd 0.51` match the configured cap);
+    - typed approvals for the original and each candidate, as now.
+  - **Alternative (not recommended now):** count input exactly with the model's published tokenizer and chat template, checked against reported usage after the first call. This would need a new dependency, a download and confirmation that the template matches the provider's. The provider-enforced maximum of $0.51 is already small.
+  - **Decisions needed from the lead:**
+    1. uniform 12,000 / 8,000 ceilings (instead of the per-stage table);
+    2. the prompt-size alignment and run-level stop as slice 4 code changes;
+    3. the $0.51 maximum authorized expenditure for one run;
+    4. the pre-run `GET /models` check;
+    5. separate explicit go-ahead for the live request itself.
 ### T-07 UI path and browser tests (Start Here Step 12; playbook §25)
 - **OWNER:** Claude Code (writer); Codex reviews the UI.
 - **MODEL DECISION:** SWITCH to Opus High for `docs/UI_SPEC.md`, then Sonnet Medium for the build. Back to Opus if failures reach core logic.
