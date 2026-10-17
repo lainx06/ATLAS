@@ -189,3 +189,26 @@ def test_outcome_labels_are_the_prd_labels():
         "NOT_SUPPORTED",
     }
     assert A.CAVEAT == "This does not say the scientific claim is true or false."
+
+
+# -- T-09: real-data catalogue entries ------------------------------------------------------------
+def test_har_entries_are_labelled_and_unavailable_without_data(tmp_path, monkeypatch):
+    from atlas.ui import catalogue as cat
+    from atlas.ui import worker
+
+    flawed = cat.BY_NAME["har_flawed"]
+    assert "ATLAS-authored flawed variant" in flawed.label
+    assert (
+        cat.BY_NAME["s01_faulty"].unavailable() is None
+    )  # synthetic fixtures always run
+    monkeypatch.setattr(cat, "REAL_SENSOR", tmp_path)  # no data/ folder, no table
+    missing = cat.Fixture("har_clean", "x", root=tmp_path)
+    reason = missing.unavailable()
+    assert reason is not None and cat.RETRIEVE_COMMAND in reason
+    # The intake still reads the manifest without crashing ("table absent").
+    assert cat.read_claim(cat.REAL_SENSOR.parent / "missing").supported is False
+    # The worker refuses to start an unavailable project: nothing runs.
+    monkeypatch.setitem(cat.BY_NAME, "har_clean", missing)
+    monkeypatch.setitem(worker.BY_NAME, "har_clean", missing)
+    monkeypatch.setenv(worker.RUNS_ENV, str(tmp_path / "runs"))
+    assert worker.Registry().start("har_clean", worker.AGENT, "inspect_only") is None

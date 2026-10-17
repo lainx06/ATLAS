@@ -122,6 +122,8 @@ class Registry:
         """Start a run, or return None if one is already active (nothing is started)."""
         if project not in BY_NAME:
             raise ValueError(f"unknown project {project!r}")
+        if BY_NAME[project].unavailable() is not None:
+            return None  # its data is not retrieved: nothing to run
         if mode == AGENT and script not in BY_KEY:
             raise ValueError(f"unknown fixture script {script!r}")
         with self._lock:

@@ -399,6 +399,95 @@ def metric_block(outcome: dict | None, key: str) -> None:
             st.caption(x)
 
 
+def conditional_passes(outcome: dict | None) -> None:
+    """PASS results that rest on a documented, unverified declaration (route C containment),
+    with the engine's own limitation text, verbatim."""
+    shown = []
+    for a in (outcome or {}).get("assertions", []):
+        basis = (a.get("observed") or {}).get("established_by")
+        values = basis.values() if isinstance(basis, dict) else [basis]
+        if a.get("status") == "PASS" and "documented_containment" in values:
+            shown.append(a)
+    if not shown:
+        return
+    with st.container(key="conditional-passes"):
+        for a in shown:
+            st.warning(
+                f"**Conditional PASS: `{a['assertion_id']}`** depends on "
+                f"{', '.join(a.get('depends_on') or []) or 'a declaration'}.\n\n"
+                + "\n\n".join(a.get("limitations") or []),
+                icon=":material/rule:",
+            )
+
+
+def provenance_notes(limitations, notes) -> None:
+    """The engine's provenance-scope limitation, and the catalogue's dataset notes."""
+    engine = [x for x in limitations or [] if "Provenance begins" in x]
+    if not engine and not notes:
+        return
+    with st.container(key="provenance-notes"):
+        st.markdown("**Provenance scope**")
+        for x in engine:
+            st.markdown(f"- {x} (from the run's report)")
+        for x in notes:
+            st.markdown(f"- {x} (catalogue note)")
+
+
+def _latest_run(runs_root: Path, project: str) -> Path | None:
+    runs = sorted(
+        (
+            p
+            for p in runs_root.iterdir()
+            if p.is_dir()
+            and p.name.startswith(f"agent-{project}-")
+            and (p / "original" / "outcome.json").is_file()
+        ),
+        key=lambda p: p.stat().st_mtime,
+    )
+    return runs[-1] if runs else None
+
+
+def protocol_comparison(run_dir: Path, this, other) -> None:
+    """Descriptive: this run's independent metric beside the related project's latest run.
+    Every number is read from the two runs' outcome.json files."""
+    with st.container(key="protocol-comparison", border=True):
+        st.markdown(f"**Descriptive comparison: {this.name} and {other.name}**")
+        other_dir = _latest_run(run_dir.parent, other.name)
+        if other_dir is None:
+            st.caption(
+                f"Run {other.name} to compare the two protocols' independent metrics."
+            )
+            return
+        rows = []
+        for fx, d in ((this, run_dir), (other, other_dir)):
+            outcome = A.read_json(d / "original" / "outcome.json")
+            m = A.primary_metric(outcome)
+            reported = A.reported_metric(outcome)
+            rows.append(
+                {
+                    "project": fx.label,
+                    "run": d.name,
+                    "outcome": (outcome or {}).get("outcome"),
+                    f"independent {m.name if m else 'metric'}, mean over folds": A.fmt_metric(
+                        m.mean_over_folds if m else None
+                    ),
+                    "pooled": A.fmt_metric(m.pooled if m else None),
+                    "folds": m.folds if m else None,
+                    "reported by the project": ", ".join(
+                        A.fmt_metric(r["reported"]) for r in reported
+                    )
+                    if reported
+                    else "none",
+                }
+            )
+        st.table(pd.DataFrame(rows), hide_index=True)
+        st.caption(
+            "Descriptive only, not causal: two different protocols evaluated on the same "
+            "training subjects. The difference is not the effect of any single flaw, and the "
+            "metric is never part of an outcome. Values are read from each run's outcome.json."
+        )
+
+
 def baselines(outcome: dict | None) -> None:
     d = A.descriptive(outcome, "metric.baselines")
     m = A.primary_metric(outcome)

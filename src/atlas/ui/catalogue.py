@@ -7,17 +7,55 @@ from atlas.intake import load_project
 
 ROOT = Path(__file__).resolve().parents[3]
 BENCHMARKS = ROOT / "benchmarks" / "t01"
-CATALOGUE_LABEL = "Development fixtures (synthetic), not benchmark evidence"
+REAL_SENSOR = ROOT / "benchmarks" / "real_sensor"
+CATALOGUE_LABEL = (
+    "s01-s08a: development fixtures (synthetic), not benchmark evidence. har_*: UCI HAR "
+    "real data (CC BY 4.0), with ATLAS-authored evaluations."
+)
+RETRIEVE_COMMAND = "uv run --locked python benchmarks/real_sensor/retrieve.py"
+HAR_UPSTREAM = (
+    "Upstream preprocessing: the 561 features were computed and normalized by the dataset "
+    'authors ("Features are normalized and bounded within [-1,1]", UCI HAR README.txt). '
+    "Provenance begins at the supplied feature table; whether that normalization was fit "
+    "globally (across subjects or partitions) is not established (docs/T09_CONTAINMENT.md §4)."
+)
 
 
 @dataclass(frozen=True)
 class Fixture:
     name: str
     purpose: str
+    root: Path = BENCHMARKS
+    display: str | None = None  # the rail label; the name if None
+    notes: tuple[
+        str, ...
+    ] = ()  # catalogue documentation shown with the finding, never a result
+    compare_with: str | None = (
+        None  # a related project for the descriptive metric comparison
+    )
 
     @property
     def path(self) -> Path:
-        return BENCHMARKS / self.name
+        return self.root / self.name
+
+    @property
+    def label(self) -> str:
+        return self.display or self.name
+
+    def unavailable(self) -> str | None:
+        """Why the project cannot be run here (its data is not retrieved), or None."""
+        if self.root != REAL_SENSOR:
+            return None
+        if (
+            not (REAL_SENSOR / "data").is_dir()
+            or not (self.path / "table.parquet").is_file()
+        ):
+            return (
+                "The UCI HAR data is not retrieved on this machine. Run "
+                f"`{RETRIEVE_COMMAND}` (it downloads, verifies and builds the table), then "
+                "reload."
+            )
+        return None
 
 
 FIXTURES = (
@@ -30,6 +68,21 @@ FIXTURES = (
         "INCONCLUSIVE under v1.2, hence the name)",
     ),
     Fixture("s08a_combined_claim", "Combined claim: NOT_SUPPORTED"),
+    Fixture(
+        "har_flawed",
+        "UCI HAR, real data: random row folds and global fitting (deliberately wrong)",
+        root=REAL_SENSOR,
+        display="har_flawed (ATLAS-authored flawed variant)",
+        notes=(HAR_UPSTREAM,),
+        compare_with="har_clean",
+    ),
+    Fixture(
+        "har_clean",
+        "UCI HAR, real data: subject-grouped folds, all fitting inside each fold",
+        root=REAL_SENSOR,
+        notes=(HAR_UPSTREAM,),
+        compare_with="har_flawed",
+    ),
 )
 BY_NAME = {f.name: f for f in FIXTURES}
 

@@ -10,7 +10,13 @@ import streamlit as st
 
 from atlas.ui import artifacts as A
 from atlas.ui import views as V
-from atlas.ui.catalogue import BY_NAME, CATALOGUE_LABEL, FIXTURES, read_claim
+from atlas.ui.catalogue import (
+    BY_NAME,
+    CATALOGUE_LABEL,
+    FIXTURES,
+    REAL_SENSOR,
+    read_claim,
+)
 from atlas.ui.scripts import BY_KEY, default_script, scripts_for
 from atlas.ui.worker import AGENT, AUDIT, registry
 
@@ -80,7 +86,11 @@ with st.sidebar:
         "Project",
         [f.name for f in FIXTURES],
         key="project",
-        captions=[f.purpose for f in FIXTURES],
+        format_func=lambda n: BY_NAME[n].label,
+        captions=[
+            f.purpose + (" Unavailable: data not retrieved." if f.unavailable() else "")
+            for f in FIXTURES
+        ],
         disabled=running,
     )
     st.caption(CATALOGUE_LABEL)
@@ -126,9 +136,15 @@ pending = handle.pending() if (handle and handle.active) else None
 
 def start_run() -> None:
     """Confirm & run: the selected project with the selected mode and fixture replies."""
-    mode = st.session_state.sel_mode
+    mode = AGENT if agent_only(project) else st.session_state.sel_mode
     script = chosen_script(project) if mode == AGENT else None
     REG.start(project, mode, script)
+
+
+def agent_only(name: str) -> bool:
+    """Real-data projects are not allowlisted trusted fixtures: the deterministic audit
+    refuses them, so they run in Docker through the agent path (typed approval)."""
+    return BY_NAME[name].root == REAL_SENSOR
 
 
 def restart_run() -> None:
@@ -176,6 +192,10 @@ if pending is not None:
 # -- 1. Claim --------------------------------------------------------------------------------------
 with st.container(key="card-claim", border=True):
     st.subheader("1. Claim")
+    unavailable = fixture.unavailable()
+    if unavailable is not None:
+        with st.container(key="project-unavailable"):
+            st.warning(unavailable, icon=":material/download:")
     try:
         claim = read_claim(fixture.path)
     except Exception as exc:  # noqa: BLE001 - an unreadable project is shown, not run
@@ -205,20 +225,25 @@ with st.container(key="card-claim", border=True):
                 st.warning(f"Intake reports this project unsupported: {claim.reason}")
             st.segmented_control(
                 "Mode",
-                [AGENT, AUDIT],
+                [AGENT] if agent_only(project) else [AGENT, AUDIT],
                 format_func=lambda m: (
                     "Agent, fixture replies (NON-LIVE)"
                     if m == AGENT
                     else "Deterministic audit: no model"
                 ),
-                default=st.session_state.sel_mode,
+                default=AGENT if agent_only(project) else st.session_state.sel_mode,
                 key="mode_widget",
                 on_change=remember_mode,
                 required=True,
                 disabled=running,
                 wrap=True,
             )
-            if st.session_state.sel_mode == AGENT:
+            if agent_only(project):
+                st.caption(
+                    "Real data runs in the isolated Docker runner through the agent path; the "
+                    "deterministic audit runs only the allowlisted synthetic fixtures."
+                )
+            if agent_only(project) or st.session_state.sel_mode == AGENT:
                 options = [s.key for s in scripts_for(project)]
                 chosen = chosen_script(project)
                 st.selectbox(
@@ -236,7 +261,7 @@ with st.container(key="card-claim", border=True):
                 st.button(
                     "Confirm & run",
                     type="primary",
-                    disabled=running,
+                    disabled=running or unavailable is not None,
                     on_click=start_run,
                     key="confirm-run",
                 )
@@ -422,7 +447,11 @@ with st.container(key="card-finding", border=True):
             )
         with st.expander("Check details: observed values, limitations, evidence"):
             V.assertion_details(outcome, rows)
+        V.conditional_passes(outcome)
+        V.provenance_notes(limitations, fixture.notes)
         V.metric_block(outcome, "finding-metric")
+        if fixture.compare_with and handle.mode == AGENT and run_dir is not None:
+            V.protocol_comparison(run_dir, fixture, BY_NAME[fixture.compare_with])
         V.baselines(outcome)
         V.class_support(outcome)
         V.reported_metric(outcome)
