@@ -116,3 +116,30 @@ Upstream scripts (`scripts/link-skills.sh`, `skills/engineering/wizard/template.
 - Pre-Commit Checks from the checklist apply to the Step 6 commit: no secrets staged; `.gitignore` covers `.env`/`*.pem`/`*.key`; `.env.example` holds placeholders.
 
 **Still to confirm by the user:** the `/` menu shows `/grill-with-docs` and `/to-spec`.
+
+## T-07 UI tooling (installed 2026-10-17, worktree `atlas-t07b`, branch `t07-ui`)
+
+### Anthropic frontend-design (playbook Section 25, S38)
+| Item | Value |
+| --- | --- |
+| Repository | https://github.com/anthropics/skills (cloned to ignored `.dev/skill-sources/anthropic`) |
+| Pinned commit | `dbd4588f9e1033efb41dad4bef2f7947c8993d44` (2026-10-09, "Update claude-api skill: dynamic workflows and the four workflow quickstarts (#1995)"), from `git rev-parse HEAD` after the clone. Last commit touching the folder: `41bbe19d1a1a7eaab5e7bb9050a417e5c6cffc8f` |
+| Selected path | `skills/frontend-design/` only: `SKILL.md`, `LICENSE.txt`. No whole collection |
+| License | Apache-2.0, `LICENSE.txt` inside the upstream folder (copied with it). `THIRD_PARTY_NOTICES.md` does not mention this skill |
+| Dependencies | None: no scripts, references, hooks or companion-skill calls in `SKILL.md` |
+| Destinations | `.claude/skills/frontend-design/` and `.agents/skills/frontend-design/`, via `scripts/sync_skills.py` (new `anthropic` pin; `LICENSES` maps it to `None` because the folder carries its own notice) |
+| Verification | `sync_skills.py --check`: 4 MISSING before install; install wrote 4 files; then "34 files x 2 destinations; problems: 0". SHA-256 `SKILL.md` `d9197063…c1d3` equals `git show <pin>:skills/frontend-design/SKILL.md`; both destinations identical; `diff -r --strip-trailing-cr` against the clone: no differences |
+| Load status | Native `Skill("frontend-design")` in the building session: `Unknown skill` (the session's discovery root is the main checkout, not this worktree). **Loaded by explicit file reference** (manual fallback, Section 22.2) before designing the first screen |
+
+Not installed: Addy `frontend-ui-engineering` (the T-07 build task names only frontend-design; it is for the later Codex UI review), Vercel `web-design-guidelines` (optional per Section 25).
+
+**`sync_skills.py` line endings.** In a fresh worktree checked out with `core.autocrlf=true`, every existing copy compared as DIFFERS (CRLF on disk against LF blobs). The comparison now ignores CRLF/LF (`_lf`); content is still compared byte for byte otherwise. With it, all 30 earlier files compare equal.
+
+### Streamlit bundled guidance (S40)
+- Streamlit 1.66.0 (`streamlit version`). `streamlit skills --help`: project mode "creates symlinks from .agents/skills/ and .claude/skills/ to the bundled skills in your Streamlit installation"; global mode writes to the user directory.
+- **Project-local route not used:** it is symlink-only, the links point into this machine's `.venv` (not portable, Section 25), and symlink creation is not permitted on this host (`tests/unit/test_candidates.py` skips "symlink creation not permitted on this host"). Global mode would change the user directory (Section 22.2: no global changes).
+- **Fallback used (manual-only):** the bundled `developing-with-streamlit` skill is read by explicit path, `.venv/Lib/site-packages/streamlit/.agents/skills/developing-with-streamlit/SKILL.md` (23,067 bytes) and its `references/` (`theme.md`, `layouts.md`, `performance.md`, ...), for the installed 1.66.0.
+
+### Browser tests (Section 22.4)
+- `uv add --dev pytest-playwright`: pytest-playwright 0.10.0, playwright 1.64.0 (+ greenlet 3.5.6, pyee 13.0.1, python-slugify 9.1.3, text-unidecode 1.3).
+- `uv run playwright install chromium`: Chromium build 1248 (156.0.8078.4), headless shell, ffmpeg and winldd under `%LOCALAPPDATA%\ms-playwright`. Offline smoke check: launched headless Chromium, rendered a page, read it back.

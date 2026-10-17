@@ -25,5 +25,6 @@ extend-exclude = ["docs/handoff", ".claude/skills", ".claude/references", ".agen
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-playwright>=0.10.0",
     "ruff>=0.17.0",
 ]

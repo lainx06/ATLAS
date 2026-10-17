@@ -7,6 +7,7 @@ are never overwritten: identical files are skipped, differing files abort the ru
 Prerequisite (ignored clones):
   git clone https://github.com/mattpocock/skills.git .dev/skill-sources/matt
   git clone https://github.com/addyosmani/agent-skills.git .dev/skill-sources/addy
+  git clone https://github.com/anthropics/skills.git .dev/skill-sources/anthropic
 
 Run:   uv run --locked python scripts/sync_skills.py          (install missing files)
        uv run --locked python scripts/sync_skills.py --check  (verify only; no writes)
@@ -31,7 +32,15 @@ PINS = {
         "https://github.com/addyosmani/agent-skills.git",
         "aeac41d4d005999432bb7312f7ff06383a91d59d",
     ),
+    "anthropic": (  # T-07, playbook Section 25 (S38)
+        "https://github.com/anthropics/skills.git",
+        "dbd4588f9e1033efb41dad4bef2f7947c8993d44",
+    ),
 }
+
+# Where each source keeps the license notice copied into its skill folders. None: the
+# upstream skill folder already carries its own (anthropic: LICENSE.txt, Apache-2.0).
+LICENSES = {"matt": "LICENSE", "addy": "LICENSE", "anthropic": None}
 
 # (source key, upstream skill folder). Each lands at <dest>/skills/<folder name>/.
 SKILLS = [
@@ -43,6 +52,7 @@ SKILLS = [
     ("addy", "skills/code-review-and-quality"),
     ("addy", "skills/debugging-and-error-recovery"),
     ("addy", "skills/test-driven-development"),
+    ("anthropic", "skills/frontend-design"),  # T-07 visual direction
 ]
 
 # Shared files cited as ../../references/<file> from a skill folder; placing them at
@@ -75,12 +85,19 @@ def planned_files() -> dict[str, bytes]:
             plan[f"skills/{name}/{path[len(folder) + 1 :]}"] = git(
                 key, "show", f"{sha}:{path}"
             )
-        # MIT requires the notice to travel with each copy.
-        plan[f"skills/{name}/LICENSE"] = git(key, "show", f"{sha}:LICENSE")
+        # The license notice must travel with each copy.
+        if LICENSES[key] is not None:
+            plan[f"skills/{name}/LICENSE"] = git(key, "show", f"{sha}:{LICENSES[key]}")
     for key, path in SHARED:
         plan[path] = git(key, "show", f"{PINS[key][1]}:{path}")
     plan["references/LICENSE"] = git("addy", "show", f"{PINS['addy'][1]}:LICENSE")
     return plan
+
+
+def _lf(data: bytes) -> bytes:
+    """Compare line endings as Git stores them: a checkout with core.autocrlf=true holds
+    CRLF copies of the LF blobs (found when a fresh worktree was checked, T-07)."""
+    return data.replace(b"\r\n", b"\n")
 
 
 def conflicts(plan: dict[str, bytes]) -> list[str]:
@@ -90,7 +107,7 @@ def conflicts(plan: dict[str, bytes]) -> list[str]:
     for dest in DEST_ROOTS:
         for rel, data in sorted(plan.items()):
             target = dest / rel
-            if target.exists() and target.read_bytes() != data:
+            if target.exists() and _lf(target.read_bytes()) != _lf(data):
                 found.append(f"DIFFERS  {target.relative_to(ROOT)}")
         for name in sorted(managed):
             for extra in (dest / "skills" / name).rglob("*"):
