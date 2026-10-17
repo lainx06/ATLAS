@@ -2,7 +2,17 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11. **T-03 accepted by the lead at `51d3dd8` within its research-and-feasibility scope (2026-10-16)** (`docs/HOSTING_PROBE.md`; TASKS.md T-03 "ACCEPTANCE"). It does not establish production readiness, guaranteed availability, credit eligibility or remote isolation compliance. T-01, T-02, T-03, T-04 and T-05 are accepted. **T-06 slice 1 (approved candidate -> Docker -> trusted re-evaluation, no model): implemented at `e23e67d`; Codex review 1 found three P2 defects (`runs/r6/review.md`); Codex's verification of repair pass 1 (`runs/r6v/review.md`) found one P2 (approval binding in refusal reports) and one P3 (a test-coverage claim); **Codex verified repair pass 2 at `1d58b20` with no remaining blocker** (`runs/r6w/review.md`: 17 focused regressions and the copied approval probe rerun, Docker evidence inspected; the builder's 67-test total has no standalone log). Slice 1 is verified within its documented scope; **slice 2 (offline fixture/stub model controller): Codex's review of `4232cc5` found four P2 defects (`runs/r6s/review.md`); Codex's verification of repair pass 1 (`runs/r6u/review.md`) found one P2 (a reporting failure finished as REPORT) and one P3 (the new-start hunk field unbounded); Codex's verification of repair pass 2 (`runs/r6z/review.md`) found one P2 (a terminal-state logging failure could mask the primary exception and skip the report); Codex's verification of repair pass 3 (`runs/r6y/review.md`) found one P2 (a first report-write failure left REPORT and no NOT-saved note); **Codex verified repair pass 4 at `69042a1` with no remaining blocker** (`runs/r6x/review.md`: 16 focused tests and the copied order probe rerun; the builder's 64-test log inspected), so slice 2 is verified within its documented scope; **slice 3 (Docker baseline, CLI approval, offline Nebius client): Codex's review of `943f046` found three P2 defects and two P3 issues (`runs/s3v/review.md`); Codex's verification of repair pass 1 (`runs/s3w/review.md`) found three remaining P2 defects (transient invalid usage retried, an echoed model ID logged, Decimal rounding and overflow in accounting) and verified P3-1 and P3-2; **Codex verified repair pass 2 at `5e63fc4` with no remaining blocker** (`runs/s3y/review.md`: 370 unit tests passed, 1 skipped; 10 Docker integration tests passed), so **slice 3 is verified within its documented offline scope** (TASKS.md T-06 "CODEX VERIFICATION OF REPAIR PASS 2"); slice 4 still needs the lead's ceiling and cost decisions and separate live authorization** (TASKS.md T-06); T-06 is not accepted** (TASKS.md T-06 "SLICE 1 RESULT"). The mutation check's temporary-copy layout was repaired and run once: baseline 663 passed, 1 skipped; 3/3 mutants caught cleanly.
+CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4. **The slice 4 prompt-budget and spending controls are implemented and self-tested offline at `96f6fc6`, awaiting Codex review.** All token ceilings and amounts are **proposed**; no live request, provider metadata request or spending is authorized, and no live entry point exists (the CLI refuses live mode). **T-06 is not accepted.**
+- **Accepted:** T-01 (`f5aa4dc`), T-02 (`75a98f4`), T-03 (`51d3dd8`, research and feasibility), T-04 (smoke-test scope), T-05 (`eed73ee`), each within its documented scope.
+- **T-06, independently verified by Codex within documented scope:**
+  - slice 1 at `1d58b20` (`runs/r6w/review.md`);
+  - slice 2 at `69042a1` (`runs/r6x/review.md`);
+  - slice 3 at `5e63fc4`, offline scope (`runs/s3y/review.md`: 370 unit tests passed, 1 skipped; 10 Docker integration tests passed).
+- **T-06 slice 4:**
+  - proposal recorded at `5932b6a` (TASKS.md T-06 "SLICE 4 PROPOSAL");
+  - controls at `96f6fc6` ("SLICE 4 CONTROLS RESULT");
+  - owner-observed NON-LIVE CLI demonstration on s01 (2026-10-16): REPORT, four FAILs became PASS.
+- Full review history: TASKS.md T-06.
 - **T-02 (policy-v1.3, manifest schema 0.3):** **accepted by the lead at `75a98f4` within its documented trusted-fixture scope (2026-10-15)**. The decision rests on Codex's final verification (`runs/t02-verification-final/review.md`) and the earlier independent verification records. Record: TASKS.md T-02 "ACCEPTANCE".
   - **Path to acceptance:**
     - implemented at `487664e`;
@@ -48,10 +58,19 @@ CURRENT STEP: Start Here Step 11. **T-03 accepted by the lead at `51d3dd8` withi
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `origin` = `https://github.com/lainx06/atlas.git` (**private**, published by the user via VS Code). `origin/main` is at `35dbb63` (verified earlier with `git ls-remote`). Local `main` is ahead by unpushed commits (`f2660f2`, `ddb84fa`, `ddde27e` (T-04), `f494c95` (T-05), `2e58280` (T-05 repair pass 1), `44c5a84` (learning guide), `eed73ee` (T-05 repair pass 2), `52c99c8` (T-05 acceptance), `487664e` (T-02), `0cf955d` (T-02 repair pass 1), `bb9bac8` (T-02 repair pass 2), `5af1b6e` (T-02 repair pass 3), `3bc38ff` (T-02 repair pass 4), `75a98f4` (T-02 repair pass 5), and the T-02 acceptance commit containing this update). Nothing is pushed.
+CHECKPOINT: **`96f6fc6`** ("T-06 slice 4 controls (offline): prompt budget and spending limits"), checked 2026-10-16 with `git rev-parse --short HEAD`.
+- `git status`: clean except the user's untracked root `ATLAS_Learning_Guide.md` (left alone by rule). Branch `main`.
+- The local `main` is **42 commits ahead of `origin/main` (`35dbb63`)**, as of the last fetch; nothing has been fetched or pushed since. `origin` = `https://github.com/lainx06/atlas.git` (private). Nothing is pushed without the user's approval.
+- This reconciliation (STATUS.md, TASKS.md, PROJECT_BRIEF.md) is a docs-only commit on top of `96f6fc6`, which remains the code checkpoint.
 LAST UPDATED: 2026-10-16
 
 ## What works (verified by running)
+- **Full repository test run at `96f6fc6` (2026-10-16), Docker required:**
+  - `docker info` → `linux 29.8.2`.
+  - PowerShell: `$env:ATLAS_REQUIRE_DOCKER = '1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/status-20261016/t -rs` → **965 passed, 1 skipped in 743.88 s**, exit 0. The skip is `tests/unit/test_candidates.py:116`, "symlink creation not permitted on this host" (existing).
+  - `uv run --locked ruff check .` → "All checks passed!"; `uv run --locked ruff format --check .` → "119 files already formatted".
+  - Logs (git-ignored): `runs/status-20261016/` (`pytest-tests.log`, `ruff.log`, `docker-info.log`).
+  - Scope note: `tests` is the suite. A bare `uv run pytest` has no `testpaths` configured, so it would also collect the copied test trees under the git-ignored `runs/` (red-demonstration archives) and the separate `hosting_probe/` tests. It was not used.
 - Python 3.11 environment: uv-managed CPython 3.11.17 in `.venv/`, pinned by `.python-version`.
 - Dependencies resolved and locked: `uv.lock` (61 packages). `uv lock --check` exit 0.
 - Import check: `uv run --locked python scripts/check_imports.py` exit 0; numpy, pandas, sklearn, pydantic, streamlit, openai, dotenv, pytest, and atlas all import.
@@ -79,11 +98,11 @@ LAST UPDATED: 2026-10-16
 
 ## What does not exist yet
 - T-02 is accepted (`75a98f4`) within its trusted-fixture scope. The adapter still accepts duplicate fold names; only the metric checks refuse them. The linear baseline is deferred; splitter minimum requirements are not recorded.
-- Not implemented: `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED); the model client, agent loop, CLI approval prompt and `--mode agent` (T-06 slice 2 onward; candidate re-evaluation after isolated execution exists from slice 1, under review); procedures; UI; hosting; real-data and held-out evaluation. Under policy-v1.3 every required assertion is implemented.
+- Not implemented: `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED); a live agent run (T-06 slice 4: the production client exists but has only been exercised against a mocked transport, and no live entry point exists); procedures (T-08); UI (T-07); hosting deployment (T-12); real-data and held-out evaluation (T-09, T-10). Under policy-v1.3 every required assertion is implemented.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - `docs/specs/` holds one spec, `t02-contract.md`. `handoffs/` holds only the Step 8 packet.
-- Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. No production model client, schemas or agent loop (T-06); diagnosis, tool-use and repair quality untested.
-- The Docker runner is accepted (T-05). T-06 slice 1 (under review) lets `audit.evaluate` accept a Docker *candidate view*; deterministic audits of fixtures still use the trusted runner (`trusted_pipeline_only`), and the original is not yet run in Docker. No user-facing candidate approval step exists yet. Output writes have no Windows extended-length path handling (T-05 P3).
+- Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. The production client, reply schemas and agent loop exist (T-06 slices 2–3), but they have only been tested with fixture replies and a mocked transport; diagnosis, tool-use and repair quality with a real model are untested.
+- The Docker runner is accepted (T-05). In agent mode the original and every candidate run in Docker after a typed CLI approval (T-06 slice 3, verified offline); deterministic audits (`--mode audit`) still use the trusted fixture runner (`trusted_pipeline_only`). Output writes have no Windows extended-length path handling (T-05 P3).
 
 ## Commands executed in setup
 1. `git init -b main`
@@ -197,6 +216,12 @@ LAST UPDATED: 2026-10-16
 19. T-03 research (2026-10-15): public documentation read (Streamlit, Hugging Face, Nebius); `hosting_probe/cost_calc.py`; the stub's 4 local AppTest tests (`uv run --locked python -m pytest hosting_probe/test_stub.py`); ruff. No deployment, account, secret or API call.
 
 ## Blockers
+- **T-06 slice 4 (gates, not defects):**
+  1. Codex review of the controls at `96f6fc6` (pending);
+  2. the lead's decisions on the proposed ceilings (12,000 / 8,000), the estimate cap ($0.0648) and the maximum authorized expenditure ($0.51), the pre-run `GET /models` check and a live entry point;
+  3. explicit live authorization.
+
+  **No open review defect or known regression:** Codex's last review (`runs/s3y/review.md`, slice 3) found no remaining blocker, and the full run above passed.
 - **Nebius:** none. $50 in Token Factory credits awarded in total (user-reported; balance and expiry not verified), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** none. Accepted at `eed73ee`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
@@ -261,8 +286,12 @@ LAST UPDATED: 2026-10-16
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-06 slice 4 controls: stopped, awaiting Codex review** of the controls commit (parent `5932b6a`; TASKS.md T-06 "SLICE 4 CONTROLS RESULT"). The prompt budget and spending controls are prepared offline; the ceilings and amounts are **proposed**.
-   - **No live run is authorized.** Before any live request the lead must decide the ceilings, the estimate cap and the maximum authorized expenditure (proposal: $0.0648 / $0.51), the pre-run `GET /models` check, a live entry point, and give explicit live authorization.
+1. **Next task card: T-06 SLICE 4 (one authorized live run)**, TASKS.md T-06 "NEXT CARD: SLICE 4". It has acceptance criteria, owned paths, verification commands and four review gates.
+   - **Gate 1:** Codex review of the controls at `96f6fc6`.
+   - **Gate 2:** the lead's decisions (ceilings, estimate cap, $0.51 authorization, pre-run `GET /models`, live entry point).
+   - **Gate 3:** Codex review of the entry point and pre-run check, then the lead's explicit go-ahead for the one live run.
+   - **Gate 4:** Codex review of the live evidence before T-06 acceptance is considered.
+   - **Target milestone:** the playbook's *live-agent milestone*, "Working NVIDIA model on Nebius" (playbook §23 checklist: a sanitized runtime trace, the model ID and a reproduced code-edit/check workflow). It is scheduled in the playbook §12 window **Oct 17–18** ("original-versus-revised comparison"), alongside the first end-to-end UI by Oct 18 (T-07, not started), so the schedule is tight.
    - **Owner-observed NON-LIVE demonstration (2026-10-16):** the owner ran the fixture CLI on s01 with both approvals (`runs/demo-s01/runs/agent-s01_faulty-6face8361824`). It ended REPORT: original VIOLATION_FOUND; candidate `81f691409a67` completed with NO_VIOLATION_FOUND; the hash matched; four FAILs became PASS.
    - **T-03 (accepted at `51d3dd8`):**
      - Limited hosted mode for V1; Neon is the selected budget store.
@@ -275,4 +304,4 @@ LAST UPDATED: 2026-10-16
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. T-02's assertions are closed (accepted at `75a98f4`). The remaining items are synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".
-- **T-06 before any live run (lead):** per-call input/output ceilings for the uniform controller turns (the per-stage table totals $0.0510; the largest stage applied to all six attempts would be $0.0648), and how to bound input before sending without the tokenizer (the conservative byte bound conflicts with the 96,000-character prompt limit). Details: TASKS.md T-06 "SLICE 3 RESULT".
+- **T-06 before any live run (lead):** the proposed uniform ceilings, estimate cap and maximum authorized expenditure (TASKS.md T-06 "SLICE 4 PROPOSAL"); the input figure remains an estimate (UTF-8 bytes plus a per-message allowance, now aligned with the prompt budget), and the worst case relies on provider enforcement that has not been verified.

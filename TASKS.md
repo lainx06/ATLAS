@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress (slices 1–3 verified within scope, slice 3 offline at `5e63fc4`; slice 4 controls prepared offline, awaiting Codex review; no live run authorized) | Bounded live agent loop end to end |
+| T-06 | 11 | In progress. Slices 1–3 verified by Codex within scope (`1d58b20`, `69042a1`, `5e63fc4` offline). Slice 4 controls at `96f6fc6`: self-tested, full suite 965 passed / 1 skipped, awaiting Codex review. Next: NEXT CARD: SLICE 4 (one authorized live run); no live run authorized | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1473,6 +1473,64 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - the live request itself.
 
     The input figure remains an estimate; the worst case relies on provider enforcement that has not been verified.
+- **SLICE STATUS (reconciled 2026-10-16 at `96f6fc6`):**
+
+  | Slice | Commit | State | Evidence |
+  | --- | --- | --- | --- |
+  | 1. Approved candidate → Docker → trusted re-evaluation | `1d58b20` | **Verified** by Codex within scope | `runs/r6w/review.md` |
+  | 2. Offline fixture controller | `69042a1` | **Verified** by Codex within scope | `runs/r6x/review.md` |
+  | 3. Docker baseline, CLI approval, offline Nebius client | `5e63fc4` | **Verified** by Codex within its offline scope | `runs/s3y/review.md`: 370 passed, 1 skipped; Docker 10 passed |
+  | 4a. Prompt budget and spending controls (offline) | `96f6fc6` | **Implemented and self-tested; awaiting Codex review** | "SLICE 4 CONTROLS RESULT" above; full suite below |
+  | 4b. One authorized live run | none | **Not started; not authorized** | "NEXT CARD: SLICE 4" below |
+
+- **FULL-SUITE VERIFICATION AT `96f6fc6` (2026-10-16, builder):** after `docker info` → `linux 29.8.2`, PowerShell `$env:ATLAS_REQUIRE_DOCKER = '1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/status-20261016/t -rs` gave **965 passed, 1 skipped** (the existing symlink-permission skip) in 743.88 s, exit 0. `ruff check` and `ruff format --check` are clean. Logs: `runs/status-20261016/`. This includes the Docker runner contract suite and all T-06 integration tests. It is the builder's run, not an independent verification.
+
+- **NEXT CARD: SLICE 4 (one authorized live run).**
+  - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
+  - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
+  - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex High review.
+  - **READ FIRST:** this entry's "SLICE 4 PROPOSAL" and "SLICE 4 CONTROLS RESULT"; SPEC §11; DECISIONS.md 2026-10-15 "Hosting probe decisions" (retries count, dispatched reservations kept) and 2026-10-16 "T-03 hosting decisions" (no additional spending authorized).
+  - **REVIEW GATES (in order; each is a stop):**
+    1. Codex review of the controls at `96f6fc6`, with every finding dispositioned.
+    2. The lead's recorded decisions (DECISIONS.md):
+       - the ceilings (proposed 12,000 input estimate / 8,000 output);
+       - the estimate cap (proposed $0.0648);
+       - the maximum authorized expenditure (proposed $0.51 for one run);
+       - the pre-run `GET /models` check;
+       - the live entry point design.
+    3. Implementation of the entry point and pre-run check, Codex review of it, then the lead's explicit go-ahead for the one live run.
+    4. After the run: Codex review of the live evidence before T-06 acceptance is considered.
+  - **INPUT STATE:** slices 1–3 verified; the controls at `96f6fc6` reviewed; Docker running; the `.env` key present (never printed).
+  - **CHANGE (owned paths):**
+    - `src/atlas/cli.py`: a live entry point that refuses unless `ATLAS_MODEL_MODE=live` and an explicit authorized amount equal to the configured cap are given;
+    - `src/atlas/agent/` (`nebius.py`, `budget.py`, `controller.py`): only what the decisions require;
+    - `scripts/nebius_smoke.py` or a new `scripts/live_preflight.py`: the free `GET /models` check, extended to compare the model, prices and context length with the configuration;
+    - tests in `tests/unit/` (new or extended slice 4 files) and `tests/integration/`;
+    - docs: TASKS.md, STATUS.md, `docs/SPEC.md` §11, `docs/ATLAS_Learning_Guide.md`, DECISIONS.md (the decisions only).
+
+    Not owned: the evaluator, runner, policy, fixtures, `docs/handoff/` and hosting.
+  - **ACCEPTANCE:**
+    - **Offline, before any request:**
+      - tests show that the live entry point refuses without live mode, without the explicit authorized amount, with a mismatched amount and with limits that do not cover the provider-enforced worst case. In each case nothing runs, nothing is sent and no run directory is created;
+      - the pre-run check aborts when the model is absent or the prices or context length differ;
+      - the full suite passes with Docker required.
+    - **The live run (only after gate 3), on `benchmarks/t01/s01_faulty`:**
+      - one real NVIDIA model call yields a valid action;
+      - the checks run; an approved candidate runs in the isolated runner; it is re-checked; the report cites evidence (T-06 ACCEPTANCE);
+      - at most 6 requests;
+      - the ledger's estimated total stays within the estimate cap, and the known spend within the authorized maximum;
+      - usage, request IDs, the served model and timings are recorded, while the key appears in no log, report or evidence file;
+      - the report is labelled LIVE.
+    - **Any failure** (invalid output, timeout, budget or spend cap) ends in a recorded state with the original findings intact. A failed live run is reported as measured; it is not retried without a new go-ahead.
+  - **RUN (verification commands):**
+    - offline: `uv run --locked pytest tests/unit/test_agent_slice4_controls.py tests/unit/test_agent_slice3.py tests/unit/test_agent_slice3_repair.py tests/unit/test_agent_slice3_repair2.py tests/unit/test_agent_controller.py -q` (*existing*), plus the new entry-point tests (*create*);
+    - full: `docker info`, then `$env:ATLAS_REQUIRE_DOCKER = '1'; uv run --locked pytest tests -q` (*existing*);
+    - pre-run (free, needs gate 3): `uv run --locked python scripts/nebius_smoke.py` dry run (*existing*: `GET /models` and the price check; it sends no completion), or the extended preflight (*create*);
+    - live (needs gate 3): `uv run --locked python -m atlas.cli audit benchmarks/t01/s01_faulty --mode agent --live --authorize-spend-usd <decided amount>` (*create*; the flag names are proposed).
+  - **EVIDENCE:** the agent log and report (model ID, served model, usage, request IDs, timings, the cost ledger and its spending section) under git-ignored `runs/`; the preflight output; Codex's review record.
+  - **HANDOFF:** Codex review at gates 1, 3 and 4; then the lead's T-06 acceptance decision.
+  - **RECOVERY:** if a gate fails, repair offline and re-review; nothing live without a fresh go-ahead. If live behaviour is poor, record it as measured (a lower result can be the honest one) and keep the fixture demonstration as the documented fallback.
+
 ### T-07 UI path and browser tests (Start Here Step 12; playbook §25)
 - **OWNER:** Claude Code (writer); Codex reviews the UI.
 - **MODEL DECISION:** SWITCH to Opus High for `docs/UI_SPEC.md`, then Sonnet Medium for the build. Back to Opus if failures reach core logic.
