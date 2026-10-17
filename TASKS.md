@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress. Slices 1–3 verified by Codex within scope (`1d58b20`, `69042a1`, `5e63fc4` offline). Slice 4a controls verified at `8c79e5a` (Gate 1 PASS). Next: Gate 2, the lead's decisions. No live run authorized | Bounded live agent loop end to end |
+| T-06 | 11 | In progress. Slices 1–3 verified; slice 4a controls verified at `8c79e5a` (Gate 1 PASS); Gate 2 decisions recorded; Gate 3 live entry point and pre-run check implemented offline, awaiting Codex review. No pre-run call or live run authorized | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1559,6 +1559,56 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - Codex also corrected its earlier NumPy note: 2.4.6 is the correct lock variant for Python 3.11.
   - **Scope:** this verifies only the slice 4a controls repair. It is not T-06 acceptance and authorizes nothing live. All ceilings and amounts remain **PROPOSED** (no DECISIONS.md record).
 - **FOLLOW-UP (low priority, not scheduled):** the junction test in `tests/unit/test_candidates.py` leaves junctions in pytest base-temp directories under `runs/`, and 117 `runs/` paths are unreadable from Codex's sandbox. Both reduce future preservation coverage. No action in this task.
+- **GATE 3 IMPLEMENTATION RESULT (2026-10-16): the live entry point and pre-run model check, offline. Awaiting Codex Gate 3 review; no pre-run call or live run executed or authorized; no network request, `.env` read or spending.**
+  - **Files:**
+    - `src/atlas/cli.py`: `--live`, `--authorize-spend-usd`, `_live`, exit codes;
+    - new `src/atlas/agent/preflight.py`;
+    - `src/atlas/agent/budget.py`: `DECIDED_SLICE4` replaces `PROPOSED_SLICE4`, and `DECIDED_SLICE4_PROPOSED = ("timeout_s",)`;
+    - `src/atlas/agent/nebius.py`: the cost methods moved onto `NebiusConfig` so that limits can be checked before any client or key exists; the client delegates;
+    - `src/atlas/agent/controller.py`: an optional `preflight` evidence parameter, reported as given;
+    - new `scripts/live_preflight.py`;
+    - new `tests/unit/test_agent_slice4_live_entry.py` and `tests/fixtures/nebius_models_verbose.json` (synthetic, with the shape of the archived listing);
+    - `tests/unit/test_agent_slice4_controls.py` (constant renamed; the test client keeps its synthetic URL and model).
+  - **Decided configuration:** one constant, `budget.DECIDED_SLICE4` (citing DECISIONS.md), with `timeout_s` 60 labelled proposed. Its `base_url` is the playbook's documented runtime API base, because `.env` and `.env.example` may not be read. Only `atlas.cli` (the live path) and `scripts/live_preflight.py` read it. A test checks that `controller.py`, `nebius.py`, `client.py` and `preflight.py` do not mention it, and that `run_agent`'s `spend` and `preflight` default to None.
+  - **Refusal order (exit 2, before any run directory, Docker call, key read, client construction or network access):**
+    1. `--live` (or `--authorize-spend-usd`) without `--mode agent`; `--live` with `--fixture-script`; `--authorize-spend-usd` without `--live`;
+    2. `ATLAS_MODEL_MODE` not exactly `live`;
+    3. `--authorize-spend-usd` missing, not a finite decimal, or not equal (Decimal comparison) to the decided 0.51. The message states both values;
+    4. `SpendLimits.check` against the decided `NebiusConfig` fails.
+
+    Only then: `load_api_key`, the pre-run check, `NebiusClient`, and `run_agent(live_authorized=True, spend=decided limits, budget=Budget(max_attempts=6), preflight=evidence)` with typed approvals.
+  - **Exit codes:** 0, 1, 3, 4 and 5 for completed runs (unchanged); 2 for a refusal; **6 for a pre-run abort** (`PREFLIGHT_ABORT_EXIT`).
+  - **Pre-run check (`preflight.run_preflight`):**
+    - one `GET {base_url}models?verbose=true` with the bearer key, the configured timeout, no retries, no redirects and no completion;
+    - it passes only if the configured model is listed once and its listed prompt/completion prices (Decimal) and context length (an exact integer) equal the configuration;
+    - it aborts on a missing model, any mismatch (naming each field with expected and listed values), a transport error, a timeout, a non-200 status, malformed JSON, or a missing or malformed field.
+
+    The evidence is sanitized: the URL without the query, status, request ID (only a plain, key-free identifier), model, expected and listed values, result, reason and mismatches; never the key, a header or provider text. The CLI writes it to `<runs-dir>/preflight-<UTC>.json` on abort, or to the run's report `preflight` section and `preflight.json` on pass. `scripts/live_preflight.py` is a dry run by default, sending nothing and reading no key; `--execute` writes `runs/preflight-<UTC>.json`. **It was not executed.**
+  - **Tests (logs in git-ignored `runs/g3/`):**
+    - `uv run --locked pytest tests/unit/test_agent_slice4_live_entry.py -q -p no:cacheprovider --basetemp=runs/g3/e1` → **46 passed**, exit 0 (`live-entry.log`). Each CLI call runs under the network guard, with a mock provider and a synthetic key file. Covered:
+      - seven flag and mode refusals, nine amount refusals (missing, 0.50, 0.52, abc, NaN, Infinity, -0.51, empty, malformed) and both spending-limit refusals, each with tripwires on the key read, client, pre-run check, `run_agent` and Docker, and no run directory;
+      - 0.51, 0.510 and " 0.51" accepted (reaching the pre-run check);
+      - fixture mode unchanged;
+      - thirteen pre-run aborts (model absent; input price, output price and context length mismatched; 503 and 401; timeout; connection error; malformed JSON; missing `data`; missing price; missing or float context length), each exiting 6 with exactly one GET and no completion, and the key in no output or evidence;
+      - mismatch messages naming expected and listed values; the request shape; equal prices in another notation; a key-shaped request ID withheld;
+      - the live path end to end: fake Docker and typed approvals, a LIVE report with the decided limits and the pre-run evidence, 1 GET then 2 completions whose bodies are exactly `max_completion_tokens`, `messages`, `model` and `n` (8000, 1), and the key in no file;
+      - the decided constant read only by the CLI and the script;
+      - the script's dry run and its mocked execute path.
+    - **Focused suites** (the new file, the two other slice 4 files, the three slice 3 files and the controller tests; `focused.log`): **347 passed**, exit 0.
+    - **Red at the Part 1 commit** (fresh `git archive a296199` plus this file and its fixture; `red.log`): **10 failed, 35 errors, 1 passed.**
+      - All 45 are new-interface failures: `atlas.agent.preflight`, `cli.LIVE_ENV_FILE` and `cli.REFUSED_EXIT`, `scripts/live_preflight.py` and `preflight.py` are absent.
+      - 0 are behavioural: no live path existed to compare against.
+      - The 1 pass is the fixture-mode control.
+    - **Full suite** with Docker required (`docker info` → linux 29.8.2; `$env:ATLAS_REQUIRE_DOCKER='1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/g3/t -rs`; `full.log`): **1091 passed, 1 skipped (the existing symlink-permission skip) in 832.52 s, exit 0**.
+    - `uv run --locked ruff check .` and `uv run --locked ruff format --check .` are clean.
+    - The first controls run errored only because `runs/g3/` did not exist yet (`WinError 3`, environment); it was rerun after creating the folder.
+  - **Limitations:**
+    - the pre-run check confirms the listing, not the provider's actual billing or enforcement;
+    - the tokenizer and template remain unverified, so the 12,000 input figure is an estimate;
+    - the 60 s timeout is proposed;
+    - the base URL is the documented one, not read from `.env`;
+    - the key is read from the repository `.env` by `load_api_key` only after every refusal check;
+    - nothing was run against Nebius.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
@@ -1574,7 +1624,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
        - the live entry point design.
 
        The timeout (60 s) is still proposed. Gate 3 implementation is next.
-    3. Implementation of the entry point and pre-run check, Codex review of it, then the lead's explicit go-ahead for the one live run.
+    3. Implementation of the entry point and pre-run check (**implemented offline**, "GATE 3 IMPLEMENTATION RESULT"), Codex review of it (**pending**), then the lead's explicit go-ahead for the one live run.
     4. After the run: Codex review of the live evidence before T-06 acceptance is considered.
   - **INPUT STATE:** slices 1–3 verified; the controls at `96f6fc6` reviewed; Docker running; the `.env` key present (never printed).
   - **CHANGE (owned paths):**

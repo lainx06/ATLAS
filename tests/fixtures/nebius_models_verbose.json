@@ -1,0 +1,43 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "example/other-model-a",
+      "object": "model",
+      "created": 1770000000,
+      "owned_by": "system",
+      "name": "Synthetic other model",
+      "context_length": 32768,
+      "architecture": {"modality": "text->text", "tokenizer": "Other"},
+      "quantization": "fp8",
+      "pricing": {"prompt": "0.0000001", "completion": "0.0000004", "image": "0", "request": "0"},
+      "per_request_limits": {"tokens_per_minute": 100000.0, "requests_per_minute": 100.0},
+      "supported_features": [],
+      "supported_sampling_parameters": ["temperature"]
+    },
+    {
+      "id": "nvidia/nemotron-3-super-120b-a12b",
+      "object": "model",
+      "created": 1773187200,
+      "owned_by": "system",
+      "name": "Nemotron-3-Super-120b-a12b",
+      "description": "Synthetic test entry with the shape of GET /models?verbose=true.",
+      "context_length": 262144,
+      "architecture": {"modality": "text->text", "tokenizer": "Other"},
+      "quantization": "fp4",
+      "pricing": {
+        "prompt": "0.0000003",
+        "completion": "0.0000009",
+        "image": "0",
+        "price_per_video_second": "0",
+        "request": "0",
+        "price_per_minute": "0",
+        "input_cache_read": null
+      },
+      "per_request_limits": {"tokens_per_minute": 200000.0, "requests_per_minute": 300.0, "burst_ratio": 1.0},
+      "regions": [{"country_code": "US", "name": "us-central1"}],
+      "supported_features": ["tools", "reasoning"],
+      "supported_sampling_parameters": ["temperature", "top_p"]
+    }
+  ]
+}

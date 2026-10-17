@@ -328,7 +328,16 @@ Any other runtime must pass the same contract tests before it replaces Docker. I
     - Before each request, the committed estimate plus the next ceiling must be within the estimate cap, or the run ends BUDGET_EXHAUSTED unsent.
     - Live prompts are kept within a user-message byte budget derived from the input ceiling.
 
-    The values are proposed, not decided. The per-call ceiling values and a justified prompt-token bound are open lead decisions before any live run (TASKS.md T-06 slice 3 and its repair pass 1).
+    The values were decided by the lead at Gate 2 (DECISIONS.md 2026-10-16), except the 60 s timeout, which is still proposed. The input figure remains an estimate, not a proven bound.
+  - **Live entry point and pre-run check (T-06 slice 4, Gate 3 implementation, offline; not run):** `python -m atlas.cli audit <project> --mode agent --live --authorize-spend-usd 0.51`.
+    - **Refusals** (exit 2, before any run directory, Docker call, key read, client or network access), in order:
+      1. `--live` without `--mode agent`, or with `--fixture-script`;
+      2. `ATLAS_MODEL_MODE` is not `live`;
+      3. the amount is missing, not a finite decimal, or not equal to the decided authorization;
+      4. the decided limits do not cover the provider-enforced worst case.
+    - **Then:** the key is read, and the pre-run check (`agent/preflight.py`) sends one free `GET /models?verbose=true` with no retries. It aborts (exit 6, no completion) unless the model is listed with exactly the configured prices and context length; any transport error, non-200 status, malformed JSON or missing field is also an abort. Only then is the client built and the run started with the decided limits.
+    - **Evidence:** sanitized (no key or header) in the report's `preflight` section and `preflight.json`.
+    - The decided values live in `budget.DECIDED_SLICE4`; only the CLI live path and `scripts/live_preflight.py` read them.
   - Structured JSON output where supported, validated by Pydantic, with a deterministic dispatcher.
   - Invalid output is a recorded schema failure, never an unconstrained fallback. A schema failure terminates the model attempt without an action and without a format-repair retry; completed audit results remain intact (T-06 lead disposition).
   - `ATLAS_MODEL_MODE=fixture` runs are visibly labeled non-live.

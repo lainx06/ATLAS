@@ -34,8 +34,9 @@ propagates with a note that no report was saved. A failing approver is a recorde
   executes under `deny_network()` (an in-process safeguard for fixture tests, not a sandbox);
   logs and reports label it non-live with model ID `fixture:<script>`. A live client
   (`nebius.NebiusClient`) is refused unless the caller passes `live_authorized=True` **and**
-  explicit `budget.SpendLimits`, which nothing in this build does (slice 4 needs explicit
-  authorization). Cost is accounted conservatively (`budget.CostLedger`).
+  explicit `budget.SpendLimits`. Only the CLI live path (`atlas.cli --live`) does that, after
+  its refusal checks and the pre-run model check; running it needs the lead's Gate 3 go-ahead.
+  Cost is accounted conservatively (`budget.CostLedger`).
 - **Spending controls for a live run (slice 4, offline-prepared).** Before anything runs (no
   run directory, no Docker, no request), the provider-enforced worst case must be within the
   authorized expenditure (`SpendLimits.check`). Before each request, the committed amount plus
@@ -276,13 +277,16 @@ def run_agent(
     original=None,
     live_authorized: bool = False,
     spend: SpendLimits | None = None,
+    preflight: dict | None = None,
 ) -> AgentResult:
     """One bounded agent run. Always writes a report (or says that it could not).
 
     `executor` defaults to the slice 1 executor and `original` to running the unmodified
     original in Docker after explicit authorization; both are resolved when called. A live
     client is refused unless `live_authorized` is True and `spend` gives explicit limits that
-    cover the run's provider-enforced worst case; no caller in this build does either.
+    cover the run's provider-enforced worst case. `preflight` is the sanitized evidence of the
+    pre-run model check (`agent.preflight`), recorded in the report as given; the caller runs
+    the check, the controller never does.
     """
     live = getattr(client, "live", None)
     budget = budget or Budget()
@@ -314,6 +318,7 @@ def run_agent(
         original or docker_original,
         spend=spend if live else None,
         spend_figures=spend_figures,
+        preflight=preflight,
     )
     if live:
         return run.run()
@@ -339,6 +344,7 @@ class _Run:
         *,
         spend=None,
         spend_figures=None,
+        preflight=None,
     ):
         self.project = Path(project).resolve()
         self.runs_root = Path(runs_root)
@@ -350,6 +356,7 @@ class _Run:
         self.live = bool(client.live)
         self.ledger = CostLedger(client)
         self.spend, self.spend_figures = spend, spend_figures
+        self.preflight = preflight
         budget_for = getattr(client, "user_message_budget", None)
         if self.live and callable(budget_for):
             self.prompt_budget = budget_for(SYSTEM_PROMPT)
@@ -999,6 +1006,8 @@ class _Run:
             "cost": self.ledger.summary(),
             "spending": self.spend_figures
             or {"applicable": False, "reason": "fixture replies: no provider request"},
+            "preflight": self.preflight
+            or {"applicable": False, "reason": "no pre-run check was supplied"},
             "prompt_budget": {
                 "user_message_bytes": self.prompt_budget,
                 "tool_result_chars": self.tool_result_chars,

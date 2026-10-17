@@ -133,6 +133,33 @@ class NebiusConfig:
         ):
             money.cost(tokens, price)
 
+    # -- cost figures (no client or key needed, so limits can be checked before either) ---------
+    def component_ceilings(self) -> tuple[Decimal, Decimal]:
+        return (
+            money.cost(self.max_input_tokens, self.price_input_per_token),
+            money.cost(self.max_completion_tokens, self.price_output_per_token),
+        )
+
+    def ceiling_cost(self) -> Decimal:
+        return money.total(self.component_ceilings())
+
+    def worst_case_request_cost(self) -> Decimal:
+        """The most one request can cost if only the provider's documented limits hold (the
+        input estimate failing entirely): input plus output within `context_length_tokens`,
+        output within `max_completion_tokens`, at the listed prices. It relies on the provider
+        enforcing both limits as documented, which ATLAS has not verified."""
+        out = self.max_completion_tokens
+        priced_output = money.total(
+            (
+                money.cost(
+                    self.context_length_tokens - out, self.price_input_per_token
+                ),
+                money.cost(out, self.price_output_per_token),
+            )
+        )
+        all_input = money.cost(self.context_length_tokens, self.price_input_per_token)
+        return all_input if money.exceeds(all_input, priced_output) else priced_output
+
 
 class NebiusClient:
     live = True
@@ -183,30 +210,13 @@ class NebiusClient:
             )
 
     def component_ceilings(self) -> tuple[Decimal, Decimal]:
-        c = self.config
-        return (
-            money.cost(c.max_input_tokens, c.price_input_per_token),
-            money.cost(c.max_completion_tokens, c.price_output_per_token),
-        )
+        return self.config.component_ceilings()
 
     def ceiling_cost(self) -> Decimal:
-        return money.total(self.component_ceilings())
+        return self.config.ceiling_cost()
 
     def worst_case_request_cost(self) -> Decimal:
-        """The most one request can cost if only the provider's documented limits hold (the
-        input estimate failing entirely): input plus output within `context_length_tokens`,
-        output within `max_completion_tokens`, at the listed prices. It relies on the provider
-        enforcing both limits as documented, which ATLAS has not verified."""
-        c = self.config
-        out = c.max_completion_tokens
-        priced_output = money.total(
-            (
-                money.cost(c.context_length_tokens - out, c.price_input_per_token),
-                money.cost(out, c.price_output_per_token),
-            )
-        )
-        all_input = money.cost(c.context_length_tokens, c.price_input_per_token)
-        return all_input if money.exceeds(all_input, priced_output) else priced_output
+        return self.config.worst_case_request_cost()
 
     def component_costs(self, usage) -> tuple[Decimal | None, Decimal | None]:
         """(input, output) cost of each validated known count; None for an unknown count."""

@@ -22,8 +22,12 @@ A live run needs an explicit `SpendLimits` from the caller; there is no default:
   plus the next request's ceiling cost must not exceed it, otherwise the run ends
   BUDGET_EXHAUSTED without sending. It caps the *estimate*; it is not a guaranteed charge.
 
-`PROPOSED_SLICE4` records the builder's proposal for the lead (TASKS.md T-06 "SLICE 4
-PROPOSAL"). It is **proposed, not decided or authorized**, and nothing reads it at run time.
+`DECIDED_SLICE4` holds the lead's Gate 2 decisions (DECISIONS.md "T-06 slice 4 live-run
+decisions (lead)", 2026-10-16); its `timeout_s` is still **proposed**. Only the CLI live path
+(`atlas.cli`) and `scripts/live_preflight.py` read it. `run_agent`, the controller,
+`NebiusClient` and the pre-run check take every value as an explicit parameter and have no
+defaults. Deciding values authorizes nothing: the pre-run call and the live run need the Gate 3
+go-ahead.
 """
 
 import time
@@ -41,17 +45,29 @@ MAX_REVISIONS = 2
 MAX_ACTIVE_S = 300.0
 PROPOSED_MAX_COMPLETION_TOKENS = 8000  # proposed; reviewed before any live execution
 
-# PROPOSED ONLY (lead decision pending): never a default and never read at run time.
-PROPOSED_SLICE4 = {
-    "max_input_tokens": 12_000,  # an estimated ceiling (bytes + allowance), not a guarantee
-    "max_completion_tokens": 8_000,  # provider-enforced (documented)
+# DECIDED by the lead at Gate 2 (DECISIONS.md "T-06 slice 4 live-run decisions (lead)",
+# 2026-10-16), except the fields in DECIDED_SLICE4_PROPOSED. Read only by atlas.cli (live path)
+# and scripts/live_preflight.py; never a default anywhere else.
+DECIDED_SLICE4 = {
+    # the documented runtime API base (docs/handoff/ATLAS_Build_Playbook.md, "Runtime API base")
+    "base_url": "https://api.tokenfactory.nebius.com/v1/",
+    "model_id": "nvidia/nemotron-3-super-120b-a12b",
+    "max_input_tokens": 12_000,  # an ATLAS estimate (UTF-8 bytes + allowance), not a guarantee
+    "max_completion_tokens": 8_000,  # provider-enforced as documented; not verified by ATLAS
     "template_overhead_tokens": 16,
-    "context_length_tokens": 262_144,  # model metadata, 2026-10-14; re-check before a run
-    "price_input_per_token": Decimal("0.0000003"),  # listed 2026-10-14
-    "price_output_per_token": Decimal("0.0000009"),
+    "context_length_tokens": 262_144,  # re-checked by the pre-run check
+    "price_input_per_token": Decimal(
+        "0.0000003"
+    ),  # $0.30 / 1M; re-checked by the pre-run check
+    "price_output_per_token": Decimal("0.0000009"),  # $0.90 / 1M; re-checked likewise
+    "timeout_s": 60.0,  # PROPOSED (the T-04 smoke value), to be confirmed at Gate 3
+    "max_attempts": MAX_ATTEMPTS,  # retries count (DECISIONS.md "Hosting probe decisions")
     "estimate_cap_usd": Decimal("0.0648"),  # 6 x the 0.0108 request ceiling
-    "authorized_usd": Decimal("0.51"),  # 6 x 0.0834432 worst case, rounded up
+    "authorized_usd": Decimal(
+        "0.51"
+    ),  # 6 x 0.0834432 worst case, rounded up; ONE live run
 }
+DECIDED_SLICE4_PROPOSED = ("timeout_s",)  # not yet decided
 
 
 class SpendRefused(LiveModeUnavailable):

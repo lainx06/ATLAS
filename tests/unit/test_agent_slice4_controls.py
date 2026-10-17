@@ -2,8 +2,8 @@
 
 No request leaves the process: the production client runs over an `httpx2.MockTransport`
 handler under the fixture network guard, and the original is a test-only host baseline. The
-token ceilings and amounts used here are the builder's **proposal** (`budget.PROPOSED_SLICE4`,
-TASKS.md T-06 "SLICE 4 PROPOSAL"); passing tests neither decide nor authorize them.
+token ceilings and amounts used here are the lead's Gate 2 decisions (`budget.DECIDED_SLICE4`,
+DECISIONS.md "T-06 slice 4 live-run decisions (lead)"); passing tests authorize nothing.
 
 Interfaces that are new in this slice are imported defensively, so the file also runs at the
 parent commit for the red demonstration (new-interface tests then fail by design).
@@ -23,10 +23,10 @@ from atlas.agent.client import LiveModeUnavailable, ModelRequest
 from atlas.agent.nebius import NebiusConfig
 from atlas.agent.network import deny_network
 
-try:  # new in slice 4
-    from atlas.agent.budget import PROPOSED_SLICE4, SpendLimits, SpendRefused
-except ImportError:  # the parent commit (red demonstration)
-    PROPOSED_SLICE4 = {
+try:  # new in slice 4 (the decided values replaced the proposal at Gate 2)
+    from atlas.agent.budget import DECIDED_SLICE4, SpendLimits, SpendRefused
+except ImportError:  # an earlier commit (red demonstration)
+    DECIDED_SLICE4 = {
         "max_input_tokens": 12_000, "max_completion_tokens": 8_000,
         "template_overhead_tokens": 16, "context_length_tokens": 262_144,
         "price_input_per_token": Decimal("0.0000003"),
@@ -55,9 +55,24 @@ READ_TABLE = S.act("read_project_file", path="table.csv")  # 13,371 bytes
 CEILING = Decimal("0.0108")  # 12,000 x 0.0000003 + 8,000 x 0.0000009
 
 
+# Token, price and context values only: the test client keeps its synthetic base URL and model.
+DECIDED_CONFIG_KEYS = (
+    "max_input_tokens",
+    "max_completion_tokens",
+    "template_overhead_tokens",
+    "context_length_tokens",
+    "price_input_per_token",
+    "price_output_per_token",
+)
+
+
 def proposed(**overrides):
-    """The proposed configuration (only the fields this commit's NebiusConfig has)."""
-    values = {k: v for k, v in PROPOSED_SLICE4.items() if k in CONFIG_FIELDS}
+    """The decided token, price and context values (those this commit's NebiusConfig has)."""
+    values = {
+        k: DECIDED_SLICE4[k]
+        for k in DECIDED_CONFIG_KEYS
+        if k in DECIDED_SLICE4 and k in CONFIG_FIELDS
+    }
     values.update(overrides)
     return values
 
@@ -101,19 +116,22 @@ def test_the_proposed_figures_follow_from_the_code():
     c, _ = R.raw_client([], **proposed())
     assert c.ceiling_cost() == CEILING
     assert (
-        6 * c.ceiling_cost() == PROPOSED_SLICE4["estimate_cap_usd"] == Decimal("0.0648")
+        6 * c.ceiling_cost() == DECIDED_SLICE4["estimate_cap_usd"] == Decimal("0.0648")
     )
     assert c.worst_case_request_cost() == Decimal("0.0834432")
     worst_run = 6 * c.worst_case_request_cost()
-    assert worst_run == Decimal("0.5006592") <= PROPOSED_SLICE4["authorized_usd"]
+    assert worst_run == Decimal("0.5006592") <= DECIDED_SLICE4["authorized_usd"]
     assert c.user_message_budget(ctl.SYSTEM_PROMPT) == 12_000 - 489 - 16 - 16 == 11_479
 
 
-def test_the_proposal_is_never_a_default():
+def test_the_decided_values_are_never_a_default():
+    """Only the CLI live path and the pre-run script read the decided constant."""
     assert inspect.signature(ctl.run_agent).parameters["spend"].default is None
-    for module in ("controller.py", "nebius.py", "client.py"):
-        source = (Path(ctl.__file__).parent / module).read_text(encoding="utf-8")
-        assert "PROPOSED_SLICE4" not in source
+    for module in ("controller.py", "nebius.py", "client.py", "preflight.py"):
+        path = Path(ctl.__file__).parent / module
+        if path.exists():
+            source = path.read_text(encoding="utf-8")
+            assert "DECIDED_SLICE4" not in source and "PROPOSED_SLICE4" not in source
 
 
 # =============================================================================================
