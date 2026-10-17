@@ -56,11 +56,29 @@ class InspectEvidence(_Action):
     check: Literal[CHECKS]
 
 
+SOURCES = ("diff", "new_source")
+
+
+def _exactly_one_schema(schema: dict) -> None:
+    """Show the model the rule `_exactly_one_source` enforces: each source is a plain string
+    (no null type, no default), and exactly one of them is required. Runtime validation is
+    unchanged; this only corrects the JSON schema pydantic derives from the optional fields."""
+    properties = schema["properties"]
+    for name in SOURCES:
+        prop = properties[name]
+        (string,) = [b for b in prop.pop("anyOf") if b.get("type") == "string"]
+        prop.pop("default", None)
+        prop.update(string)
+    schema["oneOf"] = [{"required": [name]} for name in SOURCES]
+
+
 class ProposePatch(_Action):
     """A revision of the entry point: exactly one of `diff` (a unified diff) or `new_source`
     (the complete revised file), plus `rationale` (T-06 slice 4c). Supplying both, neither, or
     either as null is a schema failure. ATLAS turns `new_source` into a unified diff itself, and
     every revision passes `candidates.validate_diff` unchanged."""
+
+    model_config = ConfigDict(json_schema_extra=_exactly_one_schema)
 
     tool: Literal["propose_patch"]
     diff: str | None = Field(default=None, min_length=1, max_length=MAX_DIFF_BYTES)

@@ -25,7 +25,7 @@ from atlas.agent.approval import TerminalApprover
 from atlas.agent.client import FixtureClient
 from atlas.agent.network import deny_network
 from atlas.agent.report import NO_MODEL, comparison_report
-from atlas.agent.schemas import ProposePatch, ReplyRejected, parse_reply
+from atlas.agent.schemas import ProposePatch, ReplyRejected, parse_reply, schema_text
 from atlas.candidates import MAX_DIFF_BYTES, MAX_ENTRY_BYTES, CandidateRejected
 from atlas.contracts import Outcome
 from atlas.runner import trusted
@@ -193,6 +193,99 @@ def test_an_oversized_new_source_is_rejected():
         ).new_source
         == ok
     )
+
+
+def shown_schema() -> dict:
+    """The propose_patch object exactly as the model is shown it (schema_text)."""
+    return json.loads(schema_text())["$defs"]["ProposePatch"]
+
+
+# The keywords the structural check below understands; the shown schema must use no others,
+# so the check is complete for it (jsonschema is not a declared dependency).
+CHECKED = {"type", "properties", "required", "additionalProperties", "oneOf", "const",
+           "minLength", "maxLength", "title", "description"}  # fmt: skip
+
+
+def conforms(schema: dict, value) -> bool:
+    """A direct structural check of `value` against the keywords in CHECKED."""
+    assert set(schema) <= CHECKED, set(schema) - CHECKED
+    kind = schema.get("type")
+    if kind == "object" and not isinstance(value, dict):
+        return False
+    if kind == "string" and not isinstance(value, str):
+        return False
+    if "const" in schema and value != schema["const"]:
+        return False
+    low, high = schema.get("minLength", 0), schema.get("maxLength")
+    if isinstance(value, str) and not low <= len(value) <= (high or len(value)):
+        return False
+    if isinstance(value, dict):
+        if not set(schema.get("required", ())) <= set(value):
+            return False
+        properties = schema.get("properties", {})
+        if schema.get("additionalProperties") is False and set(value) - set(properties):
+            return False
+        if not all(
+            conforms(properties[k], v) for k, v in value.items() if k in properties
+        ):
+            return False
+        if "oneOf" in schema and sum(conforms(b, value) for b in schema["oneOf"]) != 1:
+            return False
+    return True
+
+
+def test_the_shown_schema_states_exactly_one_non_null_source():
+    schema = shown_schema()
+    for name, limit in (("diff", MAX_DIFF_BYTES), ("new_source", MAX_ENTRY_BYTES)):
+        prop = schema["properties"][name]
+        assert (
+            prop["type"] == "string" and "anyOf" not in prop and "default" not in prop
+        )
+        assert (prop["minLength"], prop["maxLength"]) == (1, limit)
+    assert "null" not in json.dumps(schema["properties"])  # no null type or default
+    assert schema["oneOf"] == [{"required": ["diff"]}, {"required": ["new_source"]}]
+    assert schema["required"] == ["tool", "rationale"]
+    assert schema["additionalProperties"] is False
+
+
+SHAPES = {
+    "new_source": ({"new_source": "x = 1\n", "rationale": "r"}, True),
+    "diff": ({"diff": DIFF, "rationale": "r"}, True),
+    "both": ({"diff": DIFF, "new_source": "x = 1\n", "rationale": "r"}, False),
+    "neither": ({"rationale": "r"}, False),
+    "null_new_source": ({"new_source": None, "rationale": "r"}, False),
+    "null_diff_beside": (
+        {"diff": None, "new_source": "x = 1\n", "rationale": "r"},
+        False,
+    ),
+    "empty": ({"new_source": "", "rationale": "r"}, False),
+    "extra": ({"new_source": "x = 1\n", "rationale": "r", "approved": True}, False),
+    "no_rationale": ({"new_source": "x = 1\n"}, False),
+}
+
+
+@pytest.mark.parametrize("name", list(SHAPES))
+def test_the_shown_schema_and_the_runtime_agree(name):
+    fields, accepted = SHAPES[name]
+    action = {"tool": "propose_patch", **fields}
+    assert conforms(shown_schema(), action) is accepted
+    if accepted:
+        assert (
+            parse_reply(json.dumps({"action": action})).action.tool == "propose_patch"
+        )
+    else:
+        with pytest.raises(ReplyRejected) as info:
+            parse_reply(json.dumps({"action": action}))
+        assert info.value.code == "schema"
+
+
+def test_the_prompt_figures_are_unchanged_by_the_schema_fix():
+    """The user-message budget derives from the system prompt only; the reply schema is part
+    of the user message and so counts against that budget."""
+    system = len(ctl.SYSTEM_PROMPT.encode("utf-8"))
+    assert system == 635
+    assert 12_000 - system - 16 - 16 == 11_333
+    assert len(schema_text().encode("utf-8")) == 2619  # 2650 before this fix
 
 
 # =============================================================================================
