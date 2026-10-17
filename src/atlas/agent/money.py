@@ -61,8 +61,7 @@ def exact():
         raise MoneyError("amount not exactly representable") from None
 
 
-def price_problem(value) -> str | None:
-    """Why `value` is not a supported price, or None."""
+def _decimal_problem(value, maximum: Decimal, unit: str) -> str | None:
     if not isinstance(value, Decimal):
         return "must be a Decimal"
     if not value.is_finite():
@@ -73,9 +72,34 @@ def price_problem(value) -> str | None:
     if exponent < -PRICE_DECIMALS:
         return f"must have at most {PRICE_DECIMALS} decimal places"
     with exact():
-        if value > MAX_PRICE:
-            return "must be at most 1e100 USD per token"
+        if value > maximum:
+            return f"must be at most 1e100 {unit}"
     return None
+
+
+def price_problem(value) -> str | None:
+    """Why `value` is not a supported price, or None."""
+    return _decimal_problem(value, MAX_PRICE, "USD per token")
+
+
+def amount_problem(value) -> str | None:
+    """Why `value` is not a supported USD amount (a spending limit), or None. Same range as a
+    price: finite, non-negative, at most 1e100 and at most 30 decimal places."""
+    return _decimal_problem(value, MAX_PRICE, "USD")
+
+
+def exceeds(a: Decimal, b: Decimal) -> bool:
+    """a > b, compared exactly."""
+    with exact():
+        return a > b
+
+
+def times(count: int, amount: Decimal) -> Decimal:
+    """`count` x a USD amount (for example attempts x a per-request bound), exactly."""
+    if type(count) is not int or not 0 <= count <= MAX_TOKEN_COUNT:
+        raise MoneyError("count outside the supported range")
+    with exact():
+        return Decimal(count) * amount
 
 
 def cost(tokens: int, price: Decimal) -> Decimal:

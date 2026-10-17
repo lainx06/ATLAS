@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress (slice 1 verified within scope; slice 2 verified within scope; slice 3 verified within its offline scope at `5e63fc4`; slice 4 not authorized) | Bounded live agent loop end to end |
+| T-06 | 11 | In progress (slices 1–3 verified within scope, slice 3 offline at `5e63fc4`; slice 4 controls prepared offline, awaiting Codex review; no live run authorized) | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1371,7 +1371,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Prompt-size alignment (proposed code change for slice 4, to be reviewed):**
     - Replace `MAX_PROMPT_CHARS = 96,000` with a budget derived from the input ceiling: 12,000 − 489 (system prompt bytes) − 2 × 16 = **11,479 bytes** for the user message.
     - The user message is `json.dumps` output with ASCII escaping, so its characters equal its bytes. The existing history truncation then keeps every prompt inside the estimate, and a base context that cannot fit is refused before sending (not counted).
-    - Lower `MAX_TOOL_RESULT_CHARS` from 16,000 to 6,000 so one file read fits (s01's `evaluate.py` is 1,059 bytes).
+    - Lower `MAX_TOOL_RESULT_CHARS` from 16,000 to 6,000 so one file read fits (s01's `evaluate.py` is 1,059 bytes). *[As implemented in the slice 4 controls below: derived, not fixed: half the user-message budget, 5,739 at the proposed ceiling, for live runs only.]*
     - Measured s01 prompt estimates (slice 3): about 4,100 to 6,100 per turn over three turns.
   - **Why the input figure stays an estimate, not a guarantee.**
     - Every prompt byte is ASCII (the system prompt is ASCII; JSON escaping makes the rest ASCII). Byte-level BPE and SentencePiece-with-byte-fallback tokenizers produce at most one token per ASCII byte, plus template and special tokens.
@@ -1412,6 +1412,67 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     3. the $0.51 maximum authorized expenditure for one run;
     4. the pre-run `GET /models` check;
     5. separate explicit go-ahead for the live request itself.
+- **OWNER-OBSERVED NON-LIVE DEMONSTRATION (2026-10-16; owner-reported, builder-checked read-only).**
+  - The owner ran the fixture-mode CLI by hand on the s01 development fixture with the existing three fixture replies (`runs/demo-s01/`, git-ignored), typing both approvals.
+  - Run `runs/demo-s01/runs/agent-s01_faulty-6face8361824`: `REPORT`, labelled NON-LIVE (`fixture:s01-demo`).
+  - The original ran in Docker: `VIOLATION_FOUND`.
+  - Candidate `81f691409a67`: execution completed, `NO_VIOLATION_FOUND`. The executed bytes matched the approved code hash, container removal was confirmed, elapsed 1.891 s.
+  - Four FAILs (`split.no_group_overlap`, `split.sampling_unit_disjoint`, `split.repeated_measures_rule`, `fit.state_dependencies_within_fold_train`) became PASS; the five existing PASSes stayed PASS.
+  - The builder's read-only check of the report and log agrees (two `confirmed` approvals). Not rerun.
+  - This shows the fixture pipeline working end to end, not a real model's behaviour or independent benchmark evidence.
+- **SLICE 4 CONTROLS RESULT (2026-10-16): prompt budget and spending controls prepared offline; implemented and self-tested; awaiting Codex review. No live request, provider metadata request or spending; the token ceilings and amounts remain PROPOSED; no live entry point was added (the CLI still refuses live mode).**
+  - **Proposed values are labelled, never defaults.** `budget.PROPOSED_SLICE4` records the proposal (12,000 / 8,000 / 16 tokens, context length 262,144, listed prices, estimate cap $0.0648, authorized $0.51). Nothing reads it at run time; a test checks that the controller, client and model-client modules do not reference it and that `run_agent`'s `spend` has no default.
+  - **Spending limits are required for a live run** (`budget.SpendLimits(authorized_usd, estimate_cap_usd)`; exact, finite, non-negative amounts in the money range; the cap may not exceed the authorization). `run_agent` refuses a live client without them (`LiveModeUnavailable`), in addition to `live_authorized=True`.
+  - **Checked before anything runs** (`SpendLimits.check`, no run directory, no Docker, no request):
+    - the provider-enforced worst case must not exceed `authorized_usd`. That is `max_attempts` × `NebiusClient.worst_case_request_cost()`, the costlier of all-input or input-plus-maximum-output within `context_length_tokens`, at listed prices;
+    - the estimate cap must cover at least one request's ceiling.
+
+    Otherwise `SpendRefused`. The report's `spending` section labels each figure: the authorization; the cap, "not a guaranteed charge"; and the worst case, which relies on provider enforcement "ATLAS has not verified".
+  - **Per-request stop:** before each attempt is reserved, including a retry, the ledger's committed amount (known plus held) plus the next request's ceiling must not exceed `estimate_cap_usd`. Otherwise the run ends `BUDGET_EXHAUSTED` (`spend_cap`) without sending, and the refusal is not an attempt.
+  - **Prompt budget (live runs):**
+    - `NebiusClient.user_message_budget(SYSTEM_PROMPT)` = input ceiling − (system prompt bytes + allowance) − allowance, which is 11,479 bytes at the proposed values.
+    - History truncation measures the exact UTF-8 bytes of the user message against it, and a single tool result is limited to half of it (5,739).
+    - A base context that cannot fit is still refused before sending.
+    - Fixture runs keep `MAX_PROMPT_CHARS` (96,000) and `MAX_TOOL_RESULT_CHARS` (16,000); the report's `prompt_budget` section shows which applied.
+  - **Configuration:** `NebiusConfig` has a new required `context_length_tokens` field (2 to 10**100). Input plus output ceilings must fit within it.
+  - **Tests (logs in git-ignored `runs/s4/`):**
+    - **New `tests/unit/test_agent_slice4_controls.py`, 24 tests (`slice4-file.log`: 24 passed):**
+      - the proposal's arithmetic: $0.0108 per request, $0.0648 cap, $0.0834432 and $0.5006592 worst case, 11,479 bytes;
+      - proposed values never used as defaults;
+      - live prompts staying within the estimate as history grows (six requests, history truncated, every estimate ≤ 12,000);
+      - fixture limits unchanged;
+      - a base context that cannot fit;
+      - the budget formula;
+      - refusal without limits, and both insufficient-limit refusals with a tripwire original that never runs and no run directory;
+      - the proposed limits accepted and reported;
+      - six invalid `SpendLimits`;
+      - the cap stopping after two unknown-usage requests, and blocking a retry;
+      - small known usage not tripping the cap (control);
+      - the context-length rule;
+      - the worst case choosing the costlier token kind.
+    - **Red at the parent** (fresh `git archive 5932b6a` copy plus this file; `red.log`): **22 failed, 2 passed**. The 2 passes are controls.
+      - **4 behavioural:**
+        - growing history was refused mid-run (`input_over_ceiling`);
+        - a live run without limits was accepted;
+        - with unknown usage the parent sent 6 requests where the cap now stops after 2 (`cap_probe.py`: `cap-parent.log` vs `cap-head.log`);
+        - after a timeout the parent sent the retry (2 requests) where the cap now blocks it (1).
+      - **18 new-interface failures:** missing `worst_case_request_cost`, `user_message_budget`, `SpendLimits`, the `spend` parameter, the `prompt_budget` / `spending` report fields and the `context_length_tokens` field.
+    - **Existing tests adapted** for the new requirements, with behaviour unchanged:
+      - the slice 3 live-run helpers pass a generous `SpendLimits` ($1000 / $1000) so that they never bind;
+      - the test configuration gains `context_length_tokens = 262,144`;
+      - the priced fake gains a worst-case method;
+      - the range-boundary test now uses ceilings of 10**100 / 2 each within a 10**100 context (hold 5e69 instead of 1e70).
+    - **Affected unit suites** (controller, slice 3 and both repair files, the slice 4 file, candidate re-evaluation, schemas, candidates; `tests-final.log`): **394 passed, 1 skipped** (the existing symlink-permission skip). That run collected the slice 4 file before a test-only compatibility edit for the red run; the final file was rerun separately (24 passed).
+    - **Docker:** daemon checked first (linux 29.8.2); the focused integrations `test_agent_fixture_docker.py`, `test_cli.py` and `test_candidate_reevaluation_docker.py` gave **10 passed** (`docker.log`). They were rerun because the controller's prompt path changed.
+    - Ruff check and format clean. Not rerun: the full suite, the Docker contract suite and the mutation check. No evaluator, runner, check, schema, diff-parser or report-builder code changed.
+    - **Preservation:** all 98,632 paths in Codex's `runs/s3y/before.json` inventory are unchanged, with none missing (`runs/s4/preservation.json`, read-only check). The owner's demo run was only read. The root guide hash is `b08d74c4…`. New output is confined to `runs/s4/`, `runs/s4-new`, `runs/s4-new2`, `runs/s4-pre`, `runs/demo-rehearsal-20261016/` and `runs/demo-s01/` (script and viewer).
+  - **Still not decided or authorized:**
+    - the ceiling values, the estimate cap and the $0.51 authorization (all proposed);
+    - the pre-run `GET /models` check;
+    - a live entry point;
+    - the live request itself.
+
+    The input figure remains an estimate; the worst case relies on provider enforcement that has not been verified.
 ### T-07 UI path and browser tests (Start Here Step 12; playbook §25)
 - **OWNER:** Claude Code (writer); Codex reviews the UI.
 - **MODEL DECISION:** SWITCH to Opus High for `docs/UI_SPEC.md`, then Sonnet Medium for the build. Back to Opus if failures reach core logic.

@@ -115,6 +115,7 @@ def live(tmp_path, client, executor=None):
             executor=executor,
             original=host_baseline,
             live_authorized=True,
+            spend=S.GENEROUS,
             env={},
         )
     log = (result.run_dir / "agent_log.jsonl").read_text(encoding="utf-8")

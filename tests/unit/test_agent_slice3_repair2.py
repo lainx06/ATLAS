@@ -61,6 +61,7 @@ class Scripted:
             self.ceiling_cost = lambda: priced["ceiling"]
             self.component_ceilings = lambda: priced["ceilings"]
             self.component_costs = priced["costs"]
+            self.worst_case_request_cost = lambda: Decimal("0.1")
 
     def complete(self, request):
         self.calls += 1
@@ -87,6 +88,7 @@ def run(tmp_path, client, *, live=False):
             executor=executor,
             original=R.host_baseline,
             live_authorized=live,
+            spend=S.GENEROUS if live else None,
             env={},
         )
     log = (result.run_dir / "agent_log.jsonl").read_text(encoding="utf-8")
@@ -365,8 +367,10 @@ def test_the_supported_range_boundaries_are_accepted():
         [],
         price_input_per_token=Decimal("1e100"),
         price_output_per_token=Decimal("1e-30"),
-        max_input_tokens=10**100,
-        max_completion_tokens=10**100,
+        # Slice 4: input plus output ceilings must fit the context length (at most 10**100).
+        max_input_tokens=10**100 // 2,
+        max_completion_tokens=10**100 // 2,
+        context_length_tokens=10**100,
         timeout_s=86_400,
     )
     ledger = CostLedger(c)
@@ -374,7 +378,10 @@ def test_the_supported_range_boundaries_are_accepted():
     ledger.settle(1, {"prompt_tokens": 10**100, "completion_tokens": None}, True)
     (entry,) = ledger.summary()["entries"]
     assert Decimal(entry["known_usd"]) == Decimal("1e200")
-    assert Decimal(entry["unresolved_usd"]) == Decimal("1e70")  # 10**100 x 1e-30, kept
+    assert Decimal(entry["unresolved_usd"]) == Decimal(
+        "5e69"
+    )  # (10**100 / 2) x 1e-30, kept
+    assert Decimal(c.worst_case_request_cost()).is_finite()
     S.config(price_input_per_token=Decimal(0), price_output_per_token=Decimal(0))
 
 
@@ -424,7 +431,7 @@ def test_an_unrepresentable_ceiling_is_rejected_before_any_request(tmp_path):
         ctl.run_agent(
             S01, tmp_path / "runs", client, S.ApproveExactly(),
             executor=S.RecordingExecutor(), original=R.host_baseline,
-            live_authorized=True, env={},
+            live_authorized=True, spend=S.GENEROUS, env={},
         )  # fmt: skip
     assert client.calls == 0 and not (tmp_path / "runs").exists()
 

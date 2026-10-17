@@ -10,6 +10,20 @@
 
 Per-stage token ceilings (`docs/HOSTING_PROBE.md`) remain proposed; the request parameter below
 is recorded with every attempt and is not a reviewed or enforced spending ceiling.
+
+**Spending controls for a live run (T-06 slice 4, prepared offline; nothing authorizes a run).**
+A live run needs an explicit `SpendLimits` from the caller; there is no default:
+
+- `authorized_usd`: the lead's maximum authorized expenditure. Before anything runs, the
+  provider-enforced worst case (attempts x the client's `worst_case_request_cost()`) must not
+  exceed it, otherwise the run is refused (`SpendRefused`). That worst case still relies on the
+  provider enforcing its documented limits.
+- `estimate_cap_usd`: before each request, the ledger's committed amount (known plus held)
+  plus the next request's ceiling cost must not exceed it, otherwise the run ends
+  BUDGET_EXHAUSTED without sending. It caps the *estimate*; it is not a guaranteed charge.
+
+`PROPOSED_SLICE4` records the builder's proposal for the lead (TASKS.md T-06 "SLICE 4
+PROPOSAL"). It is **proposed, not decided or authorized**, and nothing reads it at run time.
 """
 
 import time
@@ -18,6 +32,7 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal
 
 from atlas.agent import money
+from atlas.agent.client import LiveModeUnavailable
 
 MAX_ATTEMPTS = 6
 MAX_RETRIES_PER_CALL = 1
@@ -25,6 +40,71 @@ MAX_TOOL_OPERATIONS = 12
 MAX_REVISIONS = 2
 MAX_ACTIVE_S = 300.0
 PROPOSED_MAX_COMPLETION_TOKENS = 8000  # proposed; reviewed before any live execution
+
+# PROPOSED ONLY (lead decision pending): never a default and never read at run time.
+PROPOSED_SLICE4 = {
+    "max_input_tokens": 12_000,  # an estimated ceiling (bytes + allowance), not a guarantee
+    "max_completion_tokens": 8_000,  # provider-enforced (documented)
+    "template_overhead_tokens": 16,
+    "context_length_tokens": 262_144,  # model metadata, 2026-10-14; re-check before a run
+    "price_input_per_token": Decimal("0.0000003"),  # listed 2026-10-14
+    "price_output_per_token": Decimal("0.0000009"),
+    "estimate_cap_usd": Decimal("0.0648"),  # 6 x the 0.0108 request ceiling
+    "authorized_usd": Decimal("0.51"),  # 6 x 0.0834432 worst case, rounded up
+}
+
+
+class SpendRefused(LiveModeUnavailable):
+    """A live run whose spending limits do not cover its worst case (nothing runs)."""
+
+
+@dataclass(frozen=True)
+class SpendLimits:
+    """Run-level spending limits for a live run; the values are the lead's decision."""
+
+    authorized_usd: Decimal
+    estimate_cap_usd: Decimal
+
+    def __post_init__(self):
+        for name in ("authorized_usd", "estimate_cap_usd"):
+            problem = money.amount_problem(getattr(self, name))
+            if problem is not None:
+                raise ValueError(f"{name} {problem}")
+        if money.exceeds(self.estimate_cap_usd, self.authorized_usd):
+            raise ValueError("estimate_cap_usd must not exceed authorized_usd")
+
+    def check(self, client, max_attempts: int) -> dict:
+        """Refuse (SpendRefused) unless these limits cover the run; return the figures."""
+        ceiling = money.total([client.ceiling_cost()])
+        worst = money.times(
+            max_attempts, money.total([client.worst_case_request_cost()])
+        )
+        if money.exceeds(worst, self.authorized_usd):
+            raise SpendRefused(
+                "the provider-enforced worst case for this run exceeds the authorized "
+                "expenditure; nothing was run"
+            )
+        if money.exceeds(ceiling, self.estimate_cap_usd):
+            raise SpendRefused(
+                "the estimate cap is below one request's ceiling cost; nothing was run"
+            )
+        return {
+            "authorized_usd": money.text(self.authorized_usd),
+            "estimate_cap_usd": money.text(self.estimate_cap_usd),
+            "provider_worst_case_run_usd": money.text(worst),
+            "ceiling_per_request_usd": money.text(ceiling),
+            "max_attempts": max_attempts,
+            "labels": {
+                "authorized_usd": "the lead's authorization for this run",
+                "estimate_cap_usd": (
+                    "a cap on the estimate (known plus held); not a guaranteed charge"
+                ),
+                "provider_worst_case_run_usd": (
+                    "attempts x the most one request can cost if only the provider's "
+                    "documented limits hold; ATLAS has not verified that enforcement"
+                ),
+            },
+        }
 
 
 class BudgetExhausted(Exception):
@@ -232,6 +312,14 @@ class CostLedger:
     @property
     def unrepresentable(self) -> bool:
         return any(e["status"] == UNREPRESENTABLE for e in self.entries)
+
+    def committed(self) -> Decimal:
+        """Known plus held across all attempts (MoneyError if any entry is unrepresentable)."""
+        if self.unrepresentable:
+            raise money.MoneyError("an entry is unrepresentable")
+        return money.total(
+            money.total((e["known_usd"], e["unresolved_usd"])) for e in self.entries
+        )
 
     def summary(self) -> dict:
         if not self.applicable:

@@ -33,9 +33,20 @@ propagates with a note that no report was saved. A failing approver is a recorde
 - **Modes:** a non-live (fixture) client needs `ATLAS_MODEL_MODE=fixture` and the whole run
   executes under `deny_network()` (an in-process safeguard for fixture tests, not a sandbox);
   logs and reports label it non-live with model ID `fixture:<script>`. A live client
-  (`nebius.NebiusClient`) is refused unless the caller passes `live_authorized=True`, which
-  nothing in this build does (slice 4 needs explicit authorization). Cost is accounted
-  conservatively (`budget.CostLedger`).
+  (`nebius.NebiusClient`) is refused unless the caller passes `live_authorized=True` **and**
+  explicit `budget.SpendLimits`, which nothing in this build does (slice 4 needs explicit
+  authorization). Cost is accounted conservatively (`budget.CostLedger`).
+- **Spending controls for a live run (slice 4, offline-prepared).** Before anything runs (no
+  run directory, no Docker, no request), the provider-enforced worst case must be within the
+  authorized expenditure (`SpendLimits.check`). Before each request, the committed amount plus
+  the next request's ceiling must be within the estimate cap, otherwise the run ends
+  BUDGET_EXHAUSTED without sending.
+- **Prompt budget for a live run.** The user message is kept within the client's
+  `user_message_budget` (the input ceiling minus the system prompt and per-message
+  allowances), so a normal prompt fits the pre-send estimate; older history is dropped first,
+  and a single tool result is limited to half that budget. A base context that still does not
+  fit is refused before sending. Fixture runs keep `MAX_PROMPT_CHARS` and
+  `MAX_TOOL_RESULT_CHARS`.
 """
 
 import hashlib
@@ -47,6 +58,7 @@ from pathlib import Path
 from typing import Protocol
 
 from atlas.agent import execute as _execute
+from atlas.agent import money
 from atlas.agent.approval import ApprovalUnavailable
 from atlas.agent.budget import (
     PROPOSED_MAX_COMPLETION_TOKENS,
@@ -54,6 +66,7 @@ from atlas.agent.budget import (
     Budget,
     BudgetExhausted,
     CostLedger,
+    SpendLimits,
 )
 from atlas.agent.client import (
     LiveModeUnavailable,
@@ -175,6 +188,10 @@ class _Terminal(Exception):
         self.state, self.reason = state, reason
 
 
+def _utf8_len(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -190,19 +207,31 @@ def run_agent(
     env=None,
     original=None,
     live_authorized: bool = False,
+    spend: SpendLimits | None = None,
 ) -> AgentResult:
     """One bounded agent run. Always writes a report (or says that it could not).
 
     `executor` defaults to the slice 1 executor and `original` to running the unmodified
     original in Docker after explicit authorization; both are resolved when called. A live
-    client is refused unless `live_authorized` is True; no caller in this build sets it.
+    client is refused unless `live_authorized` is True and `spend` gives explicit limits that
+    cover the run's provider-enforced worst case; no caller in this build does either.
     """
     live = getattr(client, "live", None)
+    budget = budget or Budget()
+    spend_figures = None
     if live is True:
         if not live_authorized:
             raise LiveModeUnavailable(
                 "a live model client needs explicit authorization (T-06 slice 4)"
             )
+        if not isinstance(spend, SpendLimits):
+            raise LiveModeUnavailable(
+                "a live run needs explicit spending limits (budget.SpendLimits); "
+                "nothing was run"
+            )
+        spend_figures = spend.check(
+            client, budget.max_attempts
+        )  # may raise SpendRefused
     elif live is False:
         require_fixture_mode(env)
     else:
@@ -215,6 +244,8 @@ def run_agent(
         executor or _execute.execute_and_reevaluate,
         budget,
         original or docker_original,
+        spend=spend if live else None,
+        spend_figures=spend_figures,
     )
     if live:
         return run.run()
@@ -229,7 +260,17 @@ def docker_original(run: "_Run") -> OriginalRun:
 
 class _Run:
     def __init__(
-        self, project, runs_root, client, approver, executor, budget, original
+        self,
+        project,
+        runs_root,
+        client,
+        approver,
+        executor,
+        budget,
+        original,
+        *,
+        spend=None,
+        spend_figures=None,
     ):
         self.project = Path(project).resolve()
         self.runs_root = Path(runs_root)
@@ -240,6 +281,14 @@ class _Run:
         self.original_runner = original
         self.live = bool(client.live)
         self.ledger = CostLedger(client)
+        self.spend, self.spend_figures = spend, spend_figures
+        budget_for = getattr(client, "user_message_budget", None)
+        if self.live and callable(budget_for):
+            self.prompt_budget = budget_for(SYSTEM_PROMPT)
+            self.tool_result_chars = min(MAX_TOOL_RESULT_CHARS, self.prompt_budget // 2)
+        else:
+            self.prompt_budget = MAX_PROMPT_CHARS
+            self.tool_result_chars = MAX_TOOL_RESULT_CHARS
         stamp = hashlib.sha256(f"{self.project}{time.time_ns()}".encode()).hexdigest()
         self.run_dir = (
             self.runs_root.resolve() / f"agent-{self.project.name}-{stamp[:12]}"
@@ -512,10 +561,11 @@ class _Run:
             },
             "history": [],
         }
-        # Most recent results first, within the prompt bound; older ones are summarized away.
+        # Most recent results first, within the prompt budget (UTF-8 bytes of the exact
+        # message text); older ones are dropped.
         for item in reversed(self.transcript):
             context["history"].insert(0, item)
-            if len(json.dumps(context)) > MAX_PROMPT_CHARS:
+            if _utf8_len(json.dumps(context, sort_keys=True)) > self.prompt_budget:
                 context["history"].pop(0)
                 context["history_truncated"] = True
                 break
@@ -545,6 +595,7 @@ class _Run:
                 raise _Terminal(ERROR, exc.code) from None
         retry = False
         while True:
+            self._check_spend()  # before the attempt is reserved: a refusal sends nothing
             try:
                 attempt = self.budget.reserve_attempt(retry)
             except BudgetExhausted as exc:
@@ -677,6 +728,22 @@ class _Run:
             self.log({**entry, "result": "ok", "tool": action.tool})
             return action
 
+    def _check_spend(self) -> None:
+        """End the run before sending if the next request could take the estimate past the
+        cap (committed known plus held, plus the next request's ceiling)."""
+        if self.spend is None:
+            return
+        projected = money.total((self.ledger.committed(), self.ledger.ceiling))
+        if money.exceeds(projected, self.spend.estimate_cap_usd):
+            self.log({"event": "model_request_refused", "result": "spend_cap",
+                      "projected_usd": money.text(projected),
+                      "estimate_cap_usd": money.text(self.spend.estimate_cap_usd)})  # fmt: skip
+            raise _Terminal(
+                BUDGET_EXHAUSTED,
+                "spend_cap: the next request could take the estimated total above the "
+                "estimate cap; not sent",
+            )
+
     # -- tools ------------------------------------------------------------------------------
     def _dispatch(self, action) -> None:
         if isinstance(action, ProposePatch):
@@ -696,8 +763,8 @@ class _Run:
 
     def _record_tool(self, op, tool, args, result) -> None:
         text = json.dumps(result, sort_keys=True, default=str)
-        if len(text) > MAX_TOOL_RESULT_CHARS:
-            result = {"truncated": True, "text": text[:MAX_TOOL_RESULT_CHARS]}
+        if len(text) > self.tool_result_chars:
+            result = {"truncated": True, "text": text[: self.tool_result_chars]}
         self.transcript.append({"tool": tool, "args": args, "result": result})
         self.log(
             {"event": "tool", "operation": op, "tool": tool, "args": args,
@@ -719,11 +786,11 @@ class _Run:
             data = _permitted_file(self.snapshot.root, rel, caps[rel])
         except SnapshotError as exc:
             return {"error": f"refused: {exc}"}
-        text = data[:MAX_TOOL_RESULT_CHARS].decode("utf-8", "replace")
+        text = data[: self.tool_result_chars].decode("utf-8", "replace")
         return {
             "untrusted_project_content": text,
             "bytes": len(data),
-            "truncated": len(data) > MAX_TOOL_RESULT_CHARS,
+            "truncated": len(data) > self.tool_result_chars,
         }
 
     def _inspect(self, check: str) -> dict:
@@ -835,6 +902,12 @@ class _Run:
                 for t in self.model_text
             ],
             "cost": self.ledger.summary(),
+            "spending": self.spend_figures
+            or {"applicable": False, "reason": "fixture replies: no provider request"},
+            "prompt_budget": {
+                "user_message_bytes": self.prompt_budget,
+                "tool_result_chars": self.tool_result_chars,
+            },
             "limitations": self._limitations(),
         }
         if self.original is not None:

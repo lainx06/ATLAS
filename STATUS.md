@@ -261,19 +261,16 @@ LAST UPDATED: 2026-10-16
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **T-06 slice 4 (one live run): not authorized.** Slice 3 is verified within its offline scope at `5e63fc4`. Before any live request the lead must decide:
-   - the per-call token ceilings and the maximum authorized expenditure (proposal in TASKS.md T-06 "SLICE 4 PROPOSAL");
-   - prompt-cost enforcement aligned with `MAX_PROMPT_CHARS`;
-   - explicit live authorization.
-
-   A NON-LIVE fixture-mode CLI demonstration on s01 is available for the lead to run by hand.
+1. **T-06 slice 4 controls: stopped, awaiting Codex review** of the controls commit (parent `5932b6a`; TASKS.md T-06 "SLICE 4 CONTROLS RESULT"). The prompt budget and spending controls are prepared offline; the ceilings and amounts are **proposed**.
+   - **No live run is authorized.** Before any live request the lead must decide the ceilings, the estimate cap and the maximum authorized expenditure (proposal: $0.0648 / $0.51), the pre-run `GET /models` check, a live entry point, and give explicit live authorization.
+   - **Owner-observed NON-LIVE demonstration (2026-10-16):** the owner ran the fixture CLI on s01 with both approvals (`runs/demo-s01/runs/agent-s01_faulty-6face8361824`). It ended REPORT: original VIOLATION_FOUND; candidate `81f691409a67` completed with NO_VIOLATION_FOUND; the hash matched; four FAILs became PASS.
    - **T-03 (accepted at `51d3dd8`):**
      - Limited hosted mode for V1; Neon is the selected budget store.
      - The worker sizing and costs (`docs/HOSTING_PROBE.md` §3a) stay provisional, including the unconfirmed 672-hour cap.
      - Carried to T-12: stage B (Nebius from the host), stage C (full locked build on the host) and the production budget controls, all before the hosted app is called ready.
      - No spending, account creation or deployment is authorized.
      - The probe app, its Secrets, the Neon project and its scratch tables are kept; deletion and credential rotation are later explicit actions.
-2. T-06 (bounded live agent loop): inputs accepted; T-03 is not one of its gates. **Slice 1 verified within scope at `1d58b20`.** Slice 2 (offline fixture/stub model controller): **verified within scope at `69042a1`**; slice 3 **verified within its offline scope at `5e63fc4`** (after two repair passes); slice 4 (one live run) needs separate explicit authorization and the lead's ceiling decisions; it has no Nebius transport, interactive CLI approval or live inference. Later slices: the original in Docker, the CLI approval, `--mode agent`, the Nebius transport, and (only with explicit authorization) one live call. No inference is authorized; per-stage token ceilings stay proposed.
+2. T-06 (bounded live agent loop): inputs accepted; T-03 is not one of its gates. **Slice 1 verified within scope at `1d58b20`.** Slice 2 (offline fixture/stub model controller): **verified within scope at `69042a1`**; slice 3 **verified within its offline scope at `5e63fc4`** (after two repair passes); slice 4 prompt budget and spending controls prepared offline, awaiting Codex review (values proposed, no live run); slice 4 (one live run) needs separate explicit authorization and the lead's ceiling decisions; it has no Nebius transport, interactive CLI approval or live inference. Later slices: the original in Docker, the CLI approval, `--mode agent`, the Nebius transport, and (only with explicit authorization) one live call. No inference is authorized; per-stage token ceilings stay proposed.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. T-02's assertions are closed (accepted at `75a98f4`). The remaining items are synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).

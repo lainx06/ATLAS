@@ -23,7 +23,7 @@ import pytest
 from atlas import cli
 from atlas.agent import controller as ctl
 from atlas.agent.approval import ApprovalUnavailable, TerminalApprover, inert
-from atlas.agent.budget import Budget
+from atlas.agent.budget import Budget, SpendLimits
 from atlas.agent.client import (
     FixtureClient,
     LiveModeUnavailable,
@@ -242,6 +242,7 @@ def config(**overrides) -> NebiusConfig:
         "timeout_s": 5.0,
         "price_input_per_token": Decimal("0.0000003"),
         "price_output_per_token": Decimal("0.0000009"),
+        "context_length_tokens": 262_144,
     }
     values.update(overrides)
     return NebiusConfig(**values)
@@ -432,6 +433,11 @@ def test_the_key_comes_from_the_env_file_without_echo(tmp_path):
 # =============================================================================================
 
 
+# Spending limits wide enough never to bind: these tests are about other behavior (the
+# spending controls have their own tests in test_agent_slice4_controls.py).
+GENEROUS = SpendLimits(authorized_usd=Decimal(1000), estimate_cap_usd=Decimal(1000))
+
+
 def live_run(tmp_path, script, approver=None, executor=None, **overrides):
     c, t = client(script, **overrides)
     with deny_network():  # any real connection attempt would fail
@@ -443,6 +449,7 @@ def live_run(tmp_path, script, approver=None, executor=None, **overrides):
             executor=executor or RecordingExecutor(),
             original=host_fixture_original,
             live_authorized=True,
+            spend=GENEROUS,
             env={},
         )
     return result, t

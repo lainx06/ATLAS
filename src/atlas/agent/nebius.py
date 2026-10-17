@@ -77,6 +77,9 @@ class NebiusConfig:
     timeout_s: float
     price_input_per_token: Decimal
     price_output_per_token: Decimal
+    # The provider's documented per-request limit on input plus output tokens (model metadata
+    # from the authenticated `GET /models`); the basis of the provider-enforced worst case.
+    context_length_tokens: int
 
     def __post_init__(self):
         self.validate()
@@ -93,12 +96,20 @@ class NebiusConfig:
             ("max_input_tokens", 1),
             ("max_completion_tokens", 1),
             ("template_overhead_tokens", 0),
+            ("context_length_tokens", 2),
         ):
             value = getattr(self, name)
             if type(value) is not int:  # excludes bool and fractions
                 raise TypeError(f"{name} must be an integer")
             if not minimum <= value <= MAX_TOKEN_COUNT:
                 raise ValueError(f"{name} must be from {minimum} to 10**100")
+        if (
+            self.max_input_tokens + self.max_completion_tokens
+            > self.context_length_tokens
+        ):
+            raise ValueError(
+                "max_input_tokens plus max_completion_tokens must fit context_length_tokens"
+            )
         timeout = self.timeout_s
         if type(timeout) not in (int, float):  # excludes bool
             raise TypeError("timeout_s must be a number of seconds")
@@ -155,6 +166,14 @@ class NebiusClient:
             total += len(text.encode("utf-8")) + self.config.template_overhead_tokens
         return total
 
+    def user_message_budget(self, system_prompt: str) -> int:
+        """The UTF-8 bytes left for the user message when the system prompt is the only other
+        message: the input ceiling minus the system prompt's estimate and the user message's
+        template allowance. A prompt within it passes `check_request` (same estimate)."""
+        overhead = self.config.template_overhead_tokens
+        fixed = len(system_prompt.encode("utf-8")) + overhead
+        return max(0, self.config.max_input_tokens - fixed - overhead)
+
     def check_request(self, request: ModelRequest) -> None:
         if self.input_bound(request) > self.config.max_input_tokens:
             raise ModelError(
@@ -172,6 +191,22 @@ class NebiusClient:
 
     def ceiling_cost(self) -> Decimal:
         return money.total(self.component_ceilings())
+
+    def worst_case_request_cost(self) -> Decimal:
+        """The most one request can cost if only the provider's documented limits hold (the
+        input estimate failing entirely): input plus output within `context_length_tokens`,
+        output within `max_completion_tokens`, at the listed prices. It relies on the provider
+        enforcing both limits as documented, which ATLAS has not verified."""
+        c = self.config
+        out = c.max_completion_tokens
+        priced_output = money.total(
+            (
+                money.cost(c.context_length_tokens - out, c.price_input_per_token),
+                money.cost(out, c.price_output_per_token),
+            )
+        )
+        all_input = money.cost(c.context_length_tokens, c.price_input_per_token)
+        return all_input if money.exceeds(all_input, priced_output) else priced_output
 
     def component_costs(self, usage) -> tuple[Decimal | None, Decimal | None]:
         """(input, output) cost of each validated known count; None for an unknown count."""
