@@ -2,7 +2,7 @@
 
 WRITER: Claude Code
 MODEL: Opus 5.5 (`claude-opus-5-5`), effort high
-CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4. **Gate 1 (Codex review of the controls at `96f6fc6`, `runs/g1-1016/review.md`) FAILED with two P2 prompt-truncation defects. Gate 1 repair pass 1 is self-tested and awaiting independent Codex verification** (TASKS.md T-06 "GATE 1 REPAIR PASS 1 RESULT"). Gate 1 is not passed. All token ceilings and amounts remain **proposed** (no DECISIONS.md record); no live request, provider metadata request or spending is authorized, and no live entry point exists. **T-06 is not accepted.**
+CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4. **Gate 1 PASSED at `8c79e5a`** (`runs/g1v3/review.md`: Codex verified the repair of the two P2 prompt-truncation defects from `runs/g1-1016/review.md`; TASKS.md T-06 "CODEX VERIFICATION OF GATE 1 REPAIR PASS 1"). **Next is Gate 2: the lead's recorded decisions.** All token ceilings, caps and amounts remain **PROPOSED** (no DECISIONS.md record). No live request, provider metadata request or spending is authorized, and no live entry point exists. **T-06 is not accepted.**
 - **Accepted:** T-01 (`f5aa4dc`), T-02 (`75a98f4`), T-03 (`51d3dd8`, research and feasibility), T-04 (smoke-test scope), T-05 (`eed73ee`), each within its documented scope.
 - **T-06, independently verified by Codex within documented scope:**
   - slice 1 at `1d58b20` (`runs/r6w/review.md`);
@@ -58,8 +58,8 @@ CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4. **Gat
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: the **Gate 1 repair commit** ("T-06 slice 4 Gate 1 repair: prompt marker and embedded tool-result budget"; parent `d929863`, the docs reconciliation of code checkpoint `96f6fc6`). Its hash is the HEAD recorded in TASKS.md T-06 "GATE 1 REPAIR PASS 1 RESULT" and in the handoff.
-- `git status` before the repair: clean except the user's untracked root `ATLAS_Learning_Guide.md` (left alone by rule). Branch `main`.
+CHECKPOINT: the **Gate 1 repair commit `8c79e5a`** (`8c79e5afffbc4bd9db7969a955a21f26d96c2988`, "T-06 slice 4 Gate 1 repair: prompt marker and embedded tool-result budget"; parent `d929863`, the docs reconciliation of code checkpoint `96f6fc6`), verified by Codex (Gate 1 PASS). The records commit noting that PASS sits on top of it.
+- `git status`: clean except two untracked items left alone by rule: the user's root `ATLAS_Learning_Guide.md` and the user's editor settings in `.vscode/`. Branch `main`.
 - The local `main` is ahead of `origin/main` (`35dbb63`, as of the last fetch) by 44 commits including this one; nothing fetched or pushed. `origin` = `https://github.com/lainx06/atlas.git` (private).
 - The full-suite run below (965 passed, 1 skipped) was at `96f6fc6`. The repair's verification is the focused runs in TASKS.md (474 unit passed, 1 skipped; Docker 10 passed).
 LAST UPDATED: 2026-10-16
@@ -217,11 +217,11 @@ LAST UPDATED: 2026-10-16
 
 ## Blockers
 - **T-06 slice 4 (gates, not defects):**
-  1. Codex review of the controls at `96f6fc6`: **failed** (two P2); repair pass 1 awaits Codex verification;
+  1. Codex review of the controls: **resolved (Gate 1 PASS at `8c79e5a`, `runs/g1v3/review.md`)** after review 1 failed with two P2 (`runs/g1-1016/review.md`);
   2. the lead's decisions on the proposed ceilings (12,000 / 8,000), the estimate cap ($0.0648) and the maximum authorized expenditure ($0.51), the pre-run `GET /models` check and a live entry point;
   3. explicit live authorization.
 
-  **Open review defects:** Gate 1's two P2s are repaired but not yet independently verified.
+  **Open review defects:** none for slice 4a.
 - **Nebius:** none. $50 in Token Factory credits awarded in total (user-reported; balance and expiry not verified), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** none. Accepted at `eed73ee`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
@@ -287,7 +287,7 @@ LAST UPDATED: 2026-10-16
 
 ## Next task
 1. **Next task card: T-06 SLICE 4 (one authorized live run)**, TASKS.md T-06 "NEXT CARD: SLICE 4". It has acceptance criteria, owned paths, verification commands and four review gates.
-   - **Gate 1:** Codex review of the controls at `96f6fc6`. It FAILED (two P2: the truncation marker escaped the size check; tool-result escaping evicted the newest result). Repair pass 1 is self-tested (474 unit tests passed, 1 skipped; Docker 10 passed) and awaits Codex verification.
+   - **Gate 1:** **passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired). **Gate 2 is next.**
    - **Gate 2:** the lead's decisions (ceilings, estimate cap, $0.51 authorization, pre-run `GET /models`, live entry point).
    - **Gate 3:** Codex review of the entry point and pre-run check, then the lead's explicit go-ahead for the one live run.
    - **Gate 4:** Codex review of the live evidence before T-06 acceptance is considered.

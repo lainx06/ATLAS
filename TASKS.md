@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress. Slices 1–3 verified by Codex within scope (`1d58b20`, `69042a1`, `5e63fc4` offline). Slice 4 controls at `96f6fc6`: self-tested, full suite 965 passed / 1 skipped, awaiting Codex review. Next: NEXT CARD: SLICE 4 (one authorized live run); no live run authorized | Bounded live agent loop end to end |
+| T-06 | 11 | In progress. Slices 1–3 verified by Codex within scope (`1d58b20`, `69042a1`, `5e63fc4` offline). Slice 4a controls verified at `8c79e5a` (Gate 1 PASS). Next: Gate 2, the lead's decisions. No live run authorized | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1480,7 +1480,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   | 1. Approved candidate → Docker → trusted re-evaluation | `1d58b20` | **Verified** by Codex within scope | `runs/r6w/review.md` |
   | 2. Offline fixture controller | `69042a1` | **Verified** by Codex within scope | `runs/r6x/review.md` |
   | 3. Docker baseline, CLI approval, offline Nebius client | `5e63fc4` | **Verified** by Codex within its offline scope | `runs/s3y/review.md`: 370 passed, 1 skipped; Docker 10 passed |
-  | 4a. Prompt budget and spending controls (offline) | `96f6fc6`, repaired in the Gate 1 repair commit | **Gate 1 review FAILED (two P2); repair self-tested, awaiting Codex verification** | `runs/g1-1016/review.md`; "GATE 1 REPAIR PASS 1 RESULT" below |
+  | 4a. Prompt budget and spending controls (offline) | `96f6fc6`, repaired at `8c79e5a` | **Verified by Codex within its offline scope (Gate 1 PASS)** | `runs/g1-1016/review.md` (FAIL); `runs/g1v3/review.md` (PASS) |
   | 4b. One authorized live run | none | **Not started; not authorized** | "NEXT CARD: SLICE 4" below |
 
 - **FULL-SUITE VERIFICATION AT `96f6fc6` (2026-10-16, builder):** after `docker info` → `linux 29.8.2`, PowerShell `$env:ATLAS_REQUIRE_DOCKER = '1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/status-20261016/t -rs` gave **965 passed, 1 skipped** (the existing symlink-permission skip) in 743.88 s, exit 0. `ruff check` and `ruff format --check` are clean. Logs: `runs/status-20261016/`. This includes the Docker runner contract suite and all T-06 integration tests. It is the builder's run, not an independent verification.
@@ -1493,7 +1493,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - Docker integrations 10 passed;
     - independent probes confirmed the spending and worst-case arithmetic (including a 495-case Fraction oracle) and found only the two defects.
   - **Codex's environment note:** NumPy 2.4.6 installed "versus lockfile 2.5.4". *[Builder, 2026-10-16: `uv.lock` has two NumPy entries, 2.4.6 for Python < 3.12 and 2.5.4 for Python ≥ 3.12. The environment (Python 3.11.17) is lock-matched: `uv sync --locked --dry-run` → "Would make no changes".]*
-- **GATE 1 REPAIR PASS 1 RESULT (2026-10-16): self-tested; awaiting independent Codex verification. Gate 1 is not passed; T-06 not accepted.** Only `src/atlas/agent/controller.py` changed in production code; spending, approval, retry, fixture-mode and fail-closed behaviour are unchanged. No provider request, credential, spending or live execution.
+- **GATE 1 REPAIR PASS 1 RESULT (2026-10-16): self-tested; awaiting independent Codex verification. Gate 1 is not passed; T-06 not accepted.** Repair commit **`8c79e5a`** (`8c79e5afffbc4bd9db7969a955a21f26d96c2988`), parent `d929863`. *[Verified by Codex in re-verification attempt 3, below.]* Only `src/atlas/agent/controller.py` changed in production code; spending, approval, retry, fixture-mode and fail-closed behaviour are unchanged. No provider request, credential, spending or live execution.
   - **P2-1:** `_fitting_history` builds every candidate as the exact user message that would be sent (`_user_message`), including the marker whenever older results are left out. A prompt that is accepted is therefore never enlarged afterwards, and eviction continues until it fits. If even the base context plus the marker does not fit, the prompt is refused before sending (fail closed, unchanged).
   - **P2-2:**
     - `_record_tool` bounds a too-large result as it is embedded: `_bounded_envelope` gives the longest prefix whose envelope `{"text", "truncated": true}` serializes, escaping included, to at most `tool_result_chars` UTF-8 bytes. Small results are stored unchanged.
@@ -1527,13 +1527,45 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - the 200-character minimum prefix is a builder choice;
     - the full suite and mutation check were not rerun.
   - **Values:** Codex's review refers to "the user's decided values". DECISIONS.md has no slice 4 decision record yet, so these records keep them labelled proposed until the lead records them.
+- **CODEX RE-VERIFICATION ATTEMPT 1 (`runs/g1v/review.md`): halted at Step 0; not a review result.** The preservation inventory instruction conflicted with the `.env` constraint: the inventory reached a test-fixture `.env` at `runs/g1-1016/unit-temp/test_snapshot_ignores_extra_pr0/project/.env`, and Codex stopped without reading or hashing it. No checks were run.
+- **CODEX RE-VERIFICATION ATTEMPT 2 (`runs/g1v2/review.md`): halted at Step 0; not a review result.** Recursive `os.scandir` enumeration failed with `WinError 5` on `runs/g1-1016/docker-temp`, and on `runs/g1-1016/boundary-temp` in an escalated read-only retry. No checks were run.
+  - **Builder read-only listing (2026-10-16):** `Get-ChildItem runs -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue` showed 17 junctions. All were `test_input_behind_a_directory_0/project/data`, left by the junction test in `tests/unit/test_candidates.py`, and none were under `runs/g1-1016/`.
+  - *[Corrected from attempt 3:]* Codex's inventory found one junction under `runs/g1-1016/` (`runs/g1-1016/unit-temp/test_input_behind_a_directory_0/project/data`), which the builder's listing did not show; that listing suppressed errors, so it was not complete.
+  - Neither listing shows a junction at the failing paths (`docker-temp`, `boundary-temp`). **The cause of the `WinError 5` is not established.**
+- **CODEX VERIFICATION OF GATE 1 REPAIR PASS 1 (attempt 3, `runs/g1v3/review.md`, at `8c79e5a`): GATE 1 PASS.**
+  - **Identity:** HEAD `8c79e5a`, parent `d929863`; the repair's code scope is exactly `controller.py` and `test_agent_slice4_prompt.py`.
+  - **P2-1** (marker escape) and **P2-2** (tool-result escaping) are independently verified closed. No new P1 or P2 was demonstrated, and Codex reported no P3.
+  - **Below 200 useful prefix characters**, the result is evicted with `history_truncated: true` (or refused before dispatch when even the marked base context cannot fit); no silent drop was observed.
+  - **Older results** are evicted whole, with the omission marked.
+  - **Fixture mode:** limits unchanged (96,000 / 16,000) and small results unchanged. Large-result truncation now uses the repaired algorithm in both modes, so legacy truncated payloads are not claimed byte-for-byte unchanged.
+  - **Spending, retry and approval paths:** an AST comparison found only `_Run._messages` and `_Run._record_tool` changed.
+  - **Results:**
+    - `tests/unit/test_agent_slice4_prompt.py` **80 passed**;
+    - `tests/unit/test_agent_slice4_controls.py` **24 passed**;
+    - independent probes **51 passed** (`runs/g1v3/probes/results.json`);
+    - all three scratch mutations detected (marker left out of the measurement: 4 failures; envelope measured before final escaping: 24; newest result evicted instead of shortened: 10);
+    - ruff passed.
+
+    Codex's first prompt-suite invocation hit a missing temporary directory (`WinError 3`, 56 passed with 24 setup errors), and its first probe harness had three incorrect assumptions. Both were corrected and are retained; neither is a product defect.
+  - **Not run** (outside this gate's scope): Docker integrations, the full suite and the mutation check. The builder figures (474, 39, 73/7) were inspected as claims, not rerun.
+  - **Preservation (partial evidence, NOT "all evidence preserved"):**
+    - 18,008 files are unchanged before and after;
+    - 3 `.env*` paths were excluded by name;
+    - 1 reparse point was skipped without traversal;
+    - **117 inaccessible paths are documented and not inventoried.**
+
+    The builder's listing found 17 junctions where Codex recorded 1, most likely because the others lie inside the inaccessible subtrees (not confirmed).
+  - **Safety:** no network call, `.env*` read or hash, spend, permission change, elevated retry, reparse-point traversal or tracked-file change.
+  - Codex also corrected its earlier NumPy note: 2.4.6 is the correct lock variant for Python 3.11.
+  - **Scope:** this verifies only the slice 4a controls repair. It is not T-06 acceptance and authorizes nothing live. All ceilings and amounts remain **PROPOSED** (no DECISIONS.md record).
+- **FOLLOW-UP (low priority, not scheduled):** the junction test in `tests/unit/test_candidates.py` leaves junctions in pytest base-temp directories under `runs/`, and 117 `runs/` paths are unreadable from Codex's sandbox. Both reduce future preservation coverage. No action in this task.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
   - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex High review.
   - **READ FIRST:** this entry's "SLICE 4 PROPOSAL" and "SLICE 4 CONTROLS RESULT"; SPEC §11; DECISIONS.md 2026-10-15 "Hosting probe decisions" (retries count, dispatched reservations kept) and 2026-10-16 "T-03 hosting decisions" (no additional spending authorized).
   - **REVIEW GATES (in order; each is a stop):**
-    1. Codex review of the controls at `96f6fc6`, with every finding dispositioned. *(Review 1 FAILED with two P2; repair pass 1 awaits Codex verification.)*
+    1. Codex review of the controls at `96f6fc6`, with every finding dispositioned. **Passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired). Gate 2 is next.
     2. The lead's recorded decisions (DECISIONS.md):
        - the ceilings (proposed 12,000 input estimate / 8,000 output);
        - the estimate cap (proposed $0.0648);
