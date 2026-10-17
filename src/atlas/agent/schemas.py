@@ -16,9 +16,16 @@ reports label as such.
 import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
-from atlas.candidates import MAX_DIFF_BYTES
+from atlas.candidates import MAX_DIFF_BYTES, MAX_ENTRY_BYTES
 
 MAX_REPLY_BYTES = 128 * 1024  # a 64 KiB diff plus JSON escaping
 MAX_PATH_CHARS = 200
@@ -50,24 +57,56 @@ class InspectEvidence(_Action):
 
 
 class ProposePatch(_Action):
+    """A revision of the entry point: exactly one of `diff` (a unified diff) or `new_source`
+    (the complete revised file), plus `rationale` (T-06 slice 4c). Supplying both, neither, or
+    either as null is a schema failure. ATLAS turns `new_source` into a unified diff itself, and
+    every revision passes `candidates.validate_diff` unchanged."""
+
     tool: Literal["propose_patch"]
-    diff: str = Field(min_length=1, max_length=MAX_DIFF_BYTES)
+    diff: str | None = Field(default=None, min_length=1, max_length=MAX_DIFF_BYTES)
+    new_source: str | None = Field(
+        default=None, min_length=1, max_length=MAX_ENTRY_BYTES
+    )
     rationale: str = Field(max_length=MAX_TEXT_CHARS)
 
     @field_validator("diff")
     @classmethod
-    def _diff_bytes(cls, value: str) -> str:
+    def _diff_bytes(cls, value: str | None) -> str | None:
         """The diff limit is in UTF-8 bytes, as `validate_diff` measures it (max_length above
         counts characters, which multibyte text could exceed in bytes)."""
-        try:
-            size = len(value.encode("utf-8"))
-        except UnicodeEncodeError:
-            raise ValueError("diff is not encodable as UTF-8") from None
-        if size > MAX_DIFF_BYTES:
-            raise ValueError(
-                f"diff is {size} UTF-8 bytes; the limit is {MAX_DIFF_BYTES}"
-            )
-        return value
+        return _utf8_within(value, MAX_DIFF_BYTES, "diff")
+
+    @field_validator("new_source")
+    @classmethod
+    def _source_bytes(cls, value: str | None) -> str | None:
+        """The complete file is bounded by the entry-point size limit, in UTF-8 bytes. (A reply
+        is also capped at MAX_REPLY_BYTES, which is the tighter bound in practice.)"""
+        return _utf8_within(value, MAX_ENTRY_BYTES, "new_source")
+
+    @model_validator(mode="after")
+    def _exactly_one_source(self):
+        supplied = {"diff", "new_source"} & self.model_fields_set
+        if len(supplied) != 1:
+            raise ValueError("propose_patch needs exactly one of diff or new_source")
+        if getattr(self, supplied.pop()) is None:
+            raise ValueError("the supplied diff or new_source must be a string")
+        return self
+
+    @property
+    def source_kind(self) -> str:
+        return "new_source" if self.new_source is not None else "diff"
+
+
+def _utf8_within(value: str | None, limit: int, name: str) -> str | None:
+    if value is None:
+        return None
+    try:
+        size = len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise ValueError(f"{name} is not encodable as UTF-8") from None
+    if size > limit:
+        raise ValueError(f"{name} is {size} UTF-8 bytes; the limit is {limit}")
+    return value
 
 
 class Finish(_Action):

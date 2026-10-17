@@ -327,6 +327,12 @@ class CostLedger:
         )
         return status, known, unresolved
 
+    def entry_view(self, attempt: int) -> dict | None:
+        """One attempt's entry as `summary()["entries"]` shows it; None for a fixture client."""
+        if not self.applicable:
+            return None
+        return _entry_text(next(e for e in self.entries if e["attempt"] == attempt))
+
     @property
     def unrepresentable(self) -> bool:
         return any(e["status"] == UNREPRESENTABLE for e in self.entries)
@@ -379,18 +385,18 @@ class CostLedger:
             "unrepresentable_attempts": sum(
                 e["status"] == UNREPRESENTABLE for e in self.entries
             ),
-            "entries": [
-                {
-                    **e,
-                    "known_usd": None
-                    if e["known_usd"] is None
-                    else money.text(e["known_usd"]),
-                    "unresolved_usd": None
-                    if e["unresolved_usd"] is None
-                    else money.text(e["unresolved_usd"]),
-                }
-                for e in self.entries
-            ],
+            "entries": [_entry_text(e) for e in self.entries],
             "unresolved_note": UNRESOLVED_NOTE,
             "note": "accounting only; not a spending authorization",
         }
+
+
+def _entry_text(e: dict) -> dict:
+    """A ledger entry with its amounts as exact decimal text (None if unrepresentable)."""
+    return {
+        **e,
+        "known_usd": None if e["known_usd"] is None else money.text(e["known_usd"]),
+        "unresolved_usd": None
+        if e["unresolved_usd"] is None
+        else money.text(e["unresolved_usd"]),
+    }

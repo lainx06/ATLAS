@@ -52,6 +52,8 @@ CONFIG_FIELDS = {f.name for f in dataclasses.fields(NebiusConfig)}
 TOKENS = ("max_input_tokens", "max_completion_tokens", "template_overhead_tokens")
 USAGE = '{"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200}'
 READ_TABLE = S.act("read_project_file", path="table.csv")  # 13,371 bytes
+PROMPT_BYTES = len(ctl.SYSTEM_PROMPT.encode("utf-8"))  # 635 since slice 4c (was 489)
+BUDGET = 12_000 - PROMPT_BYTES - 16 - 16  # 11,333 since slice 4c (was 11,479)
 CEILING = Decimal("0.0108")  # 12,000 x 0.0000003 + 8,000 x 0.0000009
 
 
@@ -121,7 +123,7 @@ def test_the_proposed_figures_follow_from_the_code():
     assert c.worst_case_request_cost() == Decimal("0.0834432")
     worst_run = 6 * c.worst_case_request_cost()
     assert worst_run == Decimal("0.5006592") <= DECIDED_SLICE4["authorized_usd"]
-    assert c.user_message_budget(ctl.SYSTEM_PROMPT) == 12_000 - 489 - 16 - 16 == 11_479
+    assert c.user_message_budget(ctl.SYSTEM_PROMPT) == BUDGET
 
 
 def test_the_decided_values_are_never_a_default():
@@ -149,10 +151,10 @@ def test_live_prompts_stay_within_the_estimate_as_history_grows(tmp_path):
     assert len(bodies) == 6
     assert all(estimate(b) <= 12_000 for b in bodies)  # never refused before sending
     users = [b["messages"][1]["content"] for b in bodies]
-    assert all(len(u.encode("utf-8")) <= 11_479 for u in users)
+    assert all(len(u.encode("utf-8")) <= BUDGET for u in users)
     assert any(json.loads(u).get("history_truncated") for u in users)  # older dropped
     budget = result.report["prompt_budget"]
-    assert budget == {"user_message_bytes": 11_479, "tool_result_chars": 5_739}
+    assert budget == {"user_message_bytes": BUDGET, "tool_result_chars": BUDGET // 2}
 
 
 def test_fixture_runs_keep_the_existing_limits(tmp_path):

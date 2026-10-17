@@ -112,9 +112,20 @@ def _limitations(run_dir: Path) -> list:
     return report.get("limitations", []) if isinstance(report, dict) else []
 
 
+NO_MODEL = (
+    "none (T-06 slice 1 has no model client; candidate diffs are supplied inputs)"
+)
+
+
 def comparison_report(
-    original_run_dir: Path, original: RunOutcome, candidates: list[CandidateResult]
+    original_run_dir: Path,
+    original: RunOutcome,
+    candidates: list[CandidateResult],
+    *,
+    model: str | None = None,
 ) -> dict:
+    """`model` names the client that produced the replies (the agent loop passes it); None
+    means there was no model client at all."""
     original_run_dir = Path(original_run_dir)
     original_execution = _execution(original_run_dir)
     original_runner = original_execution.get("runner")
@@ -154,7 +165,7 @@ def comparison_report(
     return {
         "report": "t06-slice1-candidate-reevaluation",
         "policy_version": POLICY_VERSION,
-        "model": "none (T-06 slice 1 has no model client; candidate diffs are supplied inputs)",
+        "model": NO_MODEL if model is None else model,
         "comparison_basis": basis,
         "reading_guide": READING_GUIDE,
         "original": {

@@ -24,7 +24,9 @@ VALID = {
 @pytest.mark.parametrize("name", list(VALID))
 def test_each_action_is_accepted_exactly(name):
     action = parse_reply(reply(VALID[name])).action
-    assert action.model_dump() == VALID[name]
+    assert (
+        action.model_dump(exclude_unset=True) == VALID[name]
+    )  # slice 4c: no unset source
 
 
 def test_only_surrounding_whitespace_is_removed():

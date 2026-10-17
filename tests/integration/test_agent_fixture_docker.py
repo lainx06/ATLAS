@@ -149,3 +149,30 @@ def test_cli_complete_local_path(isolation, tmp_path, monkeypatch):
         len(a["approval"]["candidate_hash"]) == 64 for a in approvals
     )  # full hash
     assert report["terminal_state"] == "REPORT"
+
+
+def test_a_full_source_revision_runs_in_docker(isolation, tmp_path):
+    """T-06 slice 4c: `new_source` (the complete s02 file) instead of a diff. ATLAS generates
+    the diff, validate_diff passes it unchanged, and the candidate runs in the real runner."""
+    fix = (S02 / "evaluate.py").read_text(encoding="utf-8")
+    script = [
+        {"content": json.dumps({"action": {"tool": "propose_patch", "new_source": fix, "rationale": "fold-local selection, grouped folds"}})},
+        {"content": json.dumps({"action": {"tool": "finish", "summary": "done"}})},
+    ]  # fmt: skip
+    approver = ApproveExactly()
+    result = ctl.run_agent(
+        S01, tmp_path / "runs", FixtureClient("s4c-docker", script), approver, env={}
+    )
+
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert approver.requests[1].diff == DIFF  # the generated diff is what is approved
+    (candidate,) = result.candidates
+    assert candidate.execution["status"] == "completed"
+    assert candidate.execution["container_removed"] is True
+    assert candidate.outcome.outcome is Outcome.NO_VIOLATION_FOUND
+    (record,) = result.report["proposals"]
+    assert (record["source_kind"], record["outcome"]) == ("new_source", "executed")
+    run = result.run_dir
+    assert (run / record["new_source_path"]).read_bytes() == fix.encode("utf-8")
+    assert (run / record["diff_path"]).read_bytes() == DIFF.encode("utf-8")
+    assert record["diff_sha256"] == candidate.diff_sha256

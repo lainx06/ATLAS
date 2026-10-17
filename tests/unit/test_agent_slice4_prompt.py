@@ -95,7 +95,7 @@ def test_the_marker_is_budgeted_at_the_decided_ceiling(tmp_path, spare):
     """At the decided 12,000 estimate: two recent results fill the budget up to `spare`
     bytes; an older one must then be dropped, and the marker must still fit."""
     run = captured_run(tmp_path)
-    assert run.prompt_budget == 11_479
+    assert run.prompt_budget == T.BUDGET  # derived from the system prompt (slice 4c)
     run.transcript = [item("x" * 3000), item("")]
     pad = run.prompt_budget - utf8(user_message(run)) - spare
     assert 0 < pad < run.tool_result_chars - 40
