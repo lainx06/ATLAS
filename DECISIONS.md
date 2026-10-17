@@ -271,3 +271,11 @@ Lead decisions at Gate 2, based on TASKS.md T-06 "SLICE 4 PROPOSAL" and the Gate
 - Request timeout 60 s is **PROPOSED** (the T-04 smoke value), to be confirmed by the lead at Gate 3.
 
 **Explicitly not authorized by this record:** the pre-run call, the live run, any spending.
+
+### Gate 3 dispositions (lead, 2026-10-17)
+After Codex's Gate 3 review (`runs/g3v/review.md`, at `54feca6`: FAIL, three P2 and one P3):
+1. **Request timeout 60 s: DECIDED** (previously proposed; the T-04 smoke value).
+2. **Base URL `https://api.tokenfactory.nebius.com/v1/`: DECIDED** (STATUS.md "Nebius configuration"; the official docs used in T-04). For the live entry point, the base URL and model ID come **only** from `DECIDED_SLICE4`, never from `NEBIUS_BASE_URL` or `ATLAS_MODEL_PRIMARY`; the key is the only value read from `.env`.
+3. **Fixture reports carrying `"preflight": {"applicable": false, ...}`: ACCEPTED** as an additive, honest report field (Codex P3). Fixture execution and evaluation are unchanged.
+
+**Still not authorized:** the pre-run call, the live run, any spending.
