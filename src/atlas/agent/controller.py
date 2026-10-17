@@ -50,17 +50,19 @@ from atlas.agent import execute as _execute
 from atlas.agent.approval import ApprovalUnavailable
 from atlas.agent.budget import (
     PROPOSED_MAX_COMPLETION_TOKENS,
+    UNREPRESENTABLE,
     Budget,
     BudgetExhausted,
     CostLedger,
 )
 from atlas.agent.client import (
-    USAGE_FIELDS,
     LiveModeUnavailable,
     ModelError,
     ModelRequest,
     TransientModelError,
+    error_usage_fields,
     require_fixture_mode,
+    safe_error_code,
     safe_finish_reason,
     safe_identifier,
     sanitize_usage,
@@ -565,38 +567,42 @@ class _Run:
             try:
                 reply = self.client.complete(request)
             except ModelError as exc:
-                # Only validated counts reach the ledger and the log (any client's error).
-                usage, invalid = sanitize_usage(exc.usage)
-                invalid = sorted(
-                    set(invalid) | {f for f in exc.invalid_fields if f in USAGE_FIELDS}
-                )
-                self.ledger.settle(attempt, usage, dispatched=exc.dispatched)
+                # Any client's error is untrusted too. In this order: validate its usage,
+                # account for it, then end the run if the usage was invalid or its cost cannot
+                # be represented, before any retry decision. Only fixed codes and validated
+                # counts are recorded.
+                usage, invalid = sanitize_usage(getattr(exc, "usage", None))
+                invalid = sorted(set(invalid) | set(error_usage_fields(exc)))
+                dispatched = getattr(exc, "dispatched", True) is not False
+                status = self.ledger.settle(attempt, usage, dispatched=dispatched)
+                code = safe_error_code(getattr(exc, "code", None))
+                record = {**entry, "elapsed_s": _since(t0), "result": code,
+                          "usage": usage}  # fmt: skip
+                if isinstance(exc, TransientModelError):
+                    record["transient"] = True
+                if invalid:
+                    self.log({**record, "result": "invalid_usage", "error": code,
+                              "invalid_usage_fields": invalid})  # fmt: skip
+                    raise _Terminal(ERROR, "invalid_usage") from None
+                if status == UNREPRESENTABLE:
+                    self.log(
+                        {**record, "result": "cost_unrepresentable", "error": code}
+                    )
+                    raise _Terminal(ERROR, "cost_unrepresentable") from None
+                self.log(record)
                 if not isinstance(exc, TransientModelError):
-                    record = {**entry, "elapsed_s": _since(t0), "result": exc.code,
-                              "usage": usage}  # fmt: skip
-                    if invalid:
-                        record["invalid_usage_fields"] = invalid
-                    self.log(record)
-                    raise _Terminal(ERROR, exc.code) from None
-                self.log(
-                    {
-                        **entry,
-                        "elapsed_s": _since(t0),
-                        "result": exc.code,
-                        "transient": True,
-                    }
-                )
+                    raise _Terminal(ERROR, code) from None
                 if not retry and self.budget.can_attempt():
                     retry = True
                     continue
                 if not retry:
                     raise _Terminal(
                         BUDGET_EXHAUSTED,
-                        f"{exc.code}, and no model attempt remains for its retry",
+                        f"{code}, and no model attempt remains for its retry",
                     ) from None
-                raise _Terminal(ERROR, f"{exc.code} (after one retry)") from None
+                raise _Terminal(ERROR, f"{code} (after one retry)") from None
             except Exception as exc:  # noqa: BLE001 - any client failure ends the run, recorded
-                self.ledger.settle(
+                status = self.ledger.settle(
                     attempt, None, dispatched=True
                 )  # unknown: stays reserved
                 self.log(
@@ -604,26 +610,37 @@ class _Run:
                      "detail": type(exc).__name__}
                 )  # fmt: skip
                 raise _Terminal(ERROR, f"client_error: {type(exc).__name__}") from None
-            # Reply metadata is checked before accounting, logging or any action: invalid
-            # usage counts as unknown (conservative) and ends the run; provider identifiers
-            # that are not short plain identifiers are withheld, never logged.
-            usage, invalid = sanitize_usage(reply.usage)
-            self.ledger.settle(attempt, usage, dispatched=True)
-            served_model = safe_identifier(reply.served_model)
-            request_id = safe_identifier(reply.request_id)
-            withheld = set(reply.withheld) & {"request_id", "served_model"}
-            if reply.served_model is not None and served_model is None:
-                withheld.add("served_model")
-            if reply.request_id is not None and request_id is None:
-                withheld.add("request_id")
+            # Reply metadata is checked before accounting, logging or any action. Invalid
+            # usage counts as unknown (conservative) and ends the run. The reply's model ID is
+            # never logged: only the trusted configured ID and whether it matched. Request ID
+            # and served model are logged only if the client checked them against its
+            # credential (`identifiers_checked`) and they are short plain identifiers.
+            usage, invalid = sanitize_usage(getattr(reply, "usage", None))
+            status = self.ledger.settle(attempt, usage, dispatched=True)
+            checked = getattr(reply, "identifiers_checked", False) is True
+            withheld = set()
+            for name in ("served_model", "request_id"):
+                raw = getattr(reply, name, None)
+                value = safe_identifier(raw) if checked else None
+                entry[name] = value
+                if raw is not None and value is None:
+                    withheld.add(name)
+            try:
+                withheld |= set(getattr(reply, "withheld", ())) & {
+                    "request_id",
+                    "served_model",
+                }
+            except TypeError:
+                withheld |= {"request_id", "served_model"}
+            identity_ok = getattr(reply, "model_id", None) == self.client.model_id
+            live_ok = getattr(reply, "live", None) is self.live
             entry.update(
                 elapsed_s=_since(t0),
-                served_model=served_model,
-                request_id=request_id,
                 usage=usage,
-                finish_reason=safe_finish_reason(reply.finish_reason),
-                reply_model_id=reply.model_id,
-                reply_live=reply.live,
+                finish_reason=safe_finish_reason(getattr(reply, "finish_reason", None)),
+                reply_model_id=self.client.model_id if identity_ok else None,
+                reply_identity="match" if identity_ok else "mismatch",
+                reply_live=self.live if live_ok else None,
             )
             if withheld:
                 entry["withheld_fields"] = sorted(withheld)
@@ -631,6 +648,9 @@ class _Run:
                 self.log({**entry, "result": "invalid_usage",
                           "invalid_usage_fields": list(invalid)})  # fmt: skip
                 raise _Terminal(ERROR, "invalid_usage")
+            if status == UNREPRESENTABLE:
+                self.log({**entry, "result": "cost_unrepresentable"})
+                raise _Terminal(ERROR, "cost_unrepresentable")
             # A reply that returns after the active-time ceiling is not consumed: no action,
             # not even finish. (A request already in progress is not interrupted here; the
             # transport's own timeout bounds it.)
@@ -640,16 +660,13 @@ class _Run:
                 self.log({**entry, "result": "late", "detail": str(exc)})
                 raise
             try:
-                if (
-                    reply.live is not self.live
-                    or reply.model_id != self.client.model_id
-                ):
+                if not (live_ok and identity_ok):
                     raise ReplyRejected(
                         "mislabelled", "reply is not this client's reply"
                     )
-                if reply.finish_reason != "stop":
+                if entry["finish_reason"] != "stop":
                     raise ReplyRejected(
-                        "incomplete", f"finish_reason {reply.finish_reason!r}"
+                        "incomplete", f"finish_reason {entry['finish_reason']!r}"
                     )
                 action = parse_reply(reply.content).action
             except ReplyRejected as exc:

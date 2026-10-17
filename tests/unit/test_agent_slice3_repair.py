@@ -246,7 +246,11 @@ def test_any_clients_usage_is_validated_by_the_controller(tmp_path):
     )  # fmt: skip
     log = (result.run_dir / "agent_log.jsonl").read_text(encoding="utf-8")
     assert (result.terminal_state, result.reason) == (ctl.ERROR, "invalid_usage")
-    assert executor.calls == [] and KEY not in log and "-5" not in log
+    assert executor.calls == [] and KEY not in log
+    (attempt,) = attempts(log)  # the raw -5 is not recorded; the count is unknown
+    assert (
+        attempt["usage"]["prompt_tokens"] is None and '"prompt_tokens": -5' not in log
+    )
     good = FixtureClient(
         "good-usage",
         [

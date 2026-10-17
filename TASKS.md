@@ -15,7 +15,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress (slice 1 verified within scope; slice 2 verified within scope; slice 3: Codex found three P2 and two P3, repair pass 1 awaiting Codex verification) | Bounded live agent loop end to end |
+| T-06 | 11 | In progress (slice 1 verified within scope; slice 2 verified within scope; slice 3: repair pass 1 verified in part by Codex, three P2 remained; repair pass 2 awaiting Codex verification) | Bounded live agent loop end to end |
 | T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
@@ -1228,7 +1228,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **P2-1, usage validated first.**
     - `client.sanitize_usage` admits a count only as a genuine non-negative `int` (`type(value) is int`, so `bool`, floats including `1000.0`, strings, NaN, infinities, negatives and objects are invalid). A missing or null count is explicitly unknown.
     - `NebiusClient._reply` validates usage before the ceiling check, the choice check or anything else. Invalid usage raises `invalid_usage` with only the validated counts and the invalid fields' names.
-    - The controller sanitizes again for **any** client (fixture replies included), and for errors as well as replies. This happens before the ledger, the log, the time check or any action. Invalid usage ends the run `ERROR invalid_usage`; the reply's action is not consumed; the log records `invalid_usage_fields`, never a rejected value.
+    - The controller sanitizes again for **any** client (fixture replies included), and for errors as well as replies. This happens before the ledger, the log, the time check or any action. Invalid usage ends the run `ERROR invalid_usage` *[corrected by repair pass 2: in pass 1 this held for replies and permanent errors only; a transient error carrying invalid usage was still retried]*; the reply's action is not consumed; the log records `invalid_usage_fields`, never a rejected value.
     - **Same path, adjacent values:** the request ID and served model are kept only as short plain identifiers that do not contain the key (otherwise withheld, with `withheld_fields` logged), and the finish reason only from a known set (otherwise `unrecognized`).
     - The ledger validates counts itself too (`component_costs`), so no caller can settle a negative or fractional amount.
   - **P2-2, partial usage.** `CostLedger` charges each validated known count at its listed price, even above its ceiling, and holds each unknown count at its component ceiling. An entry with any unknown count never drops below the original reservation (`partial_usage` / `unknown_usage`). The summary reports `known_usd`, `unresolved_usd` and `estimated_total_usd` (replacing `conservative_total_usd`), with `unresolved_note`: held amounts are estimates from configured ceilings, not a guaranteed maximum charge, because the input ceiling rests on an unverified estimate. Known usage over a ceiling still ends the run `usage_over_ceiling`, so no further work happens. Codex's case now gives known $0.30 plus $0.0072 held for the missing output count.
@@ -1269,6 +1269,85 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - Ruff check and format clean. Not rerun: the full suite, the Docker contract suite and the mutation check. No evaluator, runner, check, schema or diff-parser code changed; `report.py` changed only its prose and basis selection, and its slice 1 tests are in the run above.
     - **Preservation:** all 70,230 paths in Codex's `runs/s3v/before.json` inventory (`runs/`, excluding `runs/s3v/` and `.env` files, plus the root guide) are unchanged, with none missing (`runs/s3r/preservation.json`, checked read-only). The newest file under `runs/s3v/` predates this repair's first write. The root guide hash is `b08d74c4…`.
   - **Still open before slice 4 (unchanged):** the per-call ceilings (per-stage $0.0510 vs. uniform $0.0648), a justified prompt-token bound and its alignment with `MAX_PROMPT_CHARS` (96,000), Docker availability, and separate explicit live authorization.
+- **CODEX VERIFICATION OF REPAIR PASS 1 (`runs/s3w/review.md`, target `756bb57`, parent `5aad204`): three P2 findings remain; slice 3 not yet fully verified offline.**
+  - **Codex's results:**
+    - focused units 333 passed, 1 skipped;
+    - Docker engine ready (linux 29.8.2) and the focused Docker integrations 10 passed, which closes the builder's daemon gap;
+    - the copied original probe and a new edge probe were run;
+    - preservation: 83,523 entries, no changes.
+  - **Dispositions:** P2-1 partly fixed; P2-2 fixed at ordinary magnitudes but not at all admitted values; P2-3 field validation fixed, with computed-arithmetic defects remaining; P3-1 and P3-2 verified fixed. Codex also separated the three shape-only red failures from the behavioural evidence, and noted that the records' blanket claims overstated pass 1 (corrected inline above).
+  - **P2, transient invalid usage** (`controller.py:574`): a `TransientModelError` carrying invalid usage was retried, and the next reply's action ran (REPORT after two requests).
+  - **P2, echoed model ID** (`controller.py:625`): `reply.model_id` was copied raw into the attempt record and logged on the mislabelled rejection (the synthetic marker reached the log).
+  - **P2, money arithmetic** (`budget.py:207`):
+    - with 10**40 known input tokens, `(known + held) - known` rounded the $0.0072 hold to 0;
+    - a finite price `1e999999` was accepted, its reservation overflowed (or became `Infinity` with traps off);
+    - a settlement under a reduced ambient Emax became `Infinity` and was marked `settled`.
+- **SLICE 3 REPAIR PASS 2 RESULT (2026-10-16): implemented and self-tested; awaiting Codex verification; T-06 not accepted.** No provider request, no real `.env` read, no hosting change; slice 4 not started; token ceilings and prompt-bound enforcement remain separate open decisions.
+  - **1. Invalid usage ends the run before any retry decision** (`controller._model_turn`). For any client's error, the order is:
+    1. validate its usage (`sanitize_usage`, plus the error's own `invalid_fields` through `error_usage_fields`);
+    2. settle the ledger, which keeps the valid known component and holds the rest;
+    3. if anything was invalid, log only fixed codes and field names and end `ERROR invalid_usage`, before the transient/retry branch.
+
+    A permanent error with invalid usage is now reported as `invalid_usage` (it was `model_error`). Only an explicit `dispatched is False` releases a reservation (`None`, `0` or text no longer do).
+  - **2. Identifiers checked on every logging path.**
+    - The reply's model ID is never logged: the attempt records the configured ID only on a match, plus `reply_identity` `match`/`mismatch`. `reply_live` is recorded only if it is the expected boolean.
+    - The request ID and served model are logged only when the client set `identifiers_checked` (the production client, after comparing them with its key, which the controller never sees) and they are plain identifiers; otherwise they are withheld and named in `withheld_fields`.
+    - Error codes are recorded and reported only in fixed shapes (`safe_error_code`), otherwise `unrecognized_error`. The production client's SDK-error code is now the fixed `client_error`.
+    - The finish reason comes only from the known set, and the incomplete-reply message uses the checked value.
+  - **3. Exact money, independent of the ambient `decimal` context** (new `agent/money.py`).
+    - Every multiplication, sum, comparison and text conversion runs in a private context: 400 digits, `ROUND_HALF_EVEN`, with `Inexact`, `Rounded`, `Overflow`, `Underflow`, `InvalidOperation`, `DivisionByZero` and `Clamped` all trapped. Any signal becomes `MoneyError`; nothing is ever rounded or infinite.
+    - **Supported range (documented choice, checked before any client exists):**
+      - token counts, configured or reported: integers from 0 to 10**100 (ceilings from 1);
+      - prices: finite, non-negative `Decimal` (negative zero rejected), at most 10**100 USD per token and at most 30 decimal places;
+      - timeout: positive and at most 86,400 s, compared before any float conversion.
+
+      In this range every amount has at most 231 significant digits, so results are exact. A reported count above 10**100 is invalid usage: the run ends, and the count is not silently clamped. Known incurred costs are never capped.
+    - The unknown components' hold is computed directly. The reservation floor adds only the shortfall while usage is unresolved, so a small hold survives a huge known cost.
+    - `CostLedger` checks its ceiling at construction, before any request (an unrepresentable ceiling raises and nothing runs).
+    - An amount that cannot be represented marks the entry `unrepresentable` (no figure, never `settled`), withholds the summary totals and ends the run `ERROR cost_unrepresentable` before any retry or action.
+    - Complete valid usage still settles at the actual cost, below the reservation (for example $0.0000075).
+  - **Tests (logs in git-ignored `runs/s3x/`):**
+    - **New `tests/unit/test_agent_slice3_repair2.py`, 37 tests, with valid controls,** using synthetic markers and in-process fakes or the production client over a mock transport:
+      - transient, permanent and priced invalid-usage errors;
+      - mismatched model IDs (key, key in a path, escape, bidi);
+      - a non-boolean live label, unchecked identifiers and fixed error codes;
+      - the huge-known/small-held hold, directly and in a live run;
+      - accounting under five adversarial ambient contexts (precision 1, 2 and 3, rounding up, Emax 9 with traps off, every signal trapped), compared with the default context;
+      - out-of-range configurations (including `1e999999` with and without ambient overflow traps) and the range boundaries (`1e100` price, 10**100 counts, one-day timeout, zero prices);
+      - an out-of-range reported count;
+      - unrepresentable amounts and ceilings;
+      - the explicit-release rule.
+    - **Red at the parent:** a fresh `git archive 756bb57` copy with this file added gave **34 failed, 3 passed** (`red.log`; the 3 passes are controls). Classified by first failure:
+      - **25 behavioural:**
+        - REPORT after a retry, or `model_error` / `transport_error (after one retry)`, instead of `invalid_usage`;
+        - the raw model ID, live label, request ID or served model in the attempt record;
+        - raw error codes;
+        - a lost hold: `Decimal('0')` instead of `0.0072000`, or instead of `1E+70` at the range boundary;
+        - ambient-context results differing from the default, including `Infinity` and a `decimal.Rounded` exception;
+        - `1e999999` accepted, in three cases;
+        - an infinite amount consumed (the run continued to a second request);
+        - an infinite ceiling not rejected;
+        - `None` and `0` releasing a reservation.
+      - **7 new bounds:** values the old code accepted and the new range rejects (`1e101` and `1e-31` prices, negative zero, `10**100 + 1` ceilings and allowance, a 86,401 s timeout, a reported count above 10**100).
+      - **1 different error type:** a 10**400 timeout raised `OverflowError` instead of `ValueError`.
+      - **1 shape-only:** `KeyError: 'reply_identity'`, a new field.
+    - **Codex's probes, fresh copies** (`runs/s3x/green/`; `probe.py`, `edge_probe.py` and `finite_controls.py` byte-identical to `runs/s3w/`):
+      - `probe.py` and `finite_controls.py` exit 0 (zero and `1e100` prices finite).
+      - The unchanged `edge_probe.py` now stops with `ValueError: price_input_per_token must be at most 1e100 USD per token`. That is the intended rejection of its `1e999999` configuration, raised outside the probe's `try`.
+      - A labelled adapted copy (`edge_probe_adapted.py`, made by `adapt_edge.py`; it only wraps that construction) exits 0 with these results:
+        - transient and permanent invalid usage end `ERROR invalid_usage` after 1 call;
+        - the echoed model ID is rejected with no marker in log or report;
+        - both overflow configurations are rejected before any client;
+        - reduced-Emax settlements are exact (`10000000000`) with traps on or off;
+        - 10**40 known input keeps the `0.0072000` hold;
+        - complete usage settles at `0.0000075`;
+        - small partial usage gives `0.0672000`;
+        - fully unknown usage holds `0.0672000`;
+        - network patches are restored.
+    - **Affected unit suites:** `uv run --locked pytest tests/unit/test_agent_controller.py tests/unit/test_agent_slice3.py tests/unit/test_agent_slice3_repair.py tests/unit/test_agent_slice3_repair2.py tests/unit/test_candidate_reevaluation.py tests/unit/test_agent_schemas.py tests/unit/test_candidates.py -q -p no:cacheprovider --basetemp=runs/s3x/final -rs` -> **370 passed, 1 skipped (the existing symlink-permission skip in test_candidates.py)** (`tests-final.log`). One existing pass 1 assertion was corrected: it checked that `-5` was absent from the whole log, which a random run-directory hash can contain; it now checks the recorded usage value.
+    - **Docker:** rerun because the model-turn loop these integrations pass through changed. `docker info` showed linux 29.8.2 (`docker-info.log`). With `ATLAS_REQUIRE_DOCKER=1`, `test_agent_fixture_docker.py`, `test_cli.py` and `test_candidate_reevaluation_docker.py` gave **10 passed** (`docker.log`).
+    - Ruff check and format clean. Not rerun: the full suite, the Docker contract suite and the mutation check. No evaluator, runner, check, schema, diff-parser or report code changed.
+    - **Preservation:** all 83,523 paths in Codex's `runs/s3w/before.json` inventory are unchanged, with none missing (`runs/s3x/preservation.json`, read-only check). The newest file under `runs/s3w/` (20:04:48) predates this pass's first write (20:23). The root guide hash is `b08d74c4…`. Pass-local scratch test directories `runs/s3x-pre`, `-pre2`, `-new` and `-new2` are new and contain only test output.
 
 ### T-07 UI path and browser tests (Start Here Step 12; playbook §25)
 - **OWNER:** Claude Code (writer); Codex reviews the UI.

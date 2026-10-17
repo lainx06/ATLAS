@@ -17,6 +17,8 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 
+from atlas.agent import money
+
 MAX_ATTEMPTS = 6
 MAX_RETRIES_PER_CALL = 1
 MAX_TOOL_OPERATIONS = 12
@@ -131,16 +133,12 @@ class Budget:
         }
 
 
-def _usd(amount: Decimal) -> str:
-    """Fixed-point text, never exponent notation such as 0E-7."""
-    return format(amount, "f")
-
-
 UNRESOLVED_NOTE = (
     "Unresolved amounts are estimates from the configured ceilings, not a guaranteed maximum "
     "charge: the input ceiling is enforced before sending only by an unverified token "
     "estimate, so a provider could report more."
 )
+UNREPRESENTABLE = "unrepresentable"
 
 
 class CostLedger:
@@ -149,9 +147,16 @@ class CostLedger:
     Before a request is dispatched, its ceiling cost (both token ceilings at listed prices) is
     reserved. After it, each **validated known** usage count is charged at its listed price,
     even above its ceiling (known actual usage is never capped at an estimate). Each unknown
-    count (timeout, connection failure, missing or invalid usage) is reserved at its component
-    ceiling, and an entry with any unknown count never drops below the original reservation.
-    Only a request refused before sending is released. Fixture clients have no provider cost.
+    count (timeout, connection failure, missing or invalid usage) is held at its component
+    ceiling, and while any count is unknown the entry never drops below the original
+    reservation. Only a request refused before sending is released. Fixture clients have no
+    provider cost.
+
+    All arithmetic is exact and independent of the caller's `decimal` context (`agent/money.py`).
+    The unknown components' hold is computed directly, never recovered by subtracting two
+    large totals. If an amount cannot be represented exactly, the entry is marked
+    `unrepresentable` (no figure is invented, and nothing is reported as settled) and the
+    summary's totals are withheld; the controller then ends the run (`cost_unrepresentable`).
 
     `known_usd` is reported usage at listed prices. `unresolved_usd` is the estimate held for
     unknown counts; it is not a guaranteed maximum (UNRESOLVED_NOTE). This is accounting, not
@@ -166,7 +171,13 @@ class CostLedger:
             for name in ("component_costs", "component_ceilings")
         ):
             raise TypeError("a priced client must provide component costs and ceilings")
-        self.ceiling = ceiling() if self.applicable else None
+        self.ceiling = None
+        if self.applicable:
+            # Checked before any request: an unsupported configuration never reaches dispatch.
+            self.ceiling = money.total([ceiling()])
+            components = client.component_ceilings()
+            if money.total(components) != self.ceiling:
+                raise money.MoneyError("ceiling components do not add up")
         self._client = client
         self.entries: list[dict] = []
 
@@ -181,31 +192,46 @@ class CostLedger:
                 }
             )
 
-    def settle(self, attempt: int, usage, dispatched: bool) -> None:
+    def settle(self, attempt: int, usage, dispatched: bool) -> str | None:
+        """Settle one attempt; returns its new status (None for a fixture client)."""
         if not self.applicable:
-            return
+            return None
         entry = next(e for e in self.entries if e["attempt"] == attempt)
-        if not dispatched:
+        if dispatched is False:  # only an explicit "never sent" releases a reservation
             entry.update(
                 status="released", known_usd=Decimal(0), unresolved_usd=Decimal(0)
             )
-            return
+            return entry["status"]
+        try:
+            status, known, unresolved = self._settlement(usage)
+        except money.MoneyError:
+            entry.update(status=UNREPRESENTABLE, known_usd=None, unresolved_usd=None)
+            return entry["status"]
+        entry.update(status=status, known_usd=known, unresolved_usd=unresolved)
+        return status
+
+    def _settlement(self, usage) -> tuple[str, Decimal, Decimal]:
         # component_costs validates the counts itself: invalid ones count as unknown.
-        costs = self._client.component_costs(usage)
-        ceilings = self._client.component_ceilings()
-        known = sum((c for c in costs if c is not None), Decimal(0))
+        costs = tuple(self._client.component_costs(usage))
+        ceilings = tuple(self._client.component_ceilings())
+        if len(costs) != 2 or len(ceilings) != 2:
+            raise money.MoneyError("expected input and output components")
+        known = money.total(c for c in costs if c is not None)
         if None not in costs:
-            entry.update(status="settled", known_usd=known, unresolved_usd=Decimal(0))
-            return
-        held = sum((m for c, m in zip(costs, ceilings) if c is None), Decimal(0))
-        total = max(self.ceiling, known + held)  # never below the original reservation
-        entry.update(
-            status="partial_usage"
-            if any(c is not None for c in costs)
-            else "unknown_usage",
-            known_usd=known,
-            unresolved_usd=total - known,
+            return "settled", known, Decimal(0)
+        held = money.total(m for c, m in zip(costs, ceilings) if c is None)
+        # Never below the original reservation while a count is unknown: if the known part
+        # plus the held part is smaller, the shortfall is held as well.
+        floor_gap = money.difference(self.ceiling, money.total((known, held)))
+        unresolved = money.total((held, floor_gap)) if floor_gap > 0 else held
+        status = (
+            "partial_usage" if any(c is not None for c in costs) else "unknown_usage"
         )
+        return status, known, unresolved
+
+    @property
+    def unrepresentable(self) -> bool:
+        return any(e["status"] == UNREPRESENTABLE for e in self.entries)
 
     def summary(self) -> dict:
         if not self.applicable:
@@ -213,26 +239,49 @@ class CostLedger:
                 "applicable": False,
                 "reason": "fixture replies: no provider request",
             }
-        known = sum((e["known_usd"] for e in self.entries), Decimal(0))
-        unresolved = sum((e["unresolved_usd"] for e in self.entries), Decimal(0))
+        figures = {}
+        if not self.unrepresentable:
+            known = money.total(e["known_usd"] for e in self.entries)
+            unresolved = money.total(e["unresolved_usd"] for e in self.entries)
+            figures = {
+                "known_usd": money.text(known),
+                "unresolved_usd": money.text(unresolved),
+                "estimated_total_usd": money.text(money.total((known, unresolved))),
+            }
+        else:
+            figures = {
+                "known_usd": None,
+                "unresolved_usd": None,
+                "estimated_total_usd": None,
+                "unrepresentable_note": (
+                    "an amount could not be represented exactly; totals are withheld "
+                    "rather than rounded or shown as infinite"
+                ),
+            }
         return {
             "applicable": True,
             "basis": (
-                "validated reported usage at listed prices; each unknown count held at its "
-                "configured ceiling, never below the request's original reservation"
+                "validated reported usage at listed prices, computed exactly; each unknown "
+                "count held at its configured ceiling, never below the request's original "
+                "reservation"
             ),
-            "ceiling_per_request_usd": _usd(self.ceiling),
-            "known_usd": _usd(known),
-            "unresolved_usd": _usd(unresolved),
-            "estimated_total_usd": _usd(known + unresolved),
+            "ceiling_per_request_usd": money.text(self.ceiling),
+            **figures,
             "unknown_usage_attempts": sum(
                 e["status"] in ("unknown_usage", "partial_usage") for e in self.entries
+            ),
+            "unrepresentable_attempts": sum(
+                e["status"] == UNREPRESENTABLE for e in self.entries
             ),
             "entries": [
                 {
                     **e,
-                    "known_usd": _usd(e["known_usd"]),
-                    "unresolved_usd": _usd(e["unresolved_usd"]),
+                    "known_usd": None
+                    if e["known_usd"] is None
+                    else money.text(e["known_usd"]),
+                    "unresolved_usd": None
+                    if e["unresolved_usd"] is None
+                    else money.text(e["unresolved_usd"]),
                 }
                 for e in self.entries
             ],

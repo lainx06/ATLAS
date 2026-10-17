@@ -9,9 +9,11 @@ What it does with one request:
 - **No hidden retries.** The SDK's retries are disabled (`max_retries=0`); the controller owns
   the single retry per transient call and the six-attempt limit.
 - **Validated configuration.** Every value in `NebiusConfig` is required and checked before
-  any SDK object exists: positive integer token ceilings, a non-negative integer template
-  allowance, a finite positive timeout and finite non-negative `Decimal` prices. There are no
-  built-in ceilings, timeouts or prices; the live values are a lead decision.
+  any SDK object exists, within an explicit supported range: integer token ceilings from 1
+  and a template allowance from 0, both at most 10**100; a positive timeout of at most one
+  day; finite non-negative `Decimal` prices of at most 10**100 USD per token with at most 30
+  decimal places (`agent/money.py`). There are no built-in ceilings, timeouts or prices; the
+  live values are a lead decision.
 - **An input estimate, not a proven bound.** Before sending, `check_request` refuses a prompt
   whose *estimated* token count exceeds `max_input_tokens` (refused requests are never
   dispatched). The estimate is the UTF-8 byte length of the message text plus the configured
@@ -33,8 +35,10 @@ What it does with one request:
   exception type and HTTP status only: provider and SDK messages (which can echo request text)
   are never used, and the SDK exception is not chained to the error raised here.
 - **Cost figures for accounting.** `component_costs(usage)` prices each known count at the
-  listed prices (None for an unknown count); `component_ceilings()` prices each ceiling. The
-  ledger keeps an unknown component at its ceiling. Nothing here authorizes spending.
+  listed prices (None for an unknown count); `component_ceilings()` prices each ceiling. All of
+  it is exact arithmetic in a private context (`agent/money.py`), independent of the caller's
+  `decimal` settings, within the supported range checked by `NebiusConfig`. The ledger keeps
+  an unknown component at its ceiling. Nothing here authorizes spending.
 """
 
 import math
@@ -44,7 +48,9 @@ from decimal import Decimal
 import httpx2
 import openai
 
+from atlas.agent import money
 from atlas.agent.client import (
+    MAX_TOKEN_COUNT,
     ModelError,
     ModelReply,
     ModelRequest,
@@ -56,6 +62,7 @@ from atlas.agent.client import (
 )
 
 KEY_ENV = "NEBIUS_API_KEY"
+MAX_TIMEOUT_S = 86_400  # the supported range for the per-request timeout (one day)
 
 
 @dataclass(frozen=True)
@@ -90,18 +97,30 @@ class NebiusConfig:
             value = getattr(self, name)
             if type(value) is not int:  # excludes bool and fractions
                 raise TypeError(f"{name} must be an integer")
-            if value < minimum:
-                raise ValueError(f"{name} must be at least {minimum}")
-        if type(self.timeout_s) not in (int, float):  # excludes bool
+            if not minimum <= value <= MAX_TOKEN_COUNT:
+                raise ValueError(f"{name} must be from {minimum} to 10**100")
+        timeout = self.timeout_s
+        if type(timeout) not in (int, float):  # excludes bool
             raise TypeError("timeout_s must be a number of seconds")
-        if not math.isfinite(self.timeout_s) or self.timeout_s <= 0:
-            raise ValueError("timeout_s must be finite and positive")
+        # Compared before any float conversion, so a huge integer cannot overflow here.
+        if isinstance(timeout, float) and not math.isfinite(timeout):
+            raise ValueError("timeout_s must be finite")
+        if not 0 < timeout <= MAX_TIMEOUT_S:
+            raise ValueError(f"timeout_s must be positive and at most {MAX_TIMEOUT_S}")
         for name in ("price_input_per_token", "price_output_per_token"):
             value = getattr(self, name)
             if not isinstance(value, Decimal):
                 raise TypeError(f"{name} must be a Decimal")
-            if not value.is_finite() or value < 0:
-                raise ValueError(f"{name} must be finite and non-negative")
+            problem = money.price_problem(value)
+            if problem is not None:
+                raise ValueError(f"{name} {problem}")
+        # The derived amounts must be exactly representable too (always true in this range;
+        # checked so that no client exists if they were not).
+        for tokens, price in (
+            (self.max_input_tokens, self.price_input_per_token),
+            (self.max_completion_tokens, self.price_output_per_token),
+        ):
+            money.cost(tokens, price)
 
 
 class NebiusClient:
@@ -147,13 +166,12 @@ class NebiusClient:
     def component_ceilings(self) -> tuple[Decimal, Decimal]:
         c = self.config
         return (
-            c.max_input_tokens * c.price_input_per_token,
-            c.max_completion_tokens * c.price_output_per_token,
+            money.cost(c.max_input_tokens, c.price_input_per_token),
+            money.cost(c.max_completion_tokens, c.price_output_per_token),
         )
 
     def ceiling_cost(self) -> Decimal:
-        prompt, completion = self.component_ceilings()
-        return prompt + completion
+        return money.total(self.component_ceilings())
 
     def component_costs(self, usage) -> tuple[Decimal | None, Decimal | None]:
         """(input, output) cost of each validated known count; None for an unknown count."""
@@ -161,14 +179,18 @@ class NebiusClient:
         prompt, completion = counts["prompt_tokens"], counts["completion_tokens"]
         c = self.config
         return (
-            None if prompt is None else prompt * c.price_input_per_token,
-            None if completion is None else completion * c.price_output_per_token,
+            None if prompt is None else money.cost(prompt, c.price_input_per_token),
+            None
+            if completion is None
+            else money.cost(completion, c.price_output_per_token),
         )
 
     def usage_cost(self, usage) -> Decimal | None:
         """The cost of complete, valid usage; None if either count is unknown."""
         prompt, completion = self.component_costs(usage)
-        return None if prompt is None or completion is None else prompt + completion
+        if prompt is None or completion is None:
+            return None
+        return money.total((prompt, completion))
 
     # -- the request --------------------------------------------------------------------------
     def complete(self, request: ModelRequest) -> ModelReply:
@@ -195,8 +217,8 @@ class NebiusClient:
             )
         except openai.APIStatusError as exc:
             failure = ModelError("request rejected", code=f"http_{_status(exc)}")
-        except openai.OpenAIError as exc:
-            failure = ModelError("client error", code=f"client_{type(exc).__name__}")
+        except openai.OpenAIError:
+            failure = ModelError("client error", code="client_error")
         if failure is not None:
             # Raised outside the except blocks: no chained SDK exception, request or headers.
             raise failure
@@ -248,6 +270,7 @@ class NebiusClient:
             request_id=safe_request_id,
             served_model=safe_served,
             withheld=tuple(withheld),
+            identifiers_checked=True,  # both were checked against the key above
         )
 
 

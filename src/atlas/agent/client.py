@@ -74,17 +74,26 @@ class LiveModeUnavailable(RuntimeError):
 
 USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
 FINISH_REASONS = ("stop", "length", "content_filter", "tool_calls", "function_call")
+# The supported range for any token count (reported or configured); see `agent/money.py`.
+MAX_TOKEN_COUNT = 10**100
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}", re.ASCII)
+# Error codes are client-supplied text, so only these fixed shapes are recorded or reported.
+_ERROR_CODE = re.compile(
+    r"model_error|model_timeout|transport_error|rate_limited|bad_response|client_error"
+    r"|invalid_usage|usage_over_ceiling|input_over_ceiling"
+    r"|server_error_(?:[1-5][0-9][0-9]|unknown)|http_(?:[1-5][0-9][0-9]|unknown)",
+    re.ASCII,
+)
 
 
 def sanitize_usage(raw) -> tuple[dict, tuple[str, ...]]:
     """Reported usage reduced to {field: count or None} for every field in USAGE_FIELDS.
 
-    A count is known only if it is a genuine non-negative integer (`int`, not `bool`). A missing
-    or null field is unknown (None). Anything else (a boolean, fraction, string, negative or
-    non-finite number) is invalid: it becomes None and its field name is returned, so the caller
-    can fail closed. A `raw` that is not a mapping or an object with these attributes makes every
-    field invalid."""
+    A count is known only if it is a genuine integer (`int`, not `bool`) from 0 to
+    MAX_TOKEN_COUNT. A missing or null field is unknown (None). Anything else (a boolean,
+    fraction, string, negative, non-finite or out-of-range number) is invalid: it becomes None
+    and its field name is returned, so the caller can fail closed. A `raw` that is not a mapping
+    or an object with these attributes makes every field invalid."""
     usage, invalid = {}, []
     if raw is None:
         return {f: None for f in USAGE_FIELDS}, ()
@@ -101,7 +110,7 @@ def sanitize_usage(raw) -> tuple[dict, tuple[str, ...]]:
         value = get(name)
         if value is None:
             usage[name] = None
-        elif type(value) is int and value >= 0:
+        elif type(value) is int and 0 <= value <= MAX_TOKEN_COUNT:
             usage[name] = value
         else:
             usage[name] = None
@@ -123,7 +132,26 @@ def safe_finish_reason(value) -> str | None:
     """A finish reason from the known set, None if absent, else 'unrecognized'."""
     if value is None:
         return None
-    return value if value in FINISH_REASONS else "unrecognized"
+    return (
+        value if isinstance(value, str) and value in FINISH_REASONS else "unrecognized"
+    )
+
+
+def safe_error_code(value) -> str:
+    """A client's error code if it has one of the fixed shapes above, else
+    'unrecognized_error' (the raw text is never recorded)."""
+    if isinstance(value, str) and _ERROR_CODE.fullmatch(value):
+        return value
+    return "unrecognized_error"
+
+
+def error_usage_fields(exc) -> tuple[str, ...]:
+    """The usage field names an error marks invalid, restricted to USAGE_FIELDS."""
+    try:
+        names = tuple(getattr(exc, "invalid_fields", ()) or ())
+    except TypeError:
+        return USAGE_FIELDS  # unreadable: treat every field as invalid
+    return tuple(n for n in USAGE_FIELDS if n in names)
 
 
 @dataclass(frozen=True)
@@ -144,6 +172,10 @@ class ModelReply:
     withheld: tuple[
         str, ...
     ] = ()  # provider fields replaced because they failed validation
+    # True only when the client itself checked `request_id` and `served_model` against its
+    # credential (the controller never sees the credential). Unchecked identifiers are not
+    # logged: a character filter alone cannot show that arbitrary echoed text is safe.
+    identifiers_checked: bool = False
 
 
 class ModelClient(Protocol):
