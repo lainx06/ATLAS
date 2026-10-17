@@ -1,0 +1,28 @@
+{
+  "source": "https://archive.ics.uci.edu/static/public/240/human+activity+recognition+using+smartphones.zip",
+  "archive": {
+    "name": "human+activity+recognition+using+smartphones.zip",
+    "bytes": 61005872,
+    "sha256": "c00b803081a5c797cd5e4b83700a9810b38d53d9d84e01917e090e1fdbc81031"
+  },
+  "inner_archive": {
+    "name": "UCI HAR Dataset.zip",
+    "sha256": "2045e435c955214b38145fb5fa00776c72814f01b203fec405152dac7d5bfeb0"
+  },
+  "files": {
+    "README.txt": "eaee53f45825f349681a1a1b92a997a0082648f9b5bf93ddb3290caeede4b3a8",
+    "activity_labels.txt": "f6e6b292704438261f0283b2a82659ab0661447dc16520938bdf379ed1bf8de0",
+    "features.txt": "b384889885b1c8680ecf250e0e605b4c79536cdf09ce9f2fa7225a3c6773b5c7",
+    "features_info.txt": "5d7e7d1f204dcfba846043029ef7a15a07c2b3711ee0a122da031f5971b3b585",
+    "test/X_test.txt": "99035209add50d17650e847d8a4658d784a5707466ebb7c2deb97c28e5250a78",
+    "test/subject_test.txt": "63b8c577f4a85431c06bd87f6384608c90a9f72f05c7956dd21255dc63515c07",
+    "test/y_test.txt": "2a94cb53ca46b956c1b2aebd4a09a72badd8a8e9ea9cdfe9f31b3306a08666bb",
+    "train/X_train.txt": "9c1246099c8d5463779eec5a3845cc3898df9d8c715441ab2a1232d4421fc42f",
+    "train/subject_train.txt": "66e1e2fbe9b396fa5155f531dc3348c803f503be663e2318772d49947db9153a",
+    "train/y_train.txt": "415b3357e2e2d5e70a45c781947c6bdd80e0410a579d862eedcd6bbce3c694ef"
+  },
+  "tables": {
+    "har_clean/table.parquet": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a",
+    "har_flawed/table.parquet": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+  }
+}

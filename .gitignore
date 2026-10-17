@@ -44,3 +44,7 @@ data/private/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# --- T-09 UCI HAR: the download and the tables built from it are never committed ---
+benchmarks/real_sensor/data/
+benchmarks/real_sensor/*/table.parquet
