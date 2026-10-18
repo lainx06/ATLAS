@@ -14,6 +14,7 @@ import streamlit as st
 
 from atlas.agent.approval import CONFIRM_CHARS, inert
 from atlas.ui import artifacts as A
+from atlas.ui.recorded import CHANGED
 
 CSS = """
 <style>
@@ -69,6 +70,74 @@ def banner(report: dict | None, run_name: str | None, mode: str | None) -> None:
             )
         if run_name:
             st.caption(f"Run `{run_name}`")
+
+
+def recorded_banner(report: dict | None, label: str, finished_utc: str | None) -> None:
+    """A recorded run's own LIVE or NON-LIVE label, and that it is not re-executed here."""
+    with st.container(key="banner", border=True):
+        if report is not None:
+            live = report.get("live") is True
+            tag = ":blue-badge[LIVE RUN]" if live else ":gray-badge[NON-LIVE RUN]"
+            st.markdown(
+                f"{tag} mode `{report.get('mode')}`, live `{report.get('live')}`"
+            )
+            st.caption(report.get("banner", ""))
+        else:
+            st.markdown(":gray-badge[Deterministic audit: no model]")
+        with st.container(key="recorded-label"):
+            st.markdown(
+                f":violet-badge[Recorded run] Recorded run, finished "
+                f"{A.short_time(finished_utc)}; not re-executed here"
+            )
+        st.caption(
+            f"Run `{label}`, opened read-only: nothing executes and no approval is asked."
+        )
+
+
+def integrity(checks: list, ok: bool) -> None:
+    """The recorded hashes, recomputed from the files on disk before anything is shown."""
+    with st.container(key="card-integrity", border=True):
+        st.subheader("Recorded evidence")
+        rows = [
+            {
+                "result": c.status,
+                "item": c.item,
+                "recorded": c.recorded or "",
+                "recomputed now": c.recomputed or "",
+            }
+            for c in checks
+        ]
+        if ok:
+            with st.container(key="integrity-ok"):
+                st.markdown(
+                    f":green-badge[intact] All {len(checks)} recorded hashes and outcomes "
+                    "match the files on disk, recomputed now."
+                )
+            with (
+                st.expander("Integrity checks"),
+                st.container(key="scroll-integrity"),
+                st.container(key="trace-integrity"),
+            ):
+                st.table(pd.DataFrame(rows), hide_index=True)
+        else:
+            bad = [r for r in rows if r["result"] != "matches"]
+            with st.container(key="integrity-failed"):
+                st.error(
+                    f"**{CHANGED}**: {len(bad)} of {len(rows)} recorded items differ from "
+                    "the files on disk, so no outcome is shown.",
+                    icon=":material/gpp_bad:",
+                )
+            with (
+                st.container(key="scroll-integrity"),
+                st.container(key="trace-integrity"),
+            ):
+                st.table(pd.DataFrame(bad), hide_index=True)
+        st.caption(
+            "Each hash the run recorded is recomputed from the bytes on disk, and each "
+            "reported outcome is compared with its outcome.json. This detects changes since "
+            "recording; it does not authenticate a run whose files and recorded hashes were "
+            "both rewritten."
+        )
 
 
 def outcome_headline(code: str | None, key: str, title: str) -> None:

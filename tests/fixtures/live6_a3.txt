@@ -1,0 +1,9 @@
+
+
+{
+  "action": {
+    "tool": "propose_patch",
+    "rationale": "Fix feature selection leakage and enforce group-based splits respecting subject_id and session_id repeated measures.",
+    "new_source": "\"\"\"s01 faulty (ATLAS-authored): supervised feature selection fit on every row, then a random-row split.\"\"\"\nfrom sklearn.feature_selection import SelectKBest, f_classif\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import KFold\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nfrom atlas import adapter\n\nX, y = adapter.load_table()\nmeta = adapter.load_metadata()\nsubject = meta['subject_id']\nunique_subjects = subject.unique()\nsubject_kf = KFold(n_splits=4, shuffle=True, random_state=0)\nfor k, (train_subj_idx, eval_subj_idx) in enumerate(subject_kf.split(unique_subjects)):\n    train_subjects = unique_subjects[train_subj_idx]\n    eval_subjects = unique_subjects[eval_subj_idx]\n    train_mask = subject.isin(train_subjects)\n    eval_mask = subject.isin(eval_subjects)\n    train_ids = list(X.index[train_mask])\n    eval_ids = list(X.index[eval_mask])\n    adapter.declare_split(f\"fold{k}\", train_ids, eval_ids)\n    model = Pipeline([\n        (\"select\", SelectKBest(f_classif, k=3)),\n        (\"scale\", StandardScaler()),\n        (\"clf\", LogisticRegression())\n    ])\n    model.fit(adapter.take(X, train_ids), adapter.take(y, train_ids))\n    adapter.write_predictions(\n        f\"fold{k}\",\n        eval_ids,\n        model.predict(adapter.take(X, eval_ids))\n    )\n"
+  }
+}

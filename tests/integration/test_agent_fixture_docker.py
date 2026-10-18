@@ -354,3 +354,36 @@ def test_the_live_run_5_replay_recovers_and_a_candidate_runs_in_docker(
     (record,) = result.report["proposals"]
     assert (record["source_kind"], record["outcome"]) == ("new_source", "executed")
     assert len(client.requests) == 5
+
+
+def test_the_live_run_6_replay_finishes_after_success_in_docker(isolation, tmp_path):
+    """T-06 slice 4h: live run 6's replies 1 to 3 byte for byte (list, read, the new_source
+    revision), approved by the test approver and executed in the real runner. The trusted
+    evaluator judges the candidate NO_VIOLATION_FOUND, the next request carries the fixed
+    finish-after-success line, and a finish ends the run REPORT."""
+    fixtures = ROOT / "tests" / "fixtures"
+    replies = [
+        (fixtures / f"live6_a{n}.txt").read_bytes().decode("utf-8") for n in (1, 2, 3)
+    ]
+    finish = json.dumps({"action": {"tool": "finish", "summary": "done"}})
+    approver = ApproveExactly()
+    client = FixtureClient("s4h-docker", [{"content": r} for r in replies + [finish]])
+    result = ctl.run_agent(S01, tmp_path / "runs", client, approver, env={})
+
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert result.report["schema_failures"] == []
+    assert [r.kind for r in approver.requests] == ["original", "candidate"]
+    (candidate,) = result.candidates
+    assert candidate.execution["status"] == "completed"
+    assert candidate.execution["container_removed"] is True
+    assert candidate.outcome.outcome is Outcome.NO_VIOLATION_FOUND
+    (user,) = [m for m in client.requests[3].messages if m["role"] == "user"]
+    history = json.loads(user["content"])["history"]
+    (evaluation,) = [h["result"] for h in history if h["tool"] == "evaluate_candidate"]
+    assert evaluation["next_step"] == ctl.FINISH_AFTER_SUCCESS
+    assert result.report["scientific_outcomes"] == {
+        "source": "trusted evaluator only",
+        "original": "VIOLATION_FOUND",
+        "candidates": ["NO_VIOLATION_FOUND"],
+    }
+    assert len(client.requests) == 4

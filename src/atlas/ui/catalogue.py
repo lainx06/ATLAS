@@ -105,14 +105,18 @@ class ClaimView:
 def read_claim(project: Path) -> ClaimView:
     """Intake's view of the project. Raises only if the project cannot be read at all."""
     intake = load_project(project)
-    manifest = intake.manifest
-    if manifest is None:
+    if intake.manifest is None:
         return ClaimView(False, intake.reason, None, None, None, [], {}, None, None)
+    return claim_view(intake.manifest, intake.supported, intake.reason)
+
+
+def claim_view(manifest, supported: bool, reason: str | None) -> ClaimView:
+    """The claim fields of a validated manifest (a project's, or a recorded run's copy)."""
     claim = manifest.claim
     cols = manifest.columns
     return ClaimView(
-        supported=intake.supported,
-        reason=intake.reason,
+        supported=supported,
+        reason=reason,
         type=str(claim.type),
         statement=claim.statement,
         sampling_unit=claim.sampling_unit,

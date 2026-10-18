@@ -9,6 +9,7 @@ the engine recorded, never assumed.
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 OUTCOME_LABELS = {
@@ -317,6 +318,15 @@ def exports(run_dir: Path, report: dict | None) -> list[ExportFile]:
         )
     add("preflight.json", "preflight.json")
     return out
+
+
+def short_time(iso: str | None) -> str:
+    if not iso:
+        return "unknown time"
+    try:
+        return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M:%S UTC")
+    except ValueError:
+        return iso
 
 
 def run_finished_utc(report: dict | None) -> str | None:

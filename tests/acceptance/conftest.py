@@ -66,12 +66,17 @@ class App:
 
 
 @pytest.fixture(scope="module")
-def app(tmp_path_factory):
+def app(request, tmp_path_factory):
+    """The app server for one test module. A module may define `app_env(base)`, returning
+    extra environment for its server (e.g. the recorded-run root under `base`)."""
     base = tmp_path_factory.mktemp("app")
     runs = base / "runs"
     log = base / "server.log"
     port = _free_port()
     env = {**os.environ, "ATLAS_UI_RUNS_DIR": str(runs), "ATLAS_MODEL_MODE": "fixture"}
+    extra = getattr(request.module, "app_env", None)
+    if extra is not None:
+        env.update(extra(base))
     with open(log, "wb") as out:
         proc = subprocess.Popen(
             [sys.executable, "-m", "streamlit", "run", "app.py",
