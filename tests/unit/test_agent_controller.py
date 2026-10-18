@@ -290,16 +290,21 @@ def test_the_baseline_audit_is_never_modified(tmp_path):
     ],
 )
 def test_invalid_reply_is_a_recorded_schema_failure_with_no_action(tmp_path, bad):
+    """Slice 4d: a content failure gets one corrective turn, so the same invalid reply twice
+    in a row ends the run; a reply-metadata failure (cut off by length) ends it at once.
+    Either way no invalid reply authorizes anything and none is repaired."""
     executor = RecordingExecutor()
     result, client, _ = run(
-        tmp_path, [INSPECT, bad, PATCH, FINISH], ApproveExactly(), executor
+        tmp_path, [INSPECT, bad, bad, PATCH, FINISH], ApproveExactly(), executor
     )
     assert result.terminal_state == ctl.ERROR
     assert result.reason.startswith("schema_failure")
     assert executor.calls == []  # the patch after it was never requested
-    assert len(client.requests) == 2  # no format-repair retry
+    metadata = bad.get("finish_reason") == "length"
+    assert len(client.requests) == (2 if metadata else 3)  # one correction at most
     attempts = log_entries(result, "model_attempt")
     assert attempts[-1]["result"] == "schema_failure"
+    assert all(f["corrected"] is False for f in result.report["schema_failures"])
     # The completed audit stands in the report.
     assert result.report["scientific_outcomes"]["original"] == Outcome.VIOLATION_FOUND
     assert result.report["comparison"]["original"]["required_set"]
@@ -878,10 +883,13 @@ def test_an_oversized_multibyte_diff_is_a_schema_failure_with_no_action(tmp_path
     result, client, _ = run(
         tmp_path, [{"content": content}, FINISH], ApproveExactly(), executor
     )
-    assert (
-        result.terminal_state == ctl.ERROR and result.reason == "schema_failure: schema"
-    )
-    assert len(client.requests) == 1 and executor.calls == []
+    # Slice 4d: the failure is recorded and corrected once; the finish that follows ends the
+    # run normally. The oversized diff itself was never acted on.
+    assert result.terminal_state == ctl.REPORT
+    assert result.report["schema_failures"] == [
+        {"attempt": 1, "code": "schema", "corrected": True}
+    ]
+    assert len(client.requests) == 2 and executor.calls == []
     used = result.report["budget"]["used"]
     assert (used["tool_operations"], used["revisions"]) == (0, 0)
 

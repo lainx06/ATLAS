@@ -535,17 +535,20 @@ def test_retry_exhaustion_at_the_sixth_attempt(tmp_path):
     ids=["prose", "length", "no_content"],
 )
 def test_invalid_live_replies_authorize_nothing(tmp_path, body):
+    """Slice 4d: a content failure gets one corrective turn, so it is sent twice here; a reply
+    cut off by length ends the run at once. Nothing invalid is acted on."""
     executor = RecordingExecutor()
     result, t = live_run(
         tmp_path,
-        [(200, body), (200, ok_body(PATCH, USAGE))],
+        [(200, body), (200, body), (200, ok_body(PATCH, USAGE))],
         ApproveExactly(),
         executor,
     )
     assert result.terminal_state == ctl.ERROR and result.reason.startswith(
         "schema_failure"
     )
-    assert len(t.requests) == 1 and executor.calls == []
+    metadata = body["choices"][0]["finish_reason"] == "length"
+    assert len(t.requests) == (1 if metadata else 2) and executor.calls == []
 
 
 def test_an_oversized_prompt_is_never_sent_or_counted(tmp_path):

@@ -176,3 +176,42 @@ def test_a_full_source_revision_runs_in_docker(isolation, tmp_path):
     assert (run / record["new_source_path"]).read_bytes() == fix.encode("utf-8")
     assert (run / record["diff_path"]).read_bytes() == DIFF.encode("utf-8")
     assert record["diff_sha256"] == candidate.diff_sha256
+
+
+def test_a_corrected_malformed_revision_runs_in_docker(isolation, tmp_path):
+    """T-06 slice 4d: inspect, then a new_source pasted raw into the JSON string (real
+    newlines and quotes: not_json), then the same file properly escaped. The malformed reply
+    is stored byte for byte and corrected once; the valid revision is approved by the test
+    approver, executes in the real runner and is recorded as executed."""
+    fix = (S02 / "evaluate.py").read_text(encoding="utf-8")
+    malformed = (
+        '{"action": {"tool": "propose_patch", "new_source": "'
+        + fix
+        + '", "rationale": "fold-local selection, grouped folds"}}'
+    )
+    script = [
+        {"content": json.dumps({"action": {"tool": "read_project_file", "path": "evaluate.py"}})},
+        {"content": malformed},
+        {"content": json.dumps({"action": {"tool": "propose_patch", "new_source": fix, "rationale": "fold-local selection, grouped folds"}})},
+        {"content": json.dumps({"action": {"tool": "finish", "summary": "done"}})},
+    ]  # fmt: skip
+    approver = ApproveExactly()
+    client = FixtureClient("s4d-docker", script)
+    result = ctl.run_agent(S01, tmp_path / "runs", client, approver, env={})
+
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert [r.kind for r in approver.requests] == ["original", "candidate"]
+    assert approver.requests[1].diff == DIFF
+    (candidate,) = result.candidates
+    assert candidate.execution["status"] == "completed"
+    assert candidate.execution["container_removed"] is True
+    assert candidate.outcome.outcome is Outcome.NO_VIOLATION_FOUND
+    (record,) = result.report["proposals"]
+    assert (record["source_kind"], record["outcome"]) == ("new_source", "executed")
+    run = result.run_dir
+    assert (run / "replies" / "a2.txt").read_bytes() == malformed.encode("utf-8")
+    assert result.report["schema_failures"] == [
+        {"attempt": 2, "code": "not_json", "corrected": True}
+    ]
+    assert len(client.requests) == 4
+    assert result.report["budget"]["used"]["attempts"] == 4

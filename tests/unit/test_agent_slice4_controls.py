@@ -52,8 +52,9 @@ CONFIG_FIELDS = {f.name for f in dataclasses.fields(NebiusConfig)}
 TOKENS = ("max_input_tokens", "max_completion_tokens", "template_overhead_tokens")
 USAGE = '{"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200}'
 READ_TABLE = S.act("read_project_file", path="table.csv")  # 13,371 bytes
-PROMPT_BYTES = len(ctl.SYSTEM_PROMPT.encode("utf-8"))  # 635 since slice 4c (was 489)
-BUDGET = 12_000 - PROMPT_BYTES - 16 - 16  # 11,333 since slice 4c (was 11,479)
+# 945 bytes and 11,023 since slice 4d (635 and 11,333 in 4c; 489 and 11,479 before).
+PROMPT_BYTES = len(ctl.SYSTEM_PROMPT.encode("utf-8"))
+BUDGET = 12_000 - PROMPT_BYTES - 16 - 16
 CEILING = Decimal("0.0108")  # 12,000 x 0.0000003 + 8,000 x 0.0000009
 
 

@@ -283,8 +283,9 @@ def test_the_prompt_figures_are_unchanged_by_the_schema_fix():
     """The user-message budget derives from the system prompt only; the reply schema is part
     of the user message and so counts against that budget."""
     system = len(ctl.SYSTEM_PROMPT.encode("utf-8"))
-    assert system == 635
-    assert 12_000 - system - 16 - 16 == 11_333
+    c, _ = S.client([], max_input_tokens=12_000, template_overhead_tokens=16)
+    # Derived from the prompt, not pinned: the prompt changes (slice 4d), the rule does not.
+    assert c.user_message_budget(ctl.SYSTEM_PROMPT) == 12_000 - system - 16 - 16
     assert len(schema_text().encode("utf-8")) == 2619  # 2650 before this fix
 
 

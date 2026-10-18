@@ -91,9 +91,9 @@ def _timeout() -> list[dict]:
 
 
 def _invalid() -> list[dict]:
-    return [
-        {"content": "This reply is prose, not the JSON action the schema requires."}
-    ]
+    # The first gets one corrective turn (slice 4d); the second in a row ends the run.
+    prose = "This reply is prose, not the JSON action the schema requires."
+    return [{"content": prose}, {"content": prose}]
 
 
 _REPLIES = {
@@ -134,7 +134,8 @@ SCRIPTS = (
     Script(
         "invalid",
         "Invalid reply",
-        "A reply that is not JSON: a schema failure, with no repair retry.",
+        "Two replies in a row that are not JSON: the first is corrected once, the second "
+        "ends the run. Neither is repaired or acted on.",
         None,
     ),
 )
