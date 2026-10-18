@@ -1733,6 +1733,34 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 
     The second skip is the archived-listing control, absent in a worktree.
   - **Not done:** live run 2 has not run, so no live run yet shows a candidate executing.
+- **LIVE RUN 2 (`runs/live2/agent-s01_faulty-93583d9e48b5/`, 2026-10-17).** The user gave the go-ahead by starting the run themselves on 2026-10-17.
+  - **Result:**
+    - terminal state ERROR, `schema_failure: not_json` on attempt 2 (1,606 completion tokens);
+    - attempt 1 read `evaluate.py`;
+    - the original is **VIOLATION_FOUND** (`docker_isolated`).
+  - **Budget:** 2 requests, 0 retries.
+  - **Cost:** estimated **$0.0025863** (provider-reported usage at listed prices; not billing).
+  - **Proposals:** none.
+  - `comparison.model` names the live model and each attempt carries its cost: the slice 4c fixes confirmed live.
+  - **Cause unknown:** the raw replies were not stored. Slice 4d stores them (below).
+- **SLICE 4d RESULT (`0b7bcce`, branch `t06-s4d`; not merged).**
+  - **Design** (DECISIONS.md "Lead decisions, 2026-10-17" item 10):
+    - **raw replies:** every reply's text is written to `<run>/replies/a<N>.txt` as received and before it is parsed, at most `MAX_REPLY_BYTES` (beyond that the first `MAX_REPLY_BYTES`, marked truncated). Its SHA-256 and size go into the `model_attempt` log event and the report's `replies` list, labelled "model-written (untrusted); never evidence". No request, header or key is stored. Fixture runs too;
+    - **one corrective turn:** a content failure from `parse_reply` is recorded (code and attempt, in the report's `schema_failures`), and the next request carries a bounded correction: the code, a fixed explanation per code and at most 200 characters of the parser's message. The reply is never quoted. That request is an ordinary attempt within the 6-attempt budget, reserved before dispatch, and authorizes nothing;
+    - **when the run still ends ERROR:** two consecutive schema failures, a schema failure on the final attempt, or a reply-metadata failure (`mislabelled`, `incomplete`). A valid reply resets the count. The limitations line reads "N replies failed validation; M corrected on the next turn";
+    - **prompt:** one raw JSON object only, no Markdown code fences and no text before or after, with one valid `read_project_file` example. `diff` for small edits, `new_source` for rewrites, with newlines and quotes escaped inside the JSON string. Generic: no benchmark hints. The prompt-budget figures are derived from the prompt in the tests, not pinned;
+    - **unchanged:** exact reply validation (one action, no duplicate keys, no extra fields, no format repair); 6 requests per run, each reserved before dispatch; `validate_diff` as the only candidate gate; Docker-only execution; the spend controls and the live entry point.
+  - **Changed assertions** (expected behaviour changes, none weakened: each still asserts that no invalid reply authorizes or executes anything):
+    - `test_agent_controller.py::test_invalid_reply_is_a_recorded_schema_failure_with_no_action`: the invalid reply is scripted twice; 3 requests for content failures (was 2), 2 for `truncated_by_length` (metadata, unchanged). Added: no failure is marked corrected. Reason: a content failure now gets one corrective turn, and the second in a row ends the run;
+    - `test_agent_controller.py::test_an_oversized_multibyte_diff_is_a_schema_failure_with_no_action`: REPORT after 2 requests (was ERROR after 1), with `schema_failures` `[{attempt 1, schema, corrected}]`, no execution and 0 tool operations or revisions. Reason: the failure is corrected once and the scripted `finish` follows;
+    - `test_agent_slice3.py::test_invalid_live_replies_authorize_nothing` (`prose`, `no_content`, `length`): the body is sent twice; 2 requests for content failures (was 1), 1 for `length`. Reason: as above, over the mocked production client;
+    - `tests/acceptance/test_scenario4_failures.py::test_invalid_reply_is_a_schema_failure_without_repair`: 2 attempts (was 1), two `schema_failure` trace rows, neither corrected. Reason: the UI's "Invalid reply" script now sends two non-JSON replies;
+    - `test_agent_slice4_controls.py` (`PROMPT_BYTES`, `BUDGET`) and `test_agent_slice4c_proposals.py::test_the_prompt_figures_are_unchanged_by_the_schema_fix`: the prompt-budget figures are derived from `SYSTEM_PROMPT` (and checked through the client's `user_message_budget`) instead of pinned. Reason: the new prompt is 945 bytes (635 in slice 4c), so the user-message budget is 11,023 bytes (11,333 in slice 4c).
+  - **Tests** (logs in git-ignored `runs/s4d/`):
+    - red at the base `ddab0ae` (`red_summary.log`): **17 failed, 2 passed** of the 19 new tests (18 unit, 1 Docker integration). The 2 passes are controls that already held (a schema failure on the final attempt, and a reply-metadata failure, both end the run). The prompt-figures test was later rewritten to derive its figures;
+    - full suite with Docker required (`full.log`): **1212 passed, 1 skipped**;
+    - ruff check and format clean.
+  - **Not done:** live run 3, which needs the user's go-ahead.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).

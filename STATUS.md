@@ -1,8 +1,17 @@
 # ATLAS status
 
-WRITER: Claude Code (this integration and docs record; Claude Code owns live run 2)
+WRITER: Claude Code (T-06 slice 4d, branch `t06-s4d`; Claude Code owns live run 3)
 MODEL: Claude Opus 5.5 high
-CURRENT STEP: T-06 slice 4. **Live run 1 is done and Gate 4 FAILED** on two P2 reporting defects. Slice 4c, T-07 and T-09 are on `main` at `f5d76c9` (fast-forward, 2026-10-17). **Next: the user's go-ahead for live run 2.**
+CURRENT STEP: T-06 slice 4. **Live run 2 ended ERROR** (`schema_failure: not_json`; the reply was not stored). **Slice 4d** (`0b7bcce`, branch `t06-s4d`, not merged) stores raw replies and adds one corrective turn. **Next: the user's go-ahead for live run 3.**
+- **Live run 2** (`runs/live2/agent-s01_faulty-93583d9e48b5/`, 2026-10-17; the user started it themselves):
+  - ERROR, `schema_failure: not_json` on attempt 2 (1,606 completion tokens); attempt 1 read `evaluate.py`;
+  - the original is VIOLATION_FOUND (`docker_isolated`);
+  - 2 requests, 0 retries; estimated **$0.0025863** (not billing); no proposals;
+  - `comparison.model` and per-attempt cost correct: the slice 4c fixes confirmed live;
+  - cause unknown: raw replies were not stored.
+
+  Record: TASKS.md T-06 "LIVE RUN 2".
+- **Slice 4d** (`0b7bcce`; DECISIONS.md "Lead decisions, 2026-10-17" item 10): raw replies in `<run>/replies/a<N>.txt` (untrusted, never evidence); one bounded corrective turn after a schema failure, within the 6-request budget; a stricter, generic reply prompt. No format repair. Full suite with Docker required: 1212 passed, 1 skipped. Unreviewed. Record: TASKS.md T-06 "SLICE 4d RESULT".
 - **Live run 1** (`runs/live1/agent-s01_faulty-3f18e12af383/`, 2026-10-17):
   - REPORT, exit 0; the original is VIOLATION_FOUND (`docker_isolated`);
   - the pre-run check passed (status 200);
@@ -39,7 +48,7 @@ CURRENT STEP: T-06 slice 4. **Live run 1 is done and Gate 4 FAILED** on two P2 r
 - **Gate 3 confirmation: PASS** (`runs/g3y/review.md`) under the lead's re-verification dispositions now recorded in DECISIONS.md: rendering only after range acceptance, at most 132 characters and evidence within 16 KiB; `0E+200` rejection deferred; price strings longer than 64 characters rejected as `price_malformed`, accepted. No unresolved blocking findings.
 - **Independent verification:** 213 focused tests passed; variants b and c caught (2 and 3 intended failures); archived real-listing control passed; 0 probe network attempts; 7,388 hashes unchanged. Follow-up maxima: 101 rendered characters, 1,699 evidence bytes. Confirmation: both real-listing price strings are 9 characters; context type is `int`. Full records: TASKS.md T-06 and `runs/g3w/`, `runs/g3x/`, `runs/g3y/`.
 - **Builder evidence, inspected by Codex, not rerun:** full suite 1,117 passed, 1 skipped; mutation results b and c caught. These remain separate from the 213-test independent run.
-- **T-06 is not accepted.** It awaits live run 2 and the combined Codex review.
+- **T-06 is not accepted.** It awaits live run 3 and the combined Codex review.
 - **Accepted:** T-01 (`f5aa4dc`), T-02 (`75a98f4`), T-03 (`51d3dd8`, research and feasibility), T-04 (smoke-test scope), T-05 (`eed73ee`), each within its documented scope.
 - **T-06, independently verified by Codex within documented scope:**
   - slice 1 at `1d58b20` (`runs/r6w/review.md`);
@@ -52,7 +61,9 @@ CURRENT STEP: T-06 slice 4. **Live run 1 is done and Gate 4 FAILED** on two P2 r
   - owner-observed NON-LIVE CLI demonstration on s01 (2026-10-16): REPORT, four FAILs became PASS;
   - live run 1 (2026-10-17): REPORT, original VIOLATION_FOUND, no candidate executed;
   - **Gate 4 FAIL** (`runs/g4/review.md`, two P2);
-  - slice 4c at `2ce5dd5` and `292ed81` (on `main`, unreviewed).
+  - slice 4c at `2ce5dd5` and `292ed81` (on `main`, unreviewed);
+  - live run 2 (2026-10-17): ERROR `schema_failure: not_json`, original VIOLATION_FOUND, no proposals;
+  - slice 4d at `0b7bcce` (branch `t06-s4d`, unreviewed).
 - Full review history: TASKS.md T-06.
 - **T-02 (policy-v1.3, manifest schema 0.3):** **accepted by the lead at `75a98f4` within its documented trusted-fixture scope (2026-10-15)**. The decision rests on Codex's final verification (`runs/t02-verification-final/review.md`) and the earlier independent verification records. Record: TASKS.md T-02 "ACCEPTANCE".
   - **Path to acceptance:**

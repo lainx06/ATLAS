@@ -325,5 +325,6 @@ Recorded after live run 1 (`runs/live1/agent-s01_faulty-3f18e12af383/`), Codex's
      - the hosted demo shows precomputed HAR results;
      - the README cites both terms.
 9. **Record.** `d870275` was committed from a Codex session at the lead's direction. The lead verified its content before approving it.
+10. **One corrective turn after a schema failure, within the 6-request budget; no format repair; raw replies persisted as untrusted.** Recorded after live run 2 (`runs/live2/agent-s01_faulty-93583d9e48b5/`: ERROR, `schema_failure: not_json`, reply not stored). Implemented in T-06 slice 4d (TASKS.md T-06 "SLICE 4d RESULT").
 
 **Not authorized by this record:** live run 2 or any other spending, and anything public.
