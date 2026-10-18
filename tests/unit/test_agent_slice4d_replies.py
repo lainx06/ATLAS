@@ -380,8 +380,10 @@ def test_the_prompt_asks_for_one_raw_object_with_a_valid_example():
     assert "code fences" in prompt and "before or after" in prompt
     assert '"diff"' in prompt and '"new_source"' in prompt
     assert "escape" in prompt and "adapter" in prompt
+    # Generic: no benchmark hints in the instructions. Since slice 4f the prompt also ends
+    # with the adapter reference, whose API names `fold` itself (tested in slice 4f).
     for hint in ("s01", "evaluate.py", "SelectKBest", "GroupKFold", "subject", "fold"):
-        assert hint not in prompt  # generic: no benchmark hints
+        assert hint not in ctl.SYSTEM_INSTRUCTIONS
 
 
 def test_the_prompt_budget_figures_follow_the_new_prompt(tmp_path):

@@ -422,5 +422,7 @@ def test_a_live_length_correction_keeps_the_decided_request_body(tmp_path):
 def test_the_prompt_asks_for_brief_reasoning_and_a_short_reply():
     prompt = ctl.SYSTEM_PROMPT
     assert "brief" in prompt and "short" in prompt
+    # Generic: no benchmark hints in the instructions. Since slice 4f the prompt also ends
+    # with the adapter reference, whose API names `fold` itself (tested in slice 4f).
     for hint in ("s01", "evaluate.py", "SelectKBest", "GroupKFold", "subject", "fold"):
-        assert hint not in prompt  # generic: no benchmark hints
+        assert hint not in ctl.SYSTEM_INSTRUCTIONS

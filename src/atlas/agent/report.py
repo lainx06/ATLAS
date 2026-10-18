@@ -143,6 +143,8 @@ def comparison_report(
                 "diff_sha256": c.diff_sha256,
                 "approval": c.approval,
                 "execution": {"runner": dr.RUNNER_NAME, **c.execution},
+                # Candidate-written and labelled untrusted; None unless it failed (slice 4f).
+                "failure_summary": c.failure_summary,
                 "evaluated": c.evaluated,
                 "scientific_outcome": c.outcome.outcome,
                 "outcome_reason": c.outcome.reason,

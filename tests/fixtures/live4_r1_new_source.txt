@@ -1,0 +1,28 @@
+"""s01 faulty (ATLAS-authored): supervised feature selection fit on every row, then a random-row split."""
+
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GroupKFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+from atlas import adapter
+
+X, y = adapter.load_table()
+groups = X['subject_id']
+for k, (tr, ev) in enumerate(
+    GroupKFold(n_splits=4).split(X, y, groups)
+):
+    train_ids, eval_ids = list(X.index[tr]), list(X.index[ev])
+    adapter.declare_split(f"fold{k}", train_ids, eval_ids)
+    X_train_raw = adapter.take(X, train_ids)
+    y_train_raw = adapter.take(y, train_ids)
+    X_eval_raw = adapter.take(X, eval_ids)
+    selector = SelectKBest(f_classif, k=3).fit(X_train_raw, y_train_raw)
+    X_train_sel = selector.transform(X_train_raw)
+    X_eval_sel = selector.transform(X_eval_raw)
+    model = Pipeline([("scale", StandardScaler()), ("clf", LogisticRegression())])
+    model.fit(X_train_sel, y_train_raw)
+    adapter.write_predictions(
+        f"fold{k}", eval_ids, model.predict(X_eval_sel)
+    )

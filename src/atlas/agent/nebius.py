@@ -183,6 +183,12 @@ class NebiusClient:
     def __repr__(self) -> str:
         return f"NebiusClient(model_id={self.model_id!r})"
 
+    def redact_secret(self, text: str, marker: str = "<redacted>") -> str:
+        """`text` with this client's key replaced by `marker` (T-06 slice 4f), so the
+        controller can scrub untrusted text without ever holding the key."""
+        secret = self._sdk.api_key
+        return text.replace(secret, marker) if secret else text
+
     # -- the input estimate and cost ----------------------------------------------------------
     def input_bound(self, request: ModelRequest) -> int:
         """The input estimate: assumption-dependent, not a proven bound (module docstring)."""

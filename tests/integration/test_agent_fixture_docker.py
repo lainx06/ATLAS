@@ -247,3 +247,57 @@ def test_the_live_run_3b_replay_runs_a_candidate_in_docker(isolation, tmp_path):
     assert (result.run_dir / "replies" / "a2.txt").read_bytes() == a2.encode("utf-8")
     assert len(client.requests) == 4
     assert result.report["budget"]["used"]["attempts"] == 4
+
+
+def test_the_live_run_4_replay_feeds_the_error_back_and_the_fix_runs(
+    isolation, tmp_path
+):
+    """T-06 slice 4f: live run 4's first revision byte for byte (it reads X['subject_id'],
+    which load_table() does not return), executed in the real runner, fails; the next request's
+    evaluate_candidate result carries the bounded, untrusted failure summary. The revision
+    corrected to take the groups from adapter.load_metadata() then executes, and the trusted
+    evaluator gives its outcome."""
+    c1 = (ROOT / "tests" / "fixtures" / "live4_r1_new_source.txt").read_text(
+        encoding="utf-8"
+    )
+    fixed = c1.replace(
+        "groups = X['subject_id']",
+        'groups = adapter.load_metadata().loc[X.index, "subject_id"]',
+    )
+    assert fixed != c1
+    script = [
+        {"content": json.dumps({"action": {"tool": "propose_patch", "new_source": c1, "rationale": "grouped folds"}})},
+        {"content": json.dumps({"action": {"tool": "propose_patch", "new_source": fixed, "rationale": "groups from load_metadata"}})},
+        {"content": json.dumps({"action": {"tool": "finish", "summary": "done"}})},
+    ]  # fmt: skip
+    approver = ApproveExactly()
+    client = FixtureClient("s4f-docker", script)
+    result = ctl.run_agent(S01, tmp_path / "runs", client, approver, env={})
+
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert [r.kind for r in approver.requests] == ["original", "candidate", "candidate"]
+    first, second = result.candidates
+    assert first.execution["status"] == "failed"
+    assert first.outcome.outcome is Outcome.INCONCLUSIVE
+    # What the model saw after the failing revision.
+    (user,) = [m for m in client.requests[1].messages if m["role"] == "user"]
+    history = json.loads(user["content"])["history"]
+    (seen,) = [h["result"] for h in history if h["tool"] == "evaluate_candidate"]
+    summary = seen["failure_summary"]
+    assert summary["label"] == "candidate output (untrusted)"
+    assert summary["exception"] == "KeyError: 'subject_id'"
+    assert "groups = X['subject_id']" in summary["traceback"]
+    assert len(summary["exception"]) + len(summary["traceback"]) <= 2000
+    assert str(tmp_path) not in json.dumps(summary)
+    entries = result.report["comparison"]["candidates"]
+    assert entries[0]["failure_summary"] == summary
+    assert entries[1]["failure_summary"] is None
+    # The corrected revision ran in isolation and the trusted evaluator judged it.
+    assert second.execution["status"] == "completed"
+    assert second.execution["container_removed"] is True
+    assert second.outcome.outcome is Outcome.NO_VIOLATION_FOUND, second.outcome.reason
+    assert [p["outcome"] for p in result.report["proposals"]] == [
+        "executed",
+        "executed",
+    ]
+    assert len(client.requests) == 3

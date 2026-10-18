@@ -73,6 +73,11 @@ class CandidateResult:
     evaluated: bool  # False when nothing ran, so the evaluator had no evidence to read
     outcome: RunOutcome  # the trusted evaluator's result for the full required set
     timing: dict
+    # The candidate's own output as the in-container supervisor captured it (its stderr merged
+    # into stdout; `supervisor.candidate_output_tail`). Untrusted, in memory only, never
+    # reported: the controller derives `failure_summary` from it (T-06 slice 4f).
+    candidate_output: str | None = None
+    failure_summary: dict | None = None
 
 
 def _new_json(path: Path, data) -> None:
@@ -286,7 +291,19 @@ def _result(
             if proposed_at
             else None,
         },
+        candidate_output=_candidate_output(record),
     )
+
+
+def _candidate_output(record: dict) -> str | None:
+    """The supervisor's captured candidate output, if the candidate ran and it was recorded."""
+    supervisor = record.get("supervisor")
+    tail = (
+        supervisor.get("candidate_output_tail")
+        if isinstance(supervisor, dict)
+        else None
+    )
+    return tail if isinstance(tail, str) else None
 
 
 def _saved_record(exec_dir: Path) -> dict:
