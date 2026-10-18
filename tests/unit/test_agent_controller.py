@@ -290,18 +290,18 @@ def test_the_baseline_audit_is_never_modified(tmp_path):
     ],
 )
 def test_invalid_reply_is_a_recorded_schema_failure_with_no_action(tmp_path, bad):
-    """Slice 4d: a content failure gets one corrective turn, so the same invalid reply twice
-    in a row ends the run; a reply-metadata failure (cut off by length) ends it at once.
-    Either way no invalid reply authorizes anything and none is repaired."""
+    """Slice 4g: a content failure gets up to two corrective turns, so the same invalid
+    reply three times in a row ends the run; a reply-metadata failure (cut off by length)
+    ends it at once. Either way no invalid reply authorizes anything and none is repaired."""
     executor = RecordingExecutor()
     result, client, _ = run(
-        tmp_path, [INSPECT, bad, bad, PATCH, FINISH], ApproveExactly(), executor
+        tmp_path, [INSPECT, bad, bad, bad, PATCH, FINISH], ApproveExactly(), executor
     )
     assert result.terminal_state == ctl.ERROR
     assert result.reason.startswith("schema_failure")
     assert executor.calls == []  # the patch after it was never requested
     metadata = bad.get("finish_reason") == "length"
-    assert len(client.requests) == (2 if metadata else 3)  # one correction at most
+    assert len(client.requests) == (2 if metadata else 4)  # two corrections at most
     attempts = log_entries(result, "model_attempt")
     assert attempts[-1]["result"] == "schema_failure"
     assert all(f["corrected"] is False for f in result.report["schema_failures"])

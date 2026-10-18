@@ -268,24 +268,27 @@ def test_the_incomplete_length_explanation_is_fixed():
     assert "mislabelled" not in ctl.CORRECTION_EXPLANATIONS
 
 
-def test_two_empty_length_replies_in_a_row_end_the_run(tmp_path):
-    result, client, executor = run(tmp_path, [EMPTY_LENGTH, EMPTY_LENGTH, READ, FINISH])
+def test_three_empty_length_replies_in_a_row_end_the_run(tmp_path):
+    """Since slice 4g two consecutive failures are corrected; the third ends the run."""
+    script = [EMPTY_LENGTH, EMPTY_LENGTH, EMPTY_LENGTH, READ, FINISH]
+    result, client, executor = run(tmp_path, script)
     assert (result.terminal_state, result.reason) == (
         ctl.ERROR,
         "schema_failure: incomplete_length",
     )
-    assert len(client.requests) == 2 and executor.calls == []
-    assert [f["corrected"] for f in result.report["schema_failures"]] == [False, False]
+    assert len(client.requests) == 3 and executor.calls == []
+    assert [f["corrected"] for f in result.report["schema_failures"]] == [False] * 3
     assert result.report["scientific_outcomes"]["original"] == "VIOLATION_FOUND"
 
 
-def test_a_schema_failure_then_an_empty_length_reply_is_consecutive(tmp_path):
-    result, client, _ = run(tmp_path, ["prose", EMPTY_LENGTH, READ, FINISH])
+def test_schema_failures_then_an_empty_length_reply_are_consecutive(tmp_path):
+    """Since slice 4g the third consecutive failure ends the run, whatever its code."""
+    result, client, _ = run(tmp_path, ["prose", "prose", EMPTY_LENGTH, READ, FINISH])
     assert (result.terminal_state, result.reason) == (
         ctl.ERROR,
         "schema_failure: incomplete_length",
     )
-    assert len(client.requests) == 2
+    assert len(client.requests) == 3
 
 
 def test_an_empty_length_reply_on_the_final_attempt_ends_the_run(tmp_path):

@@ -167,6 +167,14 @@ TOOL_NAMES = (
     "inspect_evidence",
     "propose_patch",
 )
+# Every action by its literal tool name, in the order shown to the model (slice 4g).
+ACTION_MODELS = {
+    "list_project_files": ListProjectFiles,
+    "read_project_file": ReadProjectFile,
+    "inspect_evidence": InspectEvidence,
+    "propose_patch": ProposePatch,
+    "finish": Finish,
+}
 
 
 class Reply(BaseModel):
@@ -175,11 +183,41 @@ class Reply(BaseModel):
 
 
 class ReplyRejected(ValueError):
-    """The reply is not one valid action; `code` names the first problem found."""
+    """The reply is not one valid action; `code` names the first problem found. For a schema
+    failure, `tool` is the action's tool name when the reply named one of the five literal
+    names (so it is always one of ours, never reply text), else None (slice 4g)."""
 
-    def __init__(self, code: str, detail: str = ""):
+    def __init__(self, code: str, detail: str = "", *, tool: str | None = None):
         super().__init__(f"{code}: {detail}" if detail else code)
         self.code = code
+        self.tool = tool
+
+
+def allowed_fields(tool: str) -> str:
+    """The fields of `tool`'s action, from its JSON schema as shown to the model: `tool`
+    first, then its own fields, then `rationale`, the required ones marked, plus any
+    exactly-one rule (slice 4g)."""
+    schema = ACTION_MODELS[tool].model_json_schema()
+    names = list(schema["properties"])
+    names = (
+        ["tool"] + [n for n in names if n not in ("tool", "rationale")] + ["rationale"]
+    )
+    required = set(schema.get("required", ()))
+    text = ", ".join(f"{n} (required)" if n in required else n for n in names)
+    one_of = [
+        r for branch in schema.get("oneOf", ()) for r in branch.get("required", ())
+    ]
+    if one_of:
+        text += f"; exactly one of {' or '.join(one_of)}"
+    return f"allowed fields for {tool}: {text}"
+
+
+def _named_tool(data: dict) -> str | None:
+    """The reply's tool name if it is exactly one of the five literals, else None. Reads the
+    already strictly parsed JSON; it changes nothing about validation."""
+    action = data.get("action")
+    tool = action.get("tool") if isinstance(action, dict) else None
+    return tool if isinstance(tool, str) and tool in ACTION_MODELS else None
 
 
 def _no_duplicate_keys(pairs):
@@ -211,7 +249,9 @@ def parse_reply(content) -> Reply:
     except ValidationError as exc:
         first = exc.errors()[0]
         where = ".".join(str(p) for p in first.get("loc", ()))
-        raise ReplyRejected("schema", f"{where}: {first.get('type')}") from None
+        raise ReplyRejected(
+            "schema", f"{where}: {first.get('type')}", tool=_named_tool(data)
+        ) from None
 
 
 def schema_text() -> str:

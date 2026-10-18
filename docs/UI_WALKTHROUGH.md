@@ -33,7 +33,7 @@ Open http://localhost:8501. The server binds to localhost only, and usage statis
 | `s06_missing_metadata` (either mode) | `INCONCLUSIVE`, three NOT_ASSESSED rows `missing_metadata`, a next action, incomplete coverage listed |
 | `s08a_combined_claim` | `NOT_SUPPORTED`, its label, the intake reason and "Split the claim into one supported type…"; nothing executes |
 | `s01_faulty`, "Provider timeout" | ERROR `model_timeout (after one retry)`, 2 of 6 attempts, one retry; the original's finding stays; **Start a new run** repeats it |
-| `s01_faulty`, "Invalid reply" | ERROR `schema_failure: not_json` after two attempts: the first invalid reply is corrected once (slice 4d), the second in a row ends the run; nothing is repaired |
+| `s01_faulty`, "Invalid reply" | ERROR `schema_failure: not_json` after three attempts: the first two invalid replies are corrected (slice 4g), the third in a row ends the run; nothing is repaired |
 | `s01_faulty`, "Propose a malformed revision" | The proposal is rejected `malformed_diff`; the validator message is shown under its own label, and the persisted diff is shown with its hash; no comparison card |
 | A wrong prefix at the candidate panel | "Confirmation did not match: NOT approved."; the proposal is `declined` (`confirmation_mismatch`); nothing executes |
 | Refresh during an approval | The same request reappears; no second run starts |

@@ -81,11 +81,11 @@ def test_invalid_reply_is_a_schema_failure_without_repair(app, docker, page):
     assert report["terminal_state"] == "ERROR"
     assert report["terminal_reason"].startswith("schema_failure: ")
     assert report["terminal_reason"] in text(page, "terminal")
-    # Slice 4d: the first invalid reply is corrected once; the second in a row ends the run.
-    assert report["budget"]["used"]["attempts"] == 2
-    assert [f["corrected"] for f in report["schema_failures"]] == [False, False]
+    # Slice 4g: the first two invalid replies are corrected; the third in a row ends the run.
+    assert report["budget"]["used"]["attempts"] == 3
+    assert [f["corrected"] for f in report["schema_failures"]] == [False] * 3
     rows = table_rows(page, "trace-attempts")
-    assert len(rows) == 2 and all(r[2].startswith("schema_failure") for r in rows)
+    assert len(rows) == 3 and all(r[2].startswith("schema_failure") for r in rows)
     assert page.get_by_role("button", name="Start a new run").is_visible()
 
 

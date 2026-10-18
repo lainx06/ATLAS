@@ -28,8 +28,11 @@ propagates with a note that no report was saved. A failing approver is a recorde
   200 characters of the parser's message; the reply itself is never quoted). It is an ordinary
   attempt within the 6-attempt budget and authorizes nothing. Since slice 4e, a reply that hit
   the output limit before writing anything (`incomplete_length`: finish reason `length`, no
-  text) is corrected the same way. Two consecutive schema failures, a schema failure on the
-  final attempt, or any other reply-metadata failure (`mislabelled`; `incomplete`, which
+  text) is corrected the same way. Since slice 4g up to two consecutive failures are
+  corrected, and a `schema` correction adds the allowed fields of the tool the reply named (one
+  of the five literals) or the five tool names, all from the schema; a correction is at most
+  1,000 characters (`correction`). A third consecutive schema failure, a schema failure on
+  the final attempt, or any other reply-metadata failure (`mislabelled`; `incomplete`, which
   includes a `length` reply with text) end the run ERROR.
 - **Rationales are model-written (slice 4e).** Any action may carry an optional bounded
   `rationale`. It is recorded in `model_text` as model-written and is never a tool argument,
@@ -114,6 +117,7 @@ from atlas.agent.execute import CandidateResult
 from atlas.agent.network import deny_network
 from atlas.agent.report import comparison_report
 from atlas.agent.schemas import (
+    ACTION_MODELS,
     CHECKS,
     MAX_REPLY_BYTES,
     TOOL_NAMES,
@@ -123,6 +127,7 @@ from atlas.agent.schemas import (
     ProposePatch,
     ReadProjectFile,
     ReplyRejected,
+    allowed_fields,
     parse_reply,
     schema_text,
 )
@@ -151,13 +156,18 @@ BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 ERROR = "ERROR"
 MAX_TOOL_RESULT_CHARS = 16_000
 MAX_PROMPT_CHARS = 96_000
-PROMPT_EXAMPLE = '{"action": {"tool": "read_project_file", "path": "src/train.py"}}'
+PROMPT_EXAMPLE = (
+    '{"action": {"tool": "read_project_file", "path": "src/train.py", '
+    '"rationale": "see how the data is split"}}'
+)
 SYSTEM_INSTRUCTIONS = (
     "You assist ATLAS, which checks whether an evaluation supports its deployment claim. "
     "Reply with one raw JSON object and nothing else: no Markdown code fences, and no text "
-    "before or after it. Keep any reasoning brief and the reply short. The object is "
-    '{"action": {...}} with exactly one action matching the '
-    f"given schema, for example {PROMPT_EXAMPLE} (the path is illustrative). You may inspect "
+    "before or after it. Valid JSON only: no trailing commas, no comments. Keep any "
+    'reasoning brief and the reply short. The object is {"action": {...}} with exactly one '
+    f"action matching the given schema, for example {PROMPT_EXAMPLE} (the path is "
+    "illustrative). Use only the fields listed for the chosen tool; finish is the only tool "
+    "with summary. You may inspect "
     "the project and its check results and propose at most two revisions of the entry point, "
     'keeping its ATLAS adapter calls. Use "diff" (a unified diff) for a small edit, or '
     '"new_source" (the complete revised file, ending with a newline) when rewriting most of '
@@ -177,8 +187,12 @@ REPLY_LABEL = "model-written (untrusted); never evidence"
 # The corrective turn (slice 4d). Only parse_reply's content failures and, since slice 4e, an
 # empty reply cut off by the output limit (`incomplete_length`) are corrected, each with fixed
 # text; other reply-metadata failures (`mislabelled`, `incomplete`) end the run as before.
+# Since slice 4g, up to two consecutive failures are corrected, and a `schema` correction adds
+# the named tool's allowed fields (or the five tool names), derived from the schema.
 CORRECTION_TOOL = "reply_validation"
 MAX_PARSER_MESSAGE_CHARS = 200
+MAX_CONSECUTIVE_CORRECTIONS = 2
+MAX_CORRECTION_CHARS = 1000  # the whole correction, as serialized into the prompt
 CORRECTION_NOTE = (
     "Your previous reply was rejected; it is not quoted here and nothing in it was acted on. "
     "Reply again with one raw JSON object."
@@ -189,8 +203,8 @@ CORRECTION_EXPLANATIONS = {
     "empty": "The reply was empty or only whitespace.",
     "not_json": (
         "The reply was not one valid JSON object. Common causes: Markdown code fences, text "
-        "before or after the object, or a newline or double quote inside a string that is "
-        'not escaped (write \\n and \\").'
+        "before or after the object, a newline or double quote inside a string that is not "
+        'escaped (write \\n and \\"), a trailing comma after the last field, or a comment.'
     ),
     "duplicate_key": "The reply repeated a key inside one JSON object.",
     "not_an_object": 'The reply was JSON but not an object; send {"action": {...}}.',
@@ -964,37 +978,27 @@ class _Run:
         }
 
     def _schema_failure(self, attempt: int, exc: ReplyRejected) -> None:
-        """Record a schema failure, then end the run or queue one corrective turn.
+        """Record a schema failure, then end the run or queue a corrective turn.
 
         The run ends ERROR (the existing reason format) on a reply-metadata failure, on a
-        second consecutive failure, or when no attempt remains. Otherwise the next request's
-        history carries a correction: the code, its fixed explanation and at most
-        MAX_PARSER_MESSAGE_CHARS of the parser's message; the reply is never quoted. The next
-        request is an ordinary attempt (reserved and checked as usual)."""
+        third consecutive failure (slice 4g; the second in slices 4d-4f), or when no attempt
+        remains. Otherwise the next request's history carries `correction(exc)`; the reply is
+        never quoted. The next request is an ordinary attempt (reserved and checked as usual)."""
         self.schema_failures.append(
             {"attempt": attempt, "code": exc.code, "corrected": False}
         )
         self.consecutive_failures += 1
         if (
             exc.code not in CORRECTION_EXPLANATIONS
-            or self.consecutive_failures > 1
+            or self.consecutive_failures > MAX_CONSECUTIVE_CORRECTIONS
             or not self.budget.can_attempt()
         ):
             raise _Terminal(ERROR, f"schema_failure: {exc.code}")
-        correction = {
-            "schema_failure": exc.code,
-            "explanation": CORRECTION_EXPLANATIONS[exc.code],
-            "parser_message": str(exc)[:MAX_PARSER_MESSAGE_CHARS],
-            "note": CORRECTION_NOTE,
-        }
+        fix = correction(exc)
         self.transcript.append(
-            {
-                "tool": CORRECTION_TOOL,
-                "args": {"attempt": attempt},
-                "result": correction,
-            }
+            {"tool": CORRECTION_TOOL, "args": {"attempt": attempt}, "result": fix}
         )
-        text = json.dumps(correction, sort_keys=True)
+        text = json.dumps(fix, sort_keys=True)
         self.log({"event": "correction", "attempt": attempt, "schema_failure": exc.code,
                   "message_sha256": sha256_bytes(text.encode("utf-8")),
                   "message_chars": len(text)})  # fmt: skip
@@ -1438,6 +1442,40 @@ class _Run:
             return report
         except Exception:  # noqa: BLE001 - the caller re-raises the original failure
             return None
+
+
+def correction(exc: ReplyRejected) -> dict:
+    """The corrective message for an eligible schema failure, from fixed text and the schema
+    only: the code, its fixed explanation, the parser's message cut at
+    MAX_PARSER_MESSAGE_CHARS, and the note. A `schema` failure also gets the allowed fields of
+    the tool the reply named, when that is one of the five literal names (`exc.tool`, so the
+    name is ours), or else the five tool names (slice 4g).
+
+    Reply text can reach it only through the parser's message: field names in a `schema`
+    location and keys in a `duplicate_key` message. That part is cut at 200 characters and,
+    if the serialized correction would exceed MAX_CORRECTION_CHARS (JSON escaping can grow
+    it), cut further from its end."""
+    fix = {
+        "schema_failure": exc.code,
+        "explanation": CORRECTION_EXPLANATIONS[exc.code],
+        "parser_message": "",
+        "note": CORRECTION_NOTE,
+    }
+    if exc.code == "schema":
+        tool = getattr(exc, "tool", None)
+        if tool in ACTION_MODELS:
+            fix.update(tool=tool, allowed_fields=allowed_fields(tool))
+        else:
+            fix["tools"] = "known tools: " + ", ".join(ACTION_MODELS)
+    message = str(exc)[:MAX_PARSER_MESSAGE_CHARS]
+    while message:
+        fix["parser_message"] = message
+        if len(json.dumps(fix, sort_keys=True)) <= MAX_CORRECTION_CHARS:
+            break
+        message = message[:-1]
+    else:
+        fix["parser_message"] = ""
+    return fix
 
 
 def _since(t0: float) -> float:

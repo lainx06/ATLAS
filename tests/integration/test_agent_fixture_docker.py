@@ -301,3 +301,56 @@ def test_the_live_run_4_replay_feeds_the_error_back_and_the_fix_runs(
         "executed",
     ]
     assert len(client.requests) == 3
+
+
+def test_the_live_run_5_replay_recovers_and_a_candidate_runs_in_docker(
+    isolation, tmp_path
+):
+    """T-06 slice 4g: live run 5's two replies byte for byte (an undeclared `summary` field,
+    then a trailing comma), each corrected from the schema and fixed text; then a valid read
+    and a valid new_source revision, approved by the test approver and executed in the real
+    runner."""
+    fix = (S02 / "evaluate.py").read_text(encoding="utf-8")
+    a1 = (
+        '\n{\n  "action": {\n    "tool": "read_project_file",\n    "path": "evaluate.py",\n'
+        '    "rationale": "Examine current evaluation script to understand how splits are '
+        'created and where violations arise.",\n    "summary": "Read the entry point file."\n'
+        "  }\n}"
+    )
+    a2 = (
+        '\n{\n    "action": {\n        "tool": "list_project_files",\n        "rationale": "See '
+        'what files are present to locate evaluate.py and any related code.",\n    }\n}'
+    )
+    script = [
+        {"content": a1},
+        {"content": a2},
+        {"content": json.dumps({"action": {"tool": "read_project_file", "path": "evaluate.py"}})},
+        {"content": json.dumps({"action": {"tool": "propose_patch", "new_source": fix, "rationale": "fold-local selection, grouped folds"}})},
+        {"content": json.dumps({"action": {"tool": "finish", "summary": "done"}})},
+    ]  # fmt: skip
+    approver = ApproveExactly()
+    client = FixtureClient("s4g-docker", script)
+    result = ctl.run_agent(S01, tmp_path / "runs", client, approver, env={})
+
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert result.report["schema_failures"] == [
+        {"attempt": 1, "code": "schema", "corrected": False},
+        {"attempt": 2, "code": "not_json", "corrected": True},
+    ]
+
+    def corrections(request):
+        (user,) = [m for m in request.messages if m["role"] == "user"]
+        history = json.loads(user["content"])["history"]
+        return [h["result"] for h in history if h["tool"] == ctl.CORRECTION_TOOL]
+
+    (first,) = corrections(client.requests[1])
+    assert first["allowed_fields"].startswith("allowed fields for read_project_file:")
+    assert "trailing comma" in corrections(client.requests[2])[-1]["explanation"]
+    assert [r.kind for r in approver.requests] == ["original", "candidate"]
+    (candidate,) = result.candidates
+    assert candidate.execution["status"] == "completed"
+    assert candidate.execution["container_removed"] is True
+    assert candidate.outcome.outcome is Outcome.NO_VIOLATION_FOUND
+    (record,) = result.report["proposals"]
+    assert (record["source_kind"], record["outcome"]) == ("new_source", "executed")
+    assert len(client.requests) == 5

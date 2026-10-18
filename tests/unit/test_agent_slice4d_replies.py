@@ -202,19 +202,22 @@ def test_a_reply_without_text_has_no_file_and_is_corrected(tmp_path):
 # =============================================================================================
 
 
-def test_two_consecutive_schema_failures_end_the_run(tmp_path):
-    result, client, executor = run(tmp_path, [READ, PROSE, FENCED, NEW_SOURCE, FINISH])
+def test_three_consecutive_schema_failures_end_the_run(tmp_path):
+    """Since slice 4g two consecutive failures are corrected; the third ends the run."""
+    script = [READ, PROSE, FENCED, UNESCAPED, NEW_SOURCE, FINISH]
+    result, client, executor = run(tmp_path, script)
     assert (result.terminal_state, result.reason) == (
         ctl.ERROR,
         "schema_failure: not_json",
     )
-    assert len(client.requests) == 3 and executor.calls == []
+    assert len(client.requests) == 4 and executor.calls == []
     assert result.report["schema_failures"] == [
         {"attempt": 2, "code": "not_json", "corrected": False},
         {"attempt": 3, "code": "not_json", "corrected": False},
+        {"attempt": 4, "code": "not_json", "corrected": False},
     ]
     assert (
-        "2 replies failed validation; 0 corrected on the next turn"
+        "3 replies failed validation; 0 corrected on the next turn"
         in (result.report["limitations"])
     )
     assert result.report["scientific_outcomes"]["original"] == "VIOLATION_FOUND"
