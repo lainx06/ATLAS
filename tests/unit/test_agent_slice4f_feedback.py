@@ -154,6 +154,70 @@ def test_host_paths_are_redacted_and_container_paths_kept(tmp_path):
     assert "/opt/atlas/atlas_runner_entry.py" in summary["traceback"]
 
 
+@pytest.mark.parametrize(
+    "output",
+    [
+        "//server/private/customer.csv",  # combined review 1, F1
+        "\\\\server\\private\\customer.csv",
+        "\\\\server/private/customer.csv",
+        "/\\server\\private/customer.csv",
+        "\\\\\\\\server\\\\private\\\\customer.csv",  # repr-doubled
+        "\\\\server\\private share\\customer.csv",
+        "OSError: cannot read //server/private share/customer.csv",
+    ],
+)
+def test_unc_paths_are_redacted_in_every_slash_style(output):
+    summary = failure().summarize(output, env={})
+    assert "server" not in summary["traceback"]
+    assert "customer" not in summary["traceback"]
+    assert summary["traceback"].endswith("<host-path>")
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        # combined review 1, F1: the path's suffix after the space leaked
+        ("C:\\Users\\Alice Smith\\private\\customer.csv", "<host-path>"),
+        ("C:/Users/Alice Smith/private/customer.csv", "<host-path>"),
+        (
+            "OSError: cannot read C:/Users/Alice Smith/data.csv (mode r)",
+            "OSError: cannot read <host-path>",
+        ),
+        (
+            '  File "C:\\Users\\Alice Smith\\proj\\x.py", line 3, in <module>',
+            '  File "<host-path>", line 3, in <module>',
+        ),
+        (
+            "    open('C:/Users/Alice Smith/data.csv', 'rb')",
+            "    open('<host-path>', 'rb')",
+        ),
+        (
+            "    open('//server/my share/a b.csv') + x",
+            "    open('<host-path>') + x",
+        ),
+    ],
+)
+def test_paths_with_spaces_are_redacted_whole(output, expected):
+    assert failure().summarize(output, env={})["traceback"] == expected
+
+
+def test_a_path_split_across_lines_is_redacted_only_on_its_first_line():
+    """The documented limit: redaction is per line and best-effort, so text the candidate
+    deliberately splits across lines keeps its later lines (SPEC §11)."""
+    output = "C:\\Users\\Alice Smith\nprivate\\customer.csv"
+    lines = failure().summarize(output, env={})["traceback"].split("\n")
+    assert lines[0] == "<host-path>"
+    assert lines[1] == "private\\customer.csv"
+
+
+def test_urls_floor_division_and_container_paths_are_kept():
+    output = (
+        "see https://example.org/a/b and file x//2 or (a)//2\n"
+        '  File "/work/project/evaluate.py", line 3, in <module>'
+    )
+    assert failure().summarize(output, env={})["traceback"] == output
+
+
 def test_host_environment_values_and_the_key_are_redacted():
     env = {"SOME_TOKEN": "tok-0123456789abcdef", "SHORT": "ab", "EMPTY": ""}
     output = (

@@ -109,6 +109,21 @@ def test_anything_but_the_exact_prefix_declines(tmp_path, typed):
     assert out["result"] is None and approver.last_reason == "confirmation_mismatch"
 
 
+@pytest.mark.parametrize("upper", [False, True], ids=["lower", "upper"])
+def test_the_snapshot_hash_prefix_declines(tmp_path, upper):
+    """Combined review 1, F2: the panel shows the snapshot hash next to the code hash; its
+    prefix is not the confirmation, in either case."""
+    typed = request().base_snapshot_hash[:12]
+    typed = typed.upper() if upper else typed
+    approver, out, pending = decide_with(tmp_path, typed)
+    assert pending["base_snapshot_hash"][:12] == typed.lower() != HASH[:12]
+    assert out == {"result": None}  # no approval returned
+    assert approver.last_reason == "confirmation_mismatch"
+    assert ch.read_decisions(tmp_path) == [
+        {"kind": "candidate", "decision": "declined"}
+    ]
+
+
 def test_closing_the_panel_means_unavailable(tmp_path):
     approver, out, _ = decide_with(tmp_path, None)
     assert "unavailable" in out and approver.last_reason == "input_closed"

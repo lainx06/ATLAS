@@ -9,9 +9,17 @@ output only; nothing in the runner changes.
 The summary is the exception line of the last traceback (its type and message) plus at most
 the last MAX_LINES lines of that traceback, or of the output when there is no traceback. Both
 together are at most MAX_CHARS characters, keeping the end. Before bounding, host paths (the
-given host strings and any Windows drive or UNC path), host environment values and the given
-secrets are redacted; then every control or format character except the line separator is
-escaped. It is candidate-written text, labelled untrusted: never evidence and never an outcome.
+given host strings, and any Windows drive or UNC path in either slash style: a quoted one is
+replaced whole, an unquoted one up to the end of its line), host environment values and the
+given secrets are redacted; then every control or format character except the line separator
+is escaped. It is candidate-written text, labelled untrusted: never evidence and never an
+outcome.
+
+Redaction is best-effort for host paths and known values, not a guarantee. The candidate runs
+in a container whose only mounts are under /work, so a host path reaches its output only
+through text the candidate itself constructs. Path text deliberately split or encoded across
+lines (or otherwise transformed) is not guaranteed to be redacted; only exact known values are
+replaced, not fragments of them.
 """
 
 import os
@@ -28,10 +36,18 @@ HOST_PATH = "<host-path>"
 ENV_VALUE = "<env-redacted>"
 SECRET = "<redacted>"
 TRACEBACK_HEADER = "Traceback (most recent call last):"
-# A Windows drive path (C:\..., C:/..., or repr-doubled C:\\...) or a UNC path (\\host\...),
-# up to the next whitespace, quote or bracket. Container paths (/work, /opt, /usr) are kept.
-_WINDOWS_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s'\"<>|()\[\]{},;]*")
-_UNC_PATH = re.compile(r"\\{2,}[A-Za-z0-9._$-]+(?:\\+[^\s'\"<>|()\[\]{},;]*)?")
+# The start of a Windows drive path (C:\, C:/, repr-doubled C:\\) or a UNC path in any slash
+# style (\\host, //host/, \\host/, /\host\, repr-doubled \\\\host). A forward-slash UNC path
+# needs its share separator, and none may follow a word character, ":" or a slash, so URLs
+# (https://...), floor division (x//2) and container paths (/work, /opt, /usr) are kept.
+_DRIVE = r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"
+_HOST = r"[A-Za-z0-9._$-]+"
+_UNC = rf"(?<![\w:/\\])(?:\\{{2,}}{_HOST}|[\\/]{{2,}}{_HOST}[\\/])"
+# A quoted string that starts with a host path is replaced whole, keeping its quotes (a
+# traceback's File "C:\Users\Alice Smith\x.py"); an unquoted one runs to the end of its line,
+# spaces included.
+_QUOTED_PATH = re.compile(rf"(['\"])(?:{_DRIVE}|{_UNC})[^\n]*?\1")
+_PATH_TO_EOL = re.compile(rf"(?:{_DRIVE}|{_UNC})[^\n]*")
 
 
 def summarize(
@@ -89,8 +105,8 @@ def _redact(text: str, host_strings, env, secrets) -> str:
     for value in sorted(hosts | values, key=len, reverse=True):
         marker = HOST_PATH if value in hosts else ENV_VALUE
         text = re.sub(re.escape(value), marker, text, flags=re.IGNORECASE)
-    text = _UNC_PATH.sub(HOST_PATH, text)
-    return _WINDOWS_PATH.sub(HOST_PATH, text)
+    text = _QUOTED_PATH.sub(lambda m: m[1] + HOST_PATH + m[1], text)
+    return _PATH_TO_EOL.sub(HOST_PATH, text)
 
 
 def _escape(line: str) -> str:

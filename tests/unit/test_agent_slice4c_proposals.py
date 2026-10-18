@@ -12,6 +12,8 @@ import hashlib
 import importlib.util
 import io
 import json
+import threading
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -421,6 +423,79 @@ def test_a_declined_revision_is_recorded_with_the_approvers_reason(
         "1 proposal: 0 rejected by validation, 1 declined, 0 executed"
         in result.report["limitations"]
     )
+
+
+@pytest.mark.parametrize("typed", ["<snapshot>", "<SNAPSHOT>"], ids=["lower", "upper"])
+def test_the_snapshot_hash_prefix_executes_nothing_at_the_terminal(
+    tmp_path, monkeypatch, evidence, no_host_runner, typed
+):
+    """Combined review 1, F2: typing the shown snapshot hash's prefix declines the revision."""
+    S.fake_docker(monkeypatch, [evidence["faulty"]])
+    screen = io.StringIO()
+    approver = TerminalApprover(S.FakeStdin(["<prefix>", typed], out=screen), screen)
+    executor = S.RecordingExecutor()
+    result = fixture_run(tmp_path, [NEW_SOURCE, FINISH], approver, executor)
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert [c.name for c in executor.calls] == ["original"]  # no candidate executed
+    assert result.candidates == []
+    (record,) = result.report["proposals"]
+    assert (record["outcome"], record["code"]) == ("declined", "confirmation_mismatch")
+    assert "Confirmation did not match: NOT approved." in screen.getvalue()
+
+
+@pytest.mark.parametrize("upper", [False, True], ids=["lower", "upper"])
+def test_the_snapshot_hash_prefix_executes_nothing_in_the_browser(
+    tmp_path, monkeypatch, evidence, no_host_runner, upper
+):
+    """The same through the UI's BrowserApprover, answered as the page answers it."""
+    from atlas.ui import approver as ch
+
+    S.fake_docker(monkeypatch, [evidence["faulty"]])
+    channel = tmp_path / "channel"
+    channel.mkdir()
+    ch.touch(channel)
+    executor = S.RecordingExecutor()
+    out = {}
+
+    def run():
+        out["result"] = fixture_run(
+            tmp_path, [NEW_SOURCE, FINISH], ch.BrowserApprover(channel), executor
+        )
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    for seq in (1, 2):  # the original's approval, then the revision's
+        # Open pending.json only while the worker waits for this answer (it has recorded
+        # every earlier decision): Windows refuses to delete or replace an open file.
+        deadline = time.time() + 60
+        pending = None
+        while pending is None:
+            assert worker.is_alive() and time.time() < deadline
+            time.sleep(0.05)
+            if len(ch.read_decisions(channel)) == seq - 1 and (
+                (channel / ch.PENDING).exists()
+            ):
+                pending = ch.read_pending(channel)  # None while just being replaced
+        assert pending["seq"] == seq
+        if seq == 1:
+            typed = pending["candidate_hash"][:12]
+        else:
+            typed = pending["base_snapshot_hash"][:12]
+            assert typed != pending["candidate_hash"][:12]
+            typed = typed.upper() if upper else typed
+        ch.touch(channel)
+        assert ch.answer(channel, seq, typed) is True
+    worker.join(timeout=60)
+    result = out["result"]
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert [c.name for c in executor.calls] == ["original"]  # no candidate executed
+    assert result.candidates == []
+    (record,) = result.report["proposals"]
+    assert (record["outcome"], record["code"]) == ("declined", "confirmation_mismatch")
+    assert ch.read_decisions(channel) == [
+        {"kind": "original", "decision": "approved"},
+        {"kind": "candidate", "decision": "declined"},
+    ]
 
 
 def test_an_unavailable_or_unbound_approval_is_recorded(

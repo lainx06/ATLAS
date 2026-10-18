@@ -55,6 +55,7 @@ DIFF = "".join(
 )
 KEY = "sk-test-SECRET-do-not-leak-0123456789"
 HASH = re.compile(r"Code hash:\s+([0-9a-f]{64})")
+SNAPSHOT = re.compile(r"Snapshot hash:\s+([0-9a-f]{64})")
 
 
 def act(tool: str, **fields) -> str:
@@ -146,6 +147,9 @@ class FakeStdin:
         line = self.lines.pop(0)
         if line == "<prefix>":  # what a person reads off the screen
             return HASH.findall(self.out.getvalue())[-1][:12] + "\n"
+        if line.lower() == "<snapshot>":  # the wrong hash's prefix; <SNAPSHOT>: upper
+            typed = SNAPSHOT.findall(self.out.getvalue())[-1][:12]
+            return (typed.upper() if line == "<SNAPSHOT>" else typed) + "\n"
         return line
 
 
@@ -180,11 +184,23 @@ def test_the_typed_prefix_approves_and_the_full_hash_is_recorded():
         "yes\n",
         "\n",
         "zz12cd34ef56\n",
+        # combined review 1, F2: the snapshot hash is shown too; its prefix never approves
+        "c" * 12 + "\n",
+        "C" * 12 + "\n",
     ],
-    ids=["eleven_chars", "full_hash", "yes", "empty", "wrong"],
+    ids=[
+        "eleven_chars",
+        "full_hash",
+        "yes",
+        "empty",
+        "wrong",
+        "snapshot_prefix",
+        "snapshot_prefix_upper",
+    ],
 )
 def test_anything_but_the_exact_prefix_declines(typed):
     approver = TerminalApprover(FakeStdin([typed]), io.StringIO())
+    assert request().base_snapshot_hash == "c" * 64
     assert approver.decide(request()) is None
     assert approver.last_reason == "confirmation_mismatch"
 
