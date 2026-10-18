@@ -1,0 +1,6 @@
+* text=auto eol=lf
+tests/fixtures/** -text
+*.png binary
+*.jpg binary
+*.parquet binary
+*.zip binary
