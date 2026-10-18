@@ -201,6 +201,39 @@ def test_paths_with_spaces_are_redacted_whole(output, expected):
     assert failure().summarize(output, env={})["traceback"] == expected
 
 
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        # combined re-verification (runs/cr2/probes.json "quoted_apostrophe"): the apostrophe
+        # ended the quoted path and leaked Brien\private\customer.csv
+        (
+            "'C:\\Users\\O'Brien\\private\\customer.csv'",
+            "'<host-path>'",
+        ),
+        # runs/cr2/probes.json "repr_list_apostrophe"
+        (
+            '["C:\\\\Users\\\\O\'Brien\\\\private\\\\customer.csv"]',
+            '["<host-path>"]',
+        ),
+        ('"C:\\Users\\O"Brien\\x.csv"', '"<host-path>"'),
+        (
+            'File "C:\\Users\\Alice Smith\\x.py", line 3, in <module>',
+            'File "<host-path>", line 3, in <module>',
+        ),
+        (
+            "['C:\\\\Users\\\\O'Brien\\\\x.csv', 'D:\\\\y']",
+            "['<host-path>', '<host-path>']",
+        ),
+        # no closing quote on the line: redacted to its end, as an unquoted path
+        ("open('C:\\Users\\O'Brien\\x.csv'.strip())", "open('<host-path>"),
+    ],
+)
+def test_a_quoted_path_ends_only_at_a_closing_quote(output, expected):
+    """A quote inside the path (O'Brien) is part of it: the path ends only at the same quote
+    followed by the end of the line, whitespace or one of , ) ] } : ;."""
+    assert failure().summarize(output, env={})["traceback"] == expected
+
+
 def test_a_path_split_across_lines_is_redacted_only_on_its_first_line():
     """The documented limit: redaction is per line and best-effort, so text the candidate
     deliberately splits across lines keeps its later lines (SPEC §11)."""

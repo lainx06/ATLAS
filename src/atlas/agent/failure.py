@@ -10,10 +10,10 @@ The summary is the exception line of the last traceback (its type and message) p
 the last MAX_LINES lines of that traceback, or of the output when there is no traceback. Both
 together are at most MAX_CHARS characters, keeping the end. Before bounding, host paths (the
 given host strings, and any Windows drive or UNC path in either slash style: a quoted one is
-replaced whole, an unquoted one up to the end of its line), host environment values and the
-given secrets are redacted; then every control or format character except the line separator
-is escaped. It is candidate-written text, labelled untrusted: never evidence and never an
-outcome.
+replaced whole up to its closing quote, an unquoted one, or one with no closing quote on its
+line, up to the end of its line), host environment values and the given secrets are redacted;
+then every control or format character except the line separator is escaped. It is
+candidate-written text, labelled untrusted: never evidence and never an outcome.
 
 Redaction is best-effort for host paths and known values, not a guarantee. The candidate runs
 in a container whose only mounts are under /work, so a host path reaches its output only
@@ -44,9 +44,11 @@ _DRIVE = r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"
 _HOST = r"[A-Za-z0-9._$-]+"
 _UNC = rf"(?<![\w:/\\])(?:\\{{2,}}{_HOST}|[\\/]{{2,}}{_HOST}[\\/])"
 # A quoted string that starts with a host path is replaced whole, keeping its quotes (a
-# traceback's File "C:\Users\Alice Smith\x.py"); an unquoted one runs to the end of its line,
-# spaces included.
-_QUOTED_PATH = re.compile(rf"(['\"])(?:{_DRIVE}|{_UNC})[^\n]*?\1")
+# traceback's File "C:\Users\Alice Smith\x.py"). It ends only at the same quote followed by
+# the end of the line, whitespace or one of , ) ] } : ; - any other quote is part of the path
+# ('C:\Users\O'Brien\x.csv'). With no such quote on the line, and for an unquoted path, the
+# redaction runs to the end of the line, spaces included.
+_QUOTED_PATH = re.compile(rf"(['\"])(?:{_DRIVE}|{_UNC})[^\n]*?\1(?![^,)\]}}:;\s])")
 _PATH_TO_EOL = re.compile(rf"(?:{_DRIVE}|{_UNC})[^\n]*")
 
 
