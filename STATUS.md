@@ -1,17 +1,25 @@
 # ATLAS status
 
-WRITER: Claude Code (T-06 slice 4g, branch `t06-s4g`; Claude Code owns live run 6)
+WRITER: Claude Code (T-06 slice 4h, branch `t06-s4h`)
 MODEL: Claude Opus 5.5 high
-CURRENT STEP: T-06 slice 4. **Live run 5 ended ERROR** after two malformed replies in a row. **Slice 4g** (`baf7c04`, branch `t06-s4g`, not merged) allows two consecutive corrective turns with schema-derived corrections. **Next: the user's go-ahead for live run 6.**
-- **Total estimated live spend, runs 1 to 5: about $0.039 ($0.0389433)** (0.0087333 + 0.0025863 + 0 + 0.0094995 + 0.0166986 + 0.0014256; provider-reported usage at listed prices, not billing).
-- **Key checks** (the user's literal-key search): runs 1 to 4 recorded 0; **run 5 pending the user's check**.
+CURRENT STEP: T-06 slice 4. **Live run 6 was the first complete live end-to-end success** (violation found -> model-proposed fix -> human approval -> isolated execution -> trusted re-evaluation NO_VIOLATION_FOUND). **Slice 4h** (`b900373`, branch `t06-s4h`, not merged) adds finish-after-success guidance and a recorded-run viewer. **Next: the combined Codex review (slices 4c-4h, T-07, T-09, live runs 2-6), then the lead's T-06 acceptance decision.**
+- **Total estimated live spend, runs 1 to 6: about $0.058 ($0.0580317)** (0.0087333 + 0.0025863 + 0 + 0.0094995 + 0.0166986 + 0.0014256 + 0.0190884; provider-reported usage at listed prices, not billing).
+- **Key checks** (the user's literal-key search): **0 for all runs** (runs 1 to 6).
+- **Live run 6** (`runs/live6/agent-s01_faulty-877f8245a8a2/`):
+  - BUDGET_EXHAUSTED (2 revisions); the original is VIOLATION_FOUND;
+  - 5 requests, 0 retries, 0 schema failures; estimated **$0.0190884** (not billing);
+  - revision 1 (`new_source`) approved by the user and executed in Docker: completed, **NO_VIOLATION_FOUND**; four checks FAIL -> PASS (`split.no_group_overlap`, `split.sampling_unit_disjoint`, `split.repeated_measures_rule`, `fit.state_dependencies_within_fold_train`); balanced accuracy pooled 0.68125 (original) and 0.675 (candidate), descriptive only;
+  - revision 2 rejected by `validate_diff` (`syntax_error`); attempt 5 hit the 2-revision limit.
+
+  Record: TASKS.md T-06 "LIVE RUN 6".
+- **Slice 4h** (`b900373`; DECISIONS.md "Lead decisions, 2026-10-17" item 14): a fixed finish-after-success line in a NO_VIOLATION_FOUND candidate's evaluate_candidate result plus one prompt sentence (guidance only; the model still decides); the UI view "Open a recorded run" (read-only, re-verifies every recorded hash before display, "evidence changed since recording" and no headline on a mismatch; the basis for hosted replay, T-12). Full suite with Docker required: 1357 passed, 1 skipped. Unreviewed. Record: TASKS.md T-06 "SLICE 4h RESULT".
 - **Live run 5** (`runs/live5/agent-s01_faulty-a53e65ecf004/`):
   - ERROR, `schema_failure: not_json`; the original is VIOLATION_FOUND; no proposals;
   - 2 requests, 0 retries; estimated **$0.0014256** (not billing);
   - a1 added an undeclared `summary` field to `read_project_file` (`schema`, corrected once); a2 had a trailing comma (`not_json`), the second failure in a row.
 
   Record: TASKS.md T-06 "LIVE RUN 5".
-- **Slice 4g** (`baf7c04`; DECISIONS.md "Lead decisions, 2026-10-17" item 13): up to two consecutive corrective turns within the 6-request budget; corrections from the schema and fixed text only (allowed fields of the named tool, or the five tool names; trailing commas and comments named for `not_json`), never quoting the reply; two prompt sentences and a rationale in the example. Native tool calling held in reserve. Full suite with Docker required: 1329 passed, 1 skipped. Unreviewed. Record: TASKS.md T-06 "SLICE 4g RESULT".
+- **Slice 4g** (`baf7c04`, on `main`; DECISIONS.md "Lead decisions, 2026-10-17" item 13): up to two consecutive corrective turns within the 6-request budget; corrections from the schema and fixed text only (allowed fields of the named tool, or the five tool names; trailing commas and comments named for `not_json`), never quoting the reply; two prompt sentences and a rationale in the example. Native tool calling held in reserve. Full suite with Docker required: 1329 passed, 1 skipped. Unreviewed. Record: TASKS.md T-06 "SLICE 4g RESULT".
 - **Live run 4** (`runs/live4/agent-s01_faulty-8dcf4c7b3c37/`):
   - BUDGET_EXHAUSTED (2 revisions); the original is VIOLATION_FOUND; both candidates INCONCLUSIVE (exited 1);
   - 5 requests, 0 retries; estimated **$0.0166986** (not billing);
@@ -73,7 +81,7 @@ CURRENT STEP: T-06 slice 4. **Live run 5 ended ERROR** after two malformed repli
 - **Gate 3 confirmation: PASS** (`runs/g3y/review.md`) under the lead's re-verification dispositions now recorded in DECISIONS.md: rendering only after range acceptance, at most 132 characters and evidence within 16 KiB; `0E+200` rejection deferred; price strings longer than 64 characters rejected as `price_malformed`, accepted. No unresolved blocking findings.
 - **Independent verification:** 213 focused tests passed; variants b and c caught (2 and 3 intended failures); archived real-listing control passed; 0 probe network attempts; 7,388 hashes unchanged. Follow-up maxima: 101 rendered characters, 1,699 evidence bytes. Confirmation: both real-listing price strings are 9 characters; context type is `int`. Full records: TASKS.md T-06 and `runs/g3w/`, `runs/g3x/`, `runs/g3y/`.
 - **Builder evidence, inspected by Codex, not rerun:** full suite 1,117 passed, 1 skipped; mutation results b and c caught. These remain separate from the 213-test independent run.
-- **T-06 is not accepted.** It awaits live run 6 and the combined Codex review.
+- **T-06 is not accepted.** It awaits the combined Codex review (slices 4c-4h, T-07, T-09, live runs 2-6) and then the lead's acceptance decision.
 - **Accepted:** T-01 (`f5aa4dc`), T-02 (`75a98f4`), T-03 (`51d3dd8`, research and feasibility), T-04 (smoke-test scope), T-05 (`eed73ee`), each within its documented scope.
 - **T-06, independently verified by Codex within documented scope:**
   - slice 1 at `1d58b20` (`runs/r6w/review.md`);
@@ -95,7 +103,9 @@ CURRENT STEP: T-06 slice 4. **Live run 5 ended ERROR** after two malformed repli
   - live run 4 (2026-10-18): BUDGET_EXHAUSTED, original VIOLATION_FOUND, both candidates executed and INCONCLUSIVE (`KeyError: 'subject_id'`);
   - slice 4f at `61e10af` (on `main`, unreviewed);
   - live run 5 (2026-10-18): ERROR `schema_failure: not_json`, original VIOLATION_FOUND, no proposals;
-  - slice 4g at `baf7c04` (branch `t06-s4g`, unreviewed).
+  - slice 4g at `baf7c04` (on `main`, unreviewed);
+  - live run 6 (2026-10-18): BUDGET_EXHAUSTED, original VIOLATION_FOUND, revision 1 executed in Docker and NO_VIOLATION_FOUND (the first complete live end-to-end success), revision 2 rejected (`syntax_error`);
+  - slice 4h at `b900373` (branch `t06-s4h`, unreviewed).
 - Full review history: TASKS.md T-06.
 - **T-02 (policy-v1.3, manifest schema 0.3):** **accepted by the lead at `75a98f4` within its documented trusted-fixture scope (2026-10-15)**. The decision rests on Codex's final verification (`runs/t02-verification-final/review.md`) and the earlier independent verification records. Record: TASKS.md T-02 "ACCEPTANCE".
   - **Path to acceptance:**
