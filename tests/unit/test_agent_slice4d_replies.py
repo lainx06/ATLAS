@@ -345,7 +345,8 @@ def test_every_parse_reply_code_has_a_fixed_explanation():
         "missing_content", "too_large", "empty", "not_json", "duplicate_key",
         "not_an_object", "schema",
     }  # fmt: skip
-    assert set(ctl.CORRECTION_EXPLANATIONS) == codes
+    # Plus one reply-metadata code since slice 4e: an empty reply cut off by the output limit.
+    assert set(ctl.CORRECTION_EXPLANATIONS) == codes | {"incomplete_length"}
     assert all(0 < len(text) <= 300 for text in ctl.CORRECTION_EXPLANATIONS.values())
 
 

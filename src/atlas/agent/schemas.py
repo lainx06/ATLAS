@@ -11,6 +11,10 @@ string and reject duplicate JSON keys, so a reply cannot smuggle a second action
 an assertion list or an outcome. No action can approve a candidate, change the required
 assertion set or declare a scientific result: `finish` carries only model-written text, which
 reports label as such.
+
+Every action may carry an optional `rationale` (T-06 slice 4e): a bounded, non-null string of
+model-written text. It is recorded as such and never changes what the action does;
+`propose_patch` still requires it.
 """
 
 import json
@@ -38,8 +42,33 @@ CHECKS = (
 )
 
 
+def _plain_string(prop: dict) -> None:
+    """Show an optional string field as a plain string: no null type and no default. Runtime
+    validation rejects an explicit null (`_Action._no_null_rationale`, `ProposePatch`)."""
+    (string,) = [b for b in prop.pop("anyOf") if b.get("type") == "string"]
+    prop.pop("default", None)
+    prop.update(string)
+
+
+def _optional_rationale_schema(schema: dict) -> None:
+    _plain_string(schema["properties"]["rationale"])
+
+
 class _Action(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(
+        extra="forbid", strict=True, json_schema_extra=_optional_rationale_schema
+    )
+
+    # Optional on every action (slice 4e); model-written, authorizes nothing.
+    rationale: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
+
+    @field_validator("rationale")
+    @classmethod
+    def _no_null_rationale(cls, value: str | None) -> str:
+        """Omitted is allowed; an explicit null is not (the shown schema has no null type)."""
+        if value is None:
+            raise ValueError("rationale must be a string when given")
+        return value
 
 
 class ListProjectFiles(_Action):
@@ -63,12 +92,8 @@ def _exactly_one_schema(schema: dict) -> None:
     """Show the model the rule `_exactly_one_source` enforces: each source is a plain string
     (no null type, no default), and exactly one of them is required. Runtime validation is
     unchanged; this only corrects the JSON schema pydantic derives from the optional fields."""
-    properties = schema["properties"]
     for name in SOURCES:
-        prop = properties[name]
-        (string,) = [b for b in prop.pop("anyOf") if b.get("type") == "string"]
-        prop.pop("default", None)
-        prop.update(string)
+        _plain_string(schema["properties"][name])
     schema["oneOf"] = [{"required": [name]} for name in SOURCES]
 
 

@@ -26,9 +26,14 @@ propagates with a note that no report was saved. A failing approver is a recorde
 - **One corrective turn (slice 4d).** A content failure from `parse_reply` is recorded and the
   next request carries a bounded correction (the failure code, a fixed explanation and at most
   200 characters of the parser's message; the reply itself is never quoted). It is an ordinary
-  attempt within the 6-attempt budget and authorizes nothing. Two consecutive schema
-  failures, a schema failure on the final attempt, or a reply-metadata failure (`mislabelled`,
-  `incomplete`) end the run ERROR.
+  attempt within the 6-attempt budget and authorizes nothing. Since slice 4e, a reply that hit
+  the output limit before writing anything (`incomplete_length`: finish reason `length`, no
+  text) is corrected the same way. Two consecutive schema failures, a schema failure on the
+  final attempt, or any other reply-metadata failure (`mislabelled`; `incomplete`, which
+  includes a `length` reply with text) end the run ERROR.
+- **Rationales are model-written (slice 4e).** Any action may carry an optional bounded
+  `rationale`. It is recorded in `model_text` as model-written and is never a tool argument,
+  so it does not change what the action does.
 - **Approval is a separate boundary.** The original and every proposed candidate run only if
   the `Approver` (a human-facing component, never the model client; `approval.TerminalApprover`
   at the CLI) returns an approval bound to exactly that code and snapshot. No approver means
@@ -137,7 +142,8 @@ PROMPT_EXAMPLE = '{"action": {"tool": "read_project_file", "path": "src/train.py
 SYSTEM_PROMPT = (
     "You assist ATLAS, which checks whether an evaluation supports its deployment claim. "
     "Reply with one raw JSON object and nothing else: no Markdown code fences, and no text "
-    'before or after it. The object is {"action": {...}} with exactly one action matching the '
+    "before or after it. Keep any reasoning brief and the reply short. The object is "
+    '{"action": {...}} with exactly one action matching the '
     f"given schema, for example {PROMPT_EXAMPLE} (the path is illustrative). You may inspect "
     "the project and its check results and propose at most two revisions of the entry point, "
     'keeping its ATLAS adapter calls. Use "diff" (a unified diff) for a small edit, or '
@@ -149,8 +155,9 @@ SYSTEM_PROMPT = (
 )
 # Raw replies (slice 4d): stored as received, never evidence.
 REPLY_LABEL = "model-written (untrusted); never evidence"
-# The corrective turn (slice 4d). Only parse_reply's content failures are corrected, each with
-# fixed text; reply-metadata failures (`mislabelled`, `incomplete`) end the run as before.
+# The corrective turn (slice 4d). Only parse_reply's content failures and, since slice 4e, an
+# empty reply cut off by the output limit (`incomplete_length`) are corrected, each with fixed
+# text; other reply-metadata failures (`mislabelled`, `incomplete`) end the run as before.
 CORRECTION_TOOL = "reply_validation"
 MAX_PARSER_MESSAGE_CHARS = 200
 CORRECTION_NOTE = (
@@ -171,6 +178,11 @@ CORRECTION_EXPLANATIONS = {
     "schema": (
         "The reply did not match the reply schema: exactly one action with its required "
         "fields and no others (propose_patch takes exactly one of diff or new_source)."
+    ),
+    # A reply-metadata failure, not a parse_reply code (slice 4e).
+    "incomplete_length": (
+        "The reply hit the output limit before any action was written. Reason briefly and "
+        "reply with one short JSON object."
     ),
 }
 
@@ -459,6 +471,14 @@ class _Run:
                 action = self._model_turn()
                 if action is None:  # a schema failure was corrected: ask again
                     continue
+                # Model-written text only; propose_patch records its own (patch_rationale).
+                if action.rationale is not None and not isinstance(
+                    action, ProposePatch
+                ):
+                    self.model_text.append(
+                        {"kind": "action_rationale", "tool": action.tool,
+                         "text": action.rationale}
+                    )  # fmt: skip
                 if isinstance(action, Finish):
                     self.model_text.append(
                         {"kind": "finish_summary", "text": action.summary}
@@ -873,6 +893,12 @@ class _Run:
                 if not (live_ok and identity_ok):
                     raise ReplyRejected(
                         "mislabelled", "reply is not this client's reply"
+                    )
+                if entry["finish_reason"] == "length" and _no_text(reply.content):
+                    # Cut off before writing anything (slice 4e): eligible for the
+                    # corrective turn. A `length` reply with text stays `incomplete`.
+                    raise ReplyRejected(
+                        "incomplete_length", "finish_reason 'length' with no content"
                     )
                 if entry["finish_reason"] != "stop":
                     raise ReplyRejected(
@@ -1384,4 +1410,12 @@ def _since(t0: float) -> float:
 
 
 def _args(action) -> dict:
-    return {k: v for k, v in action.model_dump().items() if k != "tool"}
+    """The tool's arguments; a rationale is model-written text, never an argument."""
+    return {
+        k: v for k, v in action.model_dump().items() if k not in ("tool", "rationale")
+    }
+
+
+def _no_text(content) -> bool:
+    """No usable reply text: absent, or only whitespace."""
+    return content is None or (isinstance(content, str) and not content.strip())

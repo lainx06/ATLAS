@@ -215,3 +215,35 @@ def test_a_corrected_malformed_revision_runs_in_docker(isolation, tmp_path):
     ]
     assert len(client.requests) == 4
     assert result.report["budget"]["used"]["attempts"] == 4
+
+
+def test_the_live_run_3b_replay_runs_a_candidate_in_docker(isolation, tmp_path):
+    """T-06 slice 4e: live run 3b's first two replies byte for byte (a read, then
+    `list_project_files` with a rationale, now accepted), then a valid new_source revision. The
+    test approver grants the exact original and candidate; the candidate executes in the real
+    runner and is recorded as executed."""
+    fix = (S02 / "evaluate.py").read_text(encoding="utf-8")
+    a1 = '\n{\n    "action": {\n        "tool": "read_project_file",\n        "path": "evaluate.py"\n    }\n}'  # fmt: skip
+    a2 = '\n{\n  "action": {\n    "tool": "list_project_files",\n    "rationale": "Need to see what other files exist (e.g., data, metadata) to understand column names and structure before proposing a patch."\n  }\n}'  # fmt: skip
+    script = [
+        {"content": a1},
+        {"content": a2},
+        {"content": json.dumps({"action": {"tool": "propose_patch", "new_source": fix, "rationale": "fold-local selection, grouped folds"}})},
+        {"content": json.dumps({"action": {"tool": "finish", "summary": "done"}})},
+    ]  # fmt: skip
+    approver = ApproveExactly()
+    client = FixtureClient("s4e-docker", script)
+    result = ctl.run_agent(S01, tmp_path / "runs", client, approver, env={})
+
+    assert result.terminal_state == ctl.REPORT, result.reason
+    assert result.report["schema_failures"] == []
+    assert [r.kind for r in approver.requests] == ["original", "candidate"]
+    (candidate,) = result.candidates
+    assert candidate.execution["status"] == "completed"
+    assert candidate.execution["container_removed"] is True
+    assert candidate.outcome.outcome is Outcome.NO_VIOLATION_FOUND
+    (record,) = result.report["proposals"]
+    assert (record["source_kind"], record["outcome"]) == ("new_source", "executed")
+    assert (result.run_dir / "replies" / "a2.txt").read_bytes() == a2.encode("utf-8")
+    assert len(client.requests) == 4
+    assert result.report["budget"]["used"]["attempts"] == 4

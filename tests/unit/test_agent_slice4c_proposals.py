@@ -244,7 +244,8 @@ def test_the_shown_schema_states_exactly_one_non_null_source():
         assert (prop["minLength"], prop["maxLength"]) == (1, limit)
     assert "null" not in json.dumps(schema["properties"])  # no null type or default
     assert schema["oneOf"] == [{"required": ["diff"]}, {"required": ["new_source"]}]
-    assert schema["required"] == ["tool", "rationale"]
+    # A set in JSON Schema; since slice 4e `rationale` is inherited, so it is listed first.
+    assert sorted(schema["required"]) == ["rationale", "tool"]
     assert schema["additionalProperties"] is False
 
 
@@ -286,7 +287,9 @@ def test_the_prompt_figures_are_unchanged_by_the_schema_fix():
     c, _ = S.client([], max_input_tokens=12_000, template_overhead_tokens=16)
     # Derived from the prompt, not pinned: the prompt changes (slice 4d), the rule does not.
     assert c.user_message_budget(ctl.SYSTEM_PROMPT) == 12_000 - system - 16 - 16
-    assert len(schema_text().encode("utf-8")) == 2619  # 2650 before this fix
+    # 2,915 since slice 4e (an optional rationale on every action); 2,619 at this fix, 2,650
+    # before it.
+    assert len(schema_text().encode("utf-8")) == 2915
 
 
 # =============================================================================================
