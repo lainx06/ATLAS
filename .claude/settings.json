@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --locked python scripts/handoff_snapshot.py || true",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --locked python scripts/handoff_snapshot.py --context || true",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
