@@ -1811,6 +1811,37 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - full suite with Docker required (`full.log`): **1295 passed, 1 skipped**, including the runner contract suite (`tests/integration/test_runner_contract.py`) and the UI acceptance tests. The first run (`full_attempt1.log`, reference in the user message) had 9 failures, described above;
     - ruff check and format clean.
   - **Not done:** live run 5, which needs the user's go-ahead.
+- **LIVE RUN 5 (`runs/live5/agent-s01_faulty-a53e65ecf004/`, 2026-10-18).**
+  - **Result:** ERROR, `schema_failure: not_json`. The original is **VIOLATION_FOUND**; no proposals.
+  - **Budget:** 2 requests, 0 retries, 0 tool operations.
+  - **Cost:** estimated **$0.0014256** (provider-reported usage at listed prices; not billing).
+  - **Causes, from the persisted replies:**
+    - attempt 1 (`replies/a1.txt`): `read_project_file` with `path` and `rationale` plus an undeclared `summary` field, so `schema` (`action.read_project_file.summary: extra_forbidden`). The one corrective turn was sent;
+    - attempt 2 (`replies/a2.txt`): `list_project_files` with a `rationale` followed by a trailing comma, so `not_json`. It was the second consecutive failure, which ended the run under slice 4d's rule.
+  - **Key check:** pending the user's literal-key search.
+- **SLICE 4g RESULT (`baf7c04`, branch `t06-s4g`; not merged).**
+  - **Design** (DECISIONS.md "Lead decisions, 2026-10-17" item 13):
+    - **two corrective turns:** up to two consecutive eligible schema failures are corrected; a third consecutive one, or a schema failure on the final attempt, ends the run ERROR with the existing reason format. A valid reply resets the count. The eligible codes are unchanged (the `parse_reply` content codes plus `incomplete_length`); `mislabelled` and the other metadata failures still end the run at once. Each corrective turn is an ordinary attempt within the 6-request budget, reserved before dispatch;
+    - **schema-derived corrections** (`controller.correction`): the code, its fixed explanation, the parser's message cut at 200 characters, and the note. A `schema` failure also gets `allowed fields for <tool>: ...` (`schemas.allowed_fields`, from that action's JSON schema: `tool` first, required fields marked, `propose_patch`'s exactly-one rule) when the reply named one of the five literal tool names (`ReplyRejected.tool`, set from the already strictly parsed JSON, so the name is always one of ours), else the five tool names. The `not_json` explanation now names Markdown fences, text around the object, an unescaped newline or quote, a trailing comma and comments. The whole serialized correction is at most 1,000 characters (the parser's message is cut further if JSON escaping would exceed it);
+    - **how reply text is bounded:** a correction never quotes the reply. Reply text can reach it only through the parser's message, which carries pydantic's error location (a field name the reply wrote, for an undeclared field) or, for `duplicate_key`, the repeated keys. That message is cut at 200 characters, and no other field of the correction is built from the reply. Tested with a 590-character injected field name: it appears only in `parser_message`, cut to 200 characters; values (path, rationale, summary) never appear;
+    - **prompt:** two sentences ("Valid JSON only: no trailing commas, no comments." and "Use only the fields listed for the chosen tool; finish is the only tool with summary."), and the example `{"action": {"tool": "read_project_file", "path": "src/train.py", "rationale": "see how the data is split"}}`. Generic: no benchmark hints;
+    - **prompt-budget figures** (derived, at the decided 12,000-token input estimate): instructions 1,169 bytes (991 in slice 4f); system prompt with the adapter reference **2,253 bytes** (2,075); user-message budget **9,715 bytes** (9,893); per-result limit **4,857 characters** (4,946);
+    - **unchanged:** exact reply validation (one action, no duplicate keys, undeclared fields forbidden, no format repair: reply text never altered or leniently parsed); 6 requests, each reserved before dispatch; `validate_diff` as the only candidate gate; Docker-only execution; the decided request body; the spend controls and the live entry point; outcomes only from the trusted evaluator.
+  - **Example corrections** (live run 5's exact replies):
+    - a1 (551 characters): `schema`, parser message `schema: action.read_project_file.summary: extra_forbidden`, tool `read_project_file`, `allowed fields for read_project_file: tool (required), path (required), rationale`;
+    - a2 (480 characters): `not_json`, parser message `not_json: JSONDecodeError`, and the explanation naming trailing commas and comments.
+  - **Changed assertions** (expected: two consecutive failures now get a second correction; none weakened, each still asserts that nothing invalid is acted on):
+    - `test_agent_slice4d_replies.py`: `test_two_consecutive_schema_failures_end_the_run` became `test_three_consecutive_schema_failures_end_the_run` (three malformed replies, 4 requests, three failures, none corrected);
+    - `test_agent_slice4e_rationale.py`: `test_two_empty_length_replies_in_a_row_end_the_run` became `test_three_empty_length_replies_in_a_row_end_the_run` (3 requests); `test_a_schema_failure_then_an_empty_length_reply_is_consecutive` became `test_schema_failures_then_an_empty_length_reply_are_consecutive` (two prose replies, then the empty `length` reply ends it: 3 requests);
+    - `test_agent_controller.py::test_invalid_reply_is_a_recorded_schema_failure_with_no_action`: the invalid reply three times; 4 requests for content failures (was 3), 2 for `truncated_by_length` (unchanged);
+    - `test_agent_slice3.py::test_invalid_live_replies_authorize_nothing`: the body three times; 3 requests (was 2), 1 for `length` (unchanged);
+    - UI: the "Invalid reply" script sends three non-JSON replies, and `test_scenario4_failures.py::test_invalid_reply_is_a_schema_failure_without_repair` expects 3 attempts and three `schema_failure` trace rows (was 2). `docs/UI_SPEC.md` B8 and `docs/UI_WALKTHROUGH.md` updated.
+  - **Tests** (logs in git-ignored `runs/s4g/`):
+    - new: `tests/unit/test_agent_slice4g_corrections.py` (33 tests) and the Docker replay `test_the_live_run_5_replay_recovers_and_a_candidate_runs_in_docker`: live run 5's exact a1 (corrected with `read_project_file`'s allowed fields) and a2 (corrected, naming trailing commas), then a valid read and a valid `new_source` revision, approved by the scripted test approver, executed in Docker (**NO_VIOLATION_FOUND**) and recorded `executed`;
+    - red at the base `70d82e6` (`red_summary.log`): **31 failed, 3 passed** of the 34 new tests. Every failure is the missing behaviour; the passes are controls (live run 5's bytes fail as recorded; failures on attempts 5 and 6 end the run; a metadata failure ends it at once);
+    - full suite with Docker required (`full.log`): **1329 passed, 1 skipped**, UI acceptance included;
+    - ruff check and format clean.
+  - **Not done:** live run 6, which needs the user's go-ahead.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
