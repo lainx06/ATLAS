@@ -189,11 +189,11 @@ def test_unc_paths_are_redacted_in_every_slash_style(output):
         ),
         (
             "    open('C:/Users/Alice Smith/data.csv', 'rb')",
-            "    open('<host-path>', 'rb')",
+            "    open('<host-path>",  # the rest of the line goes too
         ),
         (
             "    open('//server/my share/a b.csv') + x",
-            "    open('<host-path>') + x",
+            "    open('<host-path>",
         ),
     ],
 )
@@ -208,30 +208,73 @@ def test_paths_with_spaces_are_redacted_whole(output, expected):
         # ended the quoted path and leaked Brien\private\customer.csv
         (
             "'C:\\Users\\O'Brien\\private\\customer.csv'",
-            "'<host-path>'",
+            "'<host-path>",
         ),
         # runs/cr2/probes.json "repr_list_apostrophe"
         (
             '["C:\\\\Users\\\\O\'Brien\\\\private\\\\customer.csv"]',
-            '["<host-path>"]',
+            '["<host-path>',
         ),
-        ('"C:\\Users\\O"Brien\\x.csv"', '"<host-path>"'),
+        ('"C:\\Users\\O"Brien\\x.csv"', '"<host-path>'),
         (
             'File "C:\\Users\\Alice Smith\\x.py", line 3, in <module>',
             'File "<host-path>", line 3, in <module>',
         ),
         (
             "['C:\\\\Users\\\\O'Brien\\\\x.csv', 'D:\\\\y']",
-            "['<host-path>', '<host-path>']",
+            "['<host-path>",
         ),
-        # no closing quote on the line: redacted to its end, as an unquoted path
         ("open('C:\\Users\\O'Brien\\x.csv'.strip())", "open('<host-path>"),
     ],
 )
-def test_a_quoted_path_ends_only_at_a_closing_quote(output, expected):
-    """A quote inside the path (O'Brien) is part of it: the path ends only at the same quote
-    followed by the end of the line, whitespace or one of , ) ] } : ;."""
+def test_a_quote_inside_a_path_does_not_end_its_redaction(output, expected):
+    """A quote inside the path (O'Brien) cannot end it: everything from the path's start to
+    the end of its line is redacted; only a traceback frame keeps its tail."""
     assert failure().summarize(output, env={})["traceback"] == expected
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        # a quote followed by a space or a comma inside the path no longer ends it
+        "'C:\\Users\\O' Brien\\secret.csv'",
+        "'C:\\Users\\O',Brien\\secret.csv'",
+        "['C:\\\\Users\\\\O'Brien\\\\x.csv', 'D:\\\\y']",
+    ],
+)
+def test_everything_from_a_host_path_start_to_the_end_of_its_line_is_redacted(output):
+    traceback = failure().summarize(output, env={})["traceback"]
+    assert "Brien" not in traceback and "secret" not in traceback
+    assert "<host-path>" in traceback
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        (
+            'File "C:\\Users\\Alice Smith\\x.py", line 3, in <module>',
+            'File "<host-path>", line 3, in <module>',
+        ),
+        ('File "C:\\Users\\O\'Brien\\x.py", line 12', 'File "<host-path>", line 12'),
+        (
+            '  File "//server/share/my dir/x.py", line 7, in load_table',
+            '  File "<host-path>", line 7, in load_table',
+        ),
+        # not a frame's tail (a path where the function name belongs): to the end of the line
+        ('File "C:\\x.py", line 3, in C:\\Users\\secret', 'File "<host-path>'),
+        ('File "C:\\x.py", line 3 and C:\\Users\\secret', 'File "<host-path>'),
+    ],
+)
+def test_a_traceback_frame_keeps_its_line_and_function_tail(output, expected):
+    assert failure().summarize(output, env={})["traceback"] == expected
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["https://example.com/a//b", "x//2", "/work/project/x.py", "/usr/local/lib"],
+)
+def test_container_paths_urls_and_floor_division_are_never_redacted(output):
+    assert failure().summarize(output, env={})["traceback"] == output
 
 
 def test_a_path_split_across_lines_is_redacted_only_on_its_first_line():

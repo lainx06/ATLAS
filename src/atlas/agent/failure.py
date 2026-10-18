@@ -9,11 +9,12 @@ output only; nothing in the runner changes.
 The summary is the exception line of the last traceback (its type and message) plus at most
 the last MAX_LINES lines of that traceback, or of the output when there is no traceback. Both
 together are at most MAX_CHARS characters, keeping the end. Before bounding, host paths (the
-given host strings, and any Windows drive or UNC path in either slash style: a quoted one is
-replaced whole up to its closing quote, an unquoted one, or one with no closing quote on its
-line, up to the end of its line), host environment values and the given secrets are redacted;
-then every control or format character except the line separator is escaped. It is
-candidate-written text, labelled untrusted: never evidence and never an outcome.
+given host strings, then, on any line where a Windows drive or UNC path starts in any slash
+style, quoted or not, everything from that start to the end of the line; a traceback frame
+line, File "<anything>", line <digits>[, in <name>], becomes File "<host-path>" with its tail
+kept as written), host environment values and the given secrets are redacted; then every
+control or format character except the line separator is escaped. It is candidate-written
+text, labelled untrusted: never evidence and never an outcome.
 
 Redaction is best-effort for host paths and known values, not a guarantee. The candidate runs
 in a container whose only mounts are under /work, so a host path reaches its output only
@@ -43,13 +44,25 @@ TRACEBACK_HEADER = "Traceback (most recent call last):"
 _DRIVE = r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]"
 _HOST = r"[A-Za-z0-9._$-]+"
 _UNC = rf"(?<![\w:/\\])(?:\\{{2,}}{_HOST}|[\\/]{{2,}}{_HOST}[\\/])"
-# A quoted string that starts with a host path is replaced whole, keeping its quotes (a
-# traceback's File "C:\Users\Alice Smith\x.py"). It ends only at the same quote followed by
-# the end of the line, whitespace or one of , ) ] } : ; - any other quote is part of the path
-# ('C:\Users\O'Brien\x.csv'). With no such quote on the line, and for an unquoted path, the
-# redaction runs to the end of the line, spaces included.
-_QUOTED_PATH = re.compile(rf"(['\"])(?:{_DRIVE}|{_UNC})[^\n]*?\1(?![^,)\]}}:;\s])")
-_PATH_TO_EOL = re.compile(rf"(?:{_DRIVE}|{_UNC})[^\n]*")
+_PATH_START = re.compile(rf"{_DRIVE}|{_UNC}")
+# A Python traceback frame line, File "<anything>", line <digits>[, in <name>]. Its tail is
+# kept as written; the name is an identifier, a dotted qualified name or <module>-style, so
+# the kept tail can hold no path.
+_FRAME = re.compile(
+    r'(\s*File )".*"(, line \d+(?:, in (?:<[A-Za-z_]\w*>|[A-Za-z_][\w.]*))?\r?)'
+)
+
+
+def _redact_paths(line: str) -> str:
+    """Everything from the line's first host-path start to its end becomes HOST_PATH (quotes,
+    spaces and commas included); a traceback frame line keeps its quotes and its tail."""
+    start = _PATH_START.search(line)
+    if start is None:
+        return line
+    frame = _FRAME.fullmatch(line)
+    if frame is not None:
+        return f'{frame[1]}"{HOST_PATH}"{frame[2]}'
+    return line[: start.start()] + HOST_PATH
 
 
 def summarize(
@@ -107,8 +120,7 @@ def _redact(text: str, host_strings, env, secrets) -> str:
     for value in sorted(hosts | values, key=len, reverse=True):
         marker = HOST_PATH if value in hosts else ENV_VALUE
         text = re.sub(re.escape(value), marker, text, flags=re.IGNORECASE)
-    text = _QUOTED_PATH.sub(lambda m: m[1] + HOST_PATH + m[1], text)
-    return _PATH_TO_EOL.sub(HOST_PATH, text)
+    return "\n".join(_redact_paths(line) for line in text.split("\n"))
 
 
 def _escape(line: str) -> str:
