@@ -1,14 +1,45 @@
 # ATLAS status
 
-WRITER: Codex (this docs-only Gate 3 record; Claude Code owns the next live-run card)
-MODEL: Codex, effort high
-CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4: **Gate 3 PASS at `f327565`; awaiting the lead's explicit live go-ahead.**
-- Gate 1 passed at `8c79e5a`; Gate 2 decisions recorded (2026-10-16); Gate 3 dispositions recorded (2026-10-17: 60 s timeout and base URL decided; the fixture report field accepted).
+WRITER: Claude Code (this integration and docs record; Claude Code owns live run 2)
+MODEL: Claude Opus 5.5 high
+CURRENT STEP: T-06 slice 4. **Live run 1 is done and Gate 4 FAILED** on two P2 reporting defects. Slice 4c, T-07 and T-09 are on `main` at `f5d76c9` (fast-forward, 2026-10-17). **Next: the user's go-ahead for live run 2.**
+- **Live run 1** (`runs/live1/agent-s01_faulty-3f18e12af383/`, 2026-10-17):
+  - REPORT, exit 0; the original is VIOLATION_FOUND (`docker_isolated`);
+  - the pre-run check passed (status 200);
+  - 5 of 6 requests, 0 retries;
+  - estimated **$0.0087333** (provider-reported usage at listed prices; not billing). The user observed about one cent used, and the user's literal-key search found 0;
+  - two proposals, both rejected by `validate_diff`, so no candidate executed. Their reasons were unrecorded.
+
+  Record: TASKS.md T-06 "LIVE RUN 1".
+- **Gate 4** (`runs/g4/review.md`, Codex): **"Verdict: GATE 4 FAIL"**, two P2 and 0 P1:
+  - `comparison.model` was hardcoded to "none" in a LIVE report;
+  - rejected proposals and their reasons were not durably reported.
+
+  Slice 4c (`2ce5dd5`, `292ed81`) addresses both. It has not been reviewed and goes to the combined Codex review.
+- **Integrated on `main`** (fast-forward from `d870275`, no merge commit):
+  - `t06-s4c` (slice 4c);
+  - `t07-ui` (T-07 UI, 17 acceptance scenarios);
+  - `t09-har` (T-09 UCI HAR example, with both projects in the UI).
+
+  The worktrees `atlas-s4c`, `atlas-t07b` and `atlas-t09` are kept: their git-ignored `runs/` hold the test logs and screenshots used as evidence.
+- **Lead decisions, 2026-10-17** (DECISIONS.md):
+  - scope and priority are delegated to the lead; spending, anything public and the submission stay with the user;
+  - T-08 cut; T-10 reduced to at most 3 cases; model routing cut; Tavily out of scope;
+  - Codex is limited to five gates.
+- **OPEN, a user decision before T-12: the HAR license terms.** The UCI page grants CC BY 4.0; the archive's 2012 README prohibits commercial use. Lead recommendation: no data redistribution, precomputed HAR results in the hosted demo, both terms cited in the README (DECISIONS.md item 8).
+- **Live values stay as decided** (DECISIONS.md "T-06 slice 4 live-run decisions (lead)" and the Gate 3 dispositions):
+  - model `nvidia/nemotron-3-super-120b-a12b`;
+  - ceilings 12,000 input / 8,000 output;
+  - estimate cap $0.0648 per run, **at most $0.51 per run**;
+  - 6 attempts, 60 s timeout, the fixed base URL.
+
+  Each live run needs its own explicit user go-ahead.
+- **Gate history:** Gate 1 passed at `8c79e5a`; Gate 2 decisions recorded (2026-10-16); Gate 3 dispositions recorded (2026-10-17: 60 s timeout and base URL decided; the fixture report field accepted).
 - **Gate 3 history:** the review at `54feca6` failed with three P2s (`runs/g3v/review.md`); repair pass 1 at `f327565` closed them. Re-verification (`runs/g3w/review.md`) failed only on the old literal no-expansion criterion; follow-up (`runs/g3x/review.md`) failed only on the requested mismatch outcome for an overlong price string.
 - **Gate 3 confirmation: PASS** (`runs/g3y/review.md`) under the lead's re-verification dispositions now recorded in DECISIONS.md: rendering only after range acceptance, at most 132 characters and evidence within 16 KiB; `0E+200` rejection deferred; price strings longer than 64 characters rejected as `price_malformed`, accepted. No unresolved blocking findings.
 - **Independent verification:** 213 focused tests passed; variants b and c caught (2 and 3 intended failures); archived real-listing control passed; 0 probe network attempts; 7,388 hashes unchanged. Follow-up maxima: 101 rendered characters, 1,699 evidence bytes. Confirmation: both real-listing price strings are 9 characters; context type is `int`. Full records: TASKS.md T-06 and `runs/g3w/`, `runs/g3x/`, `runs/g3y/`.
 - **Builder evidence, inspected by Codex, not rerun:** full suite 1,117 passed, 1 skipped; mutation results b and c caught. These remain separate from the 213-test independent run.
-- **Only remaining blocker before the live run:** the lead's separate explicit go-ahead for **ONE pre-run call and ONE live run (at most $0.51)**. For T-06 slice 4, nothing has been sent to Nebius and no money has been spent. Gate 3 PASS authorizes no call or spending. **T-06 is not accepted.**
+- **T-06 is not accepted.** It awaits live run 2 and the combined Codex review.
 - **Accepted:** T-01 (`f5aa4dc`), T-02 (`75a98f4`), T-03 (`51d3dd8`, research and feasibility), T-04 (smoke-test scope), T-05 (`eed73ee`), each within its documented scope.
 - **T-06, independently verified by Codex within documented scope:**
   - slice 1 at `1d58b20` (`runs/r6w/review.md`);
@@ -17,8 +48,11 @@ CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4: **Gat
 - **T-06 slice 4:**
   - proposal recorded at `5932b6a` (TASKS.md T-06 "SLICE 4 PROPOSAL");
   - controls at `96f6fc6` ("SLICE 4 CONTROLS RESULT");
-  - entry point and preflight independently verified at `f327565` (Gate 3 PASS, `runs/g3y/review.md`); live execution remains unstarted and unauthorized;
-  - owner-observed NON-LIVE CLI demonstration on s01 (2026-10-16): REPORT, four FAILs became PASS.
+  - entry point and preflight independently verified at `f327565` (Gate 3 PASS, `runs/g3y/review.md`);
+  - owner-observed NON-LIVE CLI demonstration on s01 (2026-10-16): REPORT, four FAILs became PASS;
+  - live run 1 (2026-10-17): REPORT, original VIOLATION_FOUND, no candidate executed;
+  - **Gate 4 FAIL** (`runs/g4/review.md`, two P2);
+  - slice 4c at `2ce5dd5` and `292ed81` (on `main`, unreviewed).
 - Full review history: TASKS.md T-06.
 - **T-02 (policy-v1.3, manifest schema 0.3):** **accepted by the lead at `75a98f4` within its documented trusted-fixture scope (2026-10-15)**. The decision rests on Codex's final verification (`runs/t02-verification-final/review.md`) and the earlier independent verification records. Record: TASKS.md T-02 "ACCEPTANCE".
   - **Path to acceptance:**
@@ -65,13 +99,25 @@ CURRENT STEP: Start Here Step 11, T-06 (bounded live agent loop), slice 4: **Gat
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: last independently verified code **`f327565`**, "T-06 slice 4 Gate 3 repair: bounded preflight values, raised-preflight abort, amount tests"; **Gate 3 PASS** (`runs/g3y/review.md`). This task records the reviews and lead dispositions in DECISIONS.md, TASKS.md and STATUS.md only.
+CHECKPOINT: `main` at **`f5d76c9`**, "T-09: HAR projects in the UI", a fast-forward of `t06-s4c`, `t07-ui` and `t09-har`. The builder verified it on `main`: 1193 passed, 1 skipped; ruff clean.
+- The last independently verified code is still **`f327565`** (Gate 3 PASS, `runs/g3y/review.md`).
+- Gate 4 reviewed live run 1's evidence at `d870275`: FAIL.
+- Slice 4c, T-07 and T-09 await the combined Codex review.
+- This task records the integration, results and lead decisions in DECISIONS.md, TASKS.md and STATUS.md only.
 - `git status`: clean except two untracked items left alone by rule: the user's root `ATLAS_Learning_Guide.md` and the user's editor settings in `.vscode/`. Branch `main`.
 - Local commits remain unpushed; no fetch or push was performed for this docs-only record. `origin` = `https://github.com/lainx06/atlas.git` (private).
-- The older full-suite run below was at `96f6fc6`; the current Gate 3 evidence is summarized above and recorded in TASKS.md's re-verification, follow-up and confirmation entries.
+- The latest full-suite run is on `main` at `f5d76c9` (below).
 LAST UPDATED: 2026-10-17
 
 ## What works (verified by running)
+- **Full repository test run on `main` at `f5d76c9` (2026-10-17), Docker required:**
+  - `uv run --locked python benchmarks/real_sensor/retrieve.py` downloaded the data from archive.ics.uci.edu and printed "verified": the archive and both `table.parquet` files match the committed checksums.
+  - `docker info` → 29.8.2.
+  - `$env:ATLAS_REQUIRE_DOCKER='1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/m1/t -rs` → **1193 passed, 1 skipped in 702.24 s**, exit 0.
+    - The skip is the existing symlink-permission skip. The archived-listing control ran, and the two HAR UI scenarios ran.
+    - The first attempt errored only because `runs/m1/` did not exist (`WinError 3`, 637 setup errors); it was rerun after creating the folder.
+  - `uv run --locked ruff check .` → "All checks passed!"; `uv run --locked ruff format --check .` → "152 files already formatted".
+  - Log (git-ignored): `runs/m1/pytest.txt`.
 - **Full repository test run at `96f6fc6` (2026-10-16), Docker required:**
   - `docker info` → `linux 29.8.2`.
   - PowerShell: `$env:ATLAS_REQUIRE_DOCKER = '1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/status-20261016/t -rs` → **965 passed, 1 skipped in 743.88 s**, exit 0. The skip is `tests/unit/test_candidates.py:116`, "symlink creation not permitted on this host" (existing).
@@ -105,10 +151,21 @@ LAST UPDATED: 2026-10-17
 
 ## What does not exist yet
 - T-02 is accepted (`75a98f4`) within its trusted-fixture scope. The adapter still accepts duplicate fold names; only the metric checks refuse them. The linear baseline is deferred; splitter minimum requirements are not recorded.
-- Not implemented or not yet executed: `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED); a live agent run (T-06 slice 4: the production client, live entry point and preflight are verified offline, Gate 3 PASS at `f327565`; the lead's explicit live go-ahead is still required); procedures (T-08); UI (T-07); hosting deployment (T-12); real-data and held-out evaluation (T-09, T-10). Under policy-v1.3 every required assertion is implemented.
+- Not implemented or not yet executed:
+  - `load_holdout_features()` and the evaluator-only holdout label store (`final_holdout` reported metrics are NOT_ASSESSED);
+  - a live run in which a candidate executes. Live run 1 executed only the original; both proposals were rejected. That needs live run 2 and the user's go-ahead;
+  - procedures (T-08, cut);
+  - hosting deployment (T-12);
+  - held-out evaluation (T-10, reduced to at most 3 cases).
+
+  Under policy-v1.3 every required assertion is implemented. The UI (T-07) and the UCI HAR example (T-09) are built and await the combined Codex review.
 - No `atlas` console-script entry point (`python -m atlas.cli` only). No static analyzer for unadapted code.
 - `docs/specs/` holds one spec, `t02-contract.md`. `handoffs/` holds only the Step 8 packet.
-- Exactly two Nebius inference requests made (text smoke, JSON-validation smoke). No provider-enforced structured output is available or used. The production client, reply schemas and agent loop exist (T-06 slices 2–3), but they have only been tested with fixture replies and a mocked transport; diagnosis, tool-use and repair quality with a real model are untested.
+- Nebius inference requests made:
+  - the two T-04 smoke calls;
+  - the five completions of live run 1 (2026-10-17), plus its free `GET /models` pre-run check.
+
+  No provider-enforced structured output is available or used. In live run 1 the real model produced valid actions and two proposals, both rejected by `validate_diff`. Repair quality with a real model is therefore still undemonstrated.
 - The Docker runner is accepted (T-05). In agent mode the original and every candidate run in Docker after a typed CLI approval (T-06 slice 3, verified offline); deterministic audits (`--mode audit`) still use the trusted fixture runner (`trusted_pipeline_only`). Output writes have no Windows extended-length path handling (T-05 P3).
 
 ## Commands executed in setup
@@ -226,9 +283,13 @@ LAST UPDATED: 2026-10-17
 - **T-06 slice 4 (gates, not defects):**
   1. Codex review of the controls: **resolved (Gate 1 PASS at `8c79e5a`, `runs/g1v3/review.md`)** after review 1 failed with two P2 (`runs/g1-1016/review.md`);
   2. the lead's decisions: **recorded** (DECISIONS.md, 2026-10-16, with Gate 3 dispositions and re-verification dispositions on 2026-10-17); the 60 s timeout and base URL are decided;
-  3. entry point and preflight: **verified offline, Gate 3 PASS at `f327565`** (`runs/g3y/review.md`). The only remaining blocker before live execution is the lead's **separate explicit go-ahead for ONE pre-run call and ONE live run (at most $0.51)**; not yet given.
+  3. entry point and preflight: **verified offline, Gate 3 PASS at `f327565`** (`runs/g3y/review.md`); live run 1 ran on the user's go-ahead (2026-10-17);
+  4. live evidence: **Gate 4 FAIL** (`runs/g4/review.md`).
 
-  **Open blocking review defects:** none. The fail-closed `0E+200` rejection is a deferred P3; the over-64-character price-string rejection is accepted. Nothing has been sent to Nebius or spent for T-06 slice 4.
+  **Open blocking review defects:** Gate 4's two P2 reporting defects. Slice 4c addresses both, unreviewed (combined Codex review). The fail-closed `0E+200` rejection is a deferred P3; the over-64-character price-string rejection is accepted.
+
+  **Next blocker:** the user's explicit go-ahead for live run 2 (at most $0.51).
+- **HAR license terms (OPEN, user decision before T-12):** DECISIONS.md "Lead decisions, 2026-10-17" item 8.
 - **Nebius:** none. $50 in Token Factory credits awarded in total (user-reported; balance and expiry not verified), key set, text and JSON-validation smoke calls succeeded.
 - **Docker isolation (T-05):** none. Accepted at `eed73ee`.
 - None for T-01 (accepted). The T-01 limitations are recorded in TASKS.md (T-01 "ACCEPTANCE").
@@ -293,12 +354,15 @@ LAST UPDATED: 2026-10-17
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **Next task card: T-06 SLICE 4 (one authorized live run)**, TASKS.md T-06 "NEXT CARD: SLICE 4". It has acceptance criteria, owned paths, verification commands and four review gates.
-   - **Gate 1:** **passed at `8c79e5a`** (`runs/g1v3/review.md`; review 1 had failed with two P2, repaired).
-   - **Gate 2:** the lead's decisions: **recorded 2026-10-16**, with the Gate 3 dispositions and re-verification dispositions recorded for 2026-10-17 (DECISIONS.md "T-06 slice 4 live-run decisions (lead)").
-   - **Gate 3:** **passed at `f327565`** (`runs/g3y/review.md`). **Next: the lead's explicit go-ahead for ONE pre-run call and ONE live run (at most $0.51), as a separate instruction.** Nothing live has run; this docs-only record authorizes no call or spending.
-   - **Gate 4:** Codex review of the live evidence before T-06 acceptance is considered.
-   - **Target milestone:** the playbook's *live-agent milestone*, "Working NVIDIA model on Nebius" (playbook §23 checklist: a sanitized runtime trace, the model ID and a reproduced code-edit/check workflow). It is scheduled in the playbook §12 window **Oct 17–18** ("original-versus-revised comparison"), alongside the first end-to-end UI by Oct 18 (T-07, not started), so the schedule is tight.
+1. **Next: the user's go-ahead for live run 2.**
+   - **What:** one pre-run check and one live run on `benchmarks/t01/s01_faulty`, **at most $0.51**, under the unchanged decided values.
+   - **Purpose:** to show a candidate executing in the isolated runner. Slice 4c's full-source proposals and recorded rejection reasons are now on `main`.
+   - This record does **not** authorize it: spending is an explicit user action (DECISIONS.md "Lead decisions, 2026-10-17" item 1).
+2. **Then the combined Codex review:** slice 4c, T-07 and T-09 together, including Gate 4's two P2 dispositions (item 3.2 of the five-gate budget). T-06 acceptance is considered only after both.
+   - **History:** Gates 1–3 passed (`8c79e5a`, `f327565`); live run 1 ran 2026-10-17; Gate 4 FAILED (`runs/g4/review.md`).
+   - **Target milestone:** the playbook's *live-agent milestone*, "Working NVIDIA model on Nebius" (playbook §23 checklist: a sanitized runtime trace, the model ID and a reproduced code-edit/check workflow). Live run 1 delivered the trace and the model ID; the code-edit/check workflow needs a candidate to execute (live run 2).
+3. **Open user decision before T-12:** the HAR license terms (DECISIONS.md "Lead decisions, 2026-10-17" item 8).
+4. **Context:**
    - **Owner-observed NON-LIVE demonstration (2026-10-16):** the owner ran the fixture CLI on s01 with both approvals (`runs/demo-s01/runs/agent-s01_faulty-6face8361824`). It ended REPORT: original VIOLATION_FOUND; candidate `81f691409a67` completed with NO_VIOLATION_FOUND; the hash matched; four FAILs became PASS.
    - **T-03 (accepted at `51d3dd8`):**
      - Limited hosted mode for V1; Neon is the selected budget store.
@@ -306,9 +370,10 @@ LAST UPDATED: 2026-10-17
      - Carried to T-12: stage B (Nebius from the host), stage C (full locked build on the host) and the production budget controls, all before the hosted app is called ready.
      - No spending, account creation or deployment is authorized.
      - The probe app, its Secrets, the Neon project and its scratch tables are kept; deletion and credential rotation are later explicit actions.
-2. T-06 (bounded live agent loop): inputs accepted; T-03 is not one of its gates. **Slices 1–3 remain verified within their documented scopes** (`1d58b20`, `69042a1`, `5e63fc4`; slice 3 offline). Slice 4 controls passed Gate 1 at `8c79e5a`; the live entry point and preflight passed Gate 3 at `f327565`. The ceilings and caps are decided; the live run is unstarted and requires the lead's separate explicit go-ahead. After that run, Gate 4 reviews the live evidence before T-06 acceptance is considered.
+5. T-06 (bounded live agent loop): inputs accepted; T-03 is not one of its gates. **Slices 1–3 remain verified within their documented scopes** (`1d58b20`, `69042a1`, `5e63fc4`; slice 3 offline). Slice 4 controls passed Gate 1 at `8c79e5a`; the live entry point and preflight passed Gate 3 at `f327565`; live run 1 is done and Gate 4 failed. The ceilings and caps are decided; each further live run needs its own explicit user go-ahead.
 
 ## Unresolved questions
 - Remaining gated questions, each with an owner and gate: docs/SPEC.md §14. T-02's assertions are closed (accepted at `75a98f4`). The remaining items are synthetic generator settings (before any benchmark measurement), UCI HAR containment evidence (T-09), scoring answer keys (before T-10/T-11 measurement), the frozen procedure-store hash (T-11), and hosting checks (T-03).
 - Hosting/access checks before choosing a host or enabling paid usage: DECISIONS.md "Open hosting and access checks".
-- **T-06 before any live run (lead):** the ceilings, cap, $0.51 maximum, 60 s timeout and base URL are decided; Gate 3 passed at `f327565`. Still required: the lead's separate explicit go-ahead for ONE pre-run call and ONE live run. The input figure remains an estimate, and the worst case relies on provider enforcement that has not been verified.
+- **T-06 live run 2 (user):** the ceilings, cap, $0.51 maximum, 60 s timeout and base URL are decided. Still required: the user's explicit go-ahead for one pre-run call and one live run. The input figure remains an estimate, and the worst case relies on provider enforcement that has not been verified.
+- **HAR license terms (user, before T-12):** CC BY 4.0 on the UCI page against "Any commercial use is prohibited" in the archive's 2012 README. Lead recommendation in DECISIONS.md "Lead decisions, 2026-10-17" item 8.

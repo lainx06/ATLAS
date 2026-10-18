@@ -287,3 +287,43 @@ These dispositions resolve the prompt-outcome findings in `runs/g3w/review.md` a
 3. **Listed price strings longer than 64 characters rejected as `price_malformed` (`preflight.py:77`): ACCEPTED.** The rejection fails closed and replaces the follow-up prompt's requested mismatch outcome for the maximum-digit input.
 
 **Still not authorized:** the preflight call, the live run, any spending. Gate 3 PASS means ready for the lead's explicit go-ahead; it is not that go-ahead.
+
+## Lead decisions, 2026-10-17
+Recorded after live run 1 (`runs/live1/agent-s01_faulty-3f18e12af383/`), Codex's Gate 4 review (`runs/g4/review.md`: **GATE 4 FAIL**, two P2, 0 P1), and the fast-forward of `t06-s4c`, `t07-ui` and `t09-har` into `main` (HEAD `f5d76c9`).
+1. **Delegation.** The user delegated scope and priority decisions to the tech lead. Spending (each live run), anything public (the repository, a hosted demo, a video) and the final submission remain explicit user actions.
+2. **Scope.**
+   - T-08 is **cut**; the Session 5 scenario is dropped.
+   - T-10 is **reduced** to at most 3 unfamiliar cases.
+   - Model routing is cut.
+   - The Tavily prize is out of scope.
+3. **Codex review budget: five gates only.**
+   1. Gate 4 (done: FAIL, `runs/g4/review.md`).
+   2. Slice 4c, T-07 and T-09, reviewed together.
+   3. T-12.
+   4. T-11, with any remaining T-09 claims.
+   5. Release.
+
+   Every other check is builder tests plus the lead's direct reads.
+4. **Slice 4c** (`2ce5dd5`, `292ed81`).
+   - `propose_patch` accepts exactly one of `diff` or `new_source`. For `new_source`, ATLAS builds the diff, and the unchanged `validate_diff` decides.
+   - Each proposal is recorded with its outcome and a bounded reason.
+   - The schema shown to the model states the exactly-one rule.
+   - No separate Codex gate: slice 4c is reviewed in the combined review (item 3.2).
+5. **T-07 model.** T-07 was built on Opus 5.5 high instead of Sonnet medium, because Design is a judging criterion.
+6. **T-09 approvals.** The offline evidence runs of the ATLAS-authored benchmark projects use a scripted approver that grants only the unmodified original (`benchmarks/real_sensor/run_audit.py`). Every judge- or user-facing path keeps typed approval.
+7. **T-09 inflation is shown as a descriptive protocol comparison, not a causal one.**
+   - Balanced accuracy, mean over the development folds:
+     - flawed variant (random row-level folds): **0.906**;
+     - clean control (subject-grouped folds): **0.875**.
+   - The reported-metric check correctly PASSes, because ATLAS recomputes the metric from the flawed project's own predictions.
+   - Source: `docs/T09_CONTAINMENT.md` §6.
+8. **OPEN, a user decision needed before T-12: the HAR license terms.**
+   - The UCI dataset page grants CC BY 4.0.
+   - The archive's 2012 `README.txt` adds "Any commercial use is prohibited."
+   - Lead recommendation:
+     - no redistribution of the data;
+     - the hosted demo shows precomputed HAR results;
+     - the README cites both terms.
+9. **Record.** `d870275` was committed from a Codex session at the lead's direction. The lead verified its content before approving it.
+
+**Not authorized by this record:** live run 2 or any other spending, and anything public.

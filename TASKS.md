@@ -15,11 +15,11 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-03 | 11 (early) | **Accepted by the lead at `51d3dd8`** within its documented research-and-feasibility scope (2026-10-16). Limited hosted plus local Docker for V1; Neon selected as the budget store; stages B/C and production budget controls are carried by T-12. Not established: production readiness, guaranteed availability, credit eligibility, remote isolation compliance | Hosting and isolated-worker probe (docs/evidence only) |
 | T-04 | 10 | **Accepted by the user within its documented smoke-test scope** (2026-10-14). Model `nvidia/nemotron-3-super-120b-a12b`; prompt-requested JSON, application-validated | Nebius access: model list, capped structured-output smoke call |
 | T-05 | 10 | **Accepted by the lead at `eed73ee`** within its documented scope (2026-10-15), on Codex's independent verification of repair pass 2: both remaining parser findings verified fixed; contract suite 28/28 with Docker required. Limitations stand, including a P3 Windows path-length limit (see ACCEPTANCE). Candidate re-evaluation and `audit.py` integration are T-06 | Isolated runner and hash-bound candidate approval |
-| T-06 | 11 | In progress. Slices 1–3 verified; slice 4 controls verified (Gate 1 PASS at `8c79e5a`); Gate 2 decisions recorded; slice 4 entry point and preflight verified (Gate 3 PASS at `f327565`). Awaiting the lead's explicit live go-ahead; nothing live run | Bounded live agent loop end to end |
-| T-07 | 12 | Proposed | UI spec, one complete Streamlit path, Playwright scenarios |
-| T-08 | 11 | Proposed | Procedures: admission, reuse, refusal; transfer benchmark |
-| T-09 | 11 | Proposed | Real-data example, clean control, robustness reporting |
-| T-10 | 11 | Proposed | Held-out cases (Codex, outside repo) and predeclared campaign |
+| T-06 | 11 | In progress, **not accepted**. Slices 1–3 verified; slice 4 Gates 1–3 passed (`8c79e5a`, `f327565`). **Live run 1 done** (2026-10-17): REPORT, original VIOLATION_FOUND, no candidate executed, estimated $0.0087333. **Gate 4 FAIL** (two P2 reporting defects, `runs/g4/review.md`); slice 4c (`2ce5dd5`, `292ed81`, on `main`) addresses both and is unreviewed. Awaits live run 2 (user go-ahead) and the combined Codex review | Bounded live agent loop end to end |
+| T-07 | 12 | **Built** (`03eab30`…`822ee27`, on `main` 2026-10-17): 17 acceptance scenarios passed with Docker required. Awaiting the combined Codex review | UI spec, one complete Streamlit path, Playwright scenarios |
+| T-08 | 11 | **CUT** (lead, 2026-10-17; DECISIONS.md "Lead decisions, 2026-10-17" item 2) | Procedures: admission, reuse, refusal; transfer benchmark |
+| T-09 | 11 | **Built** (`5e4c22f`…`f5d76c9`, on `main` 2026-10-17): `har_flawed` VIOLATION_FOUND, `har_clean` NO_VIOLATION_FOUND, both in Docker; in the UI with typed approval (2 scenarios passed). License terms OPEN (user decision before T-12). Awaiting the combined Codex review | Real-data example, clean control, robustness reporting |
+| T-10 | 11 | **REDUCED** (lead, 2026-10-17): at most 3 unfamiliar cases | Held-out cases (Codex, outside repo) and predeclared campaign |
 | T-11 | 11 | Proposed | Three-way comparison pilot |
 | T-12 | 11 | Proposed | Limited hosted demo and judge access |
 | T-13 | 13–14 | Proposed | Release package and submission evidence |
@@ -1686,6 +1686,53 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **GATE 3 CONFIRMATION (`runs/g3y/review.md`): GATE 3 PASS** at `f327565`, under DECISIONS.md "Gate 3 re-verification dispositions (lead, 2026-10-17)".
   - The prior verified checks stand; no tests or prior probes were rerun. The single archived-listing check found **1** matching model: `pricing.prompt` and `pricing.completion` are strings of **9 characters each** (both within 64); `context_length` is an **int**. The string-length check precedes Decimal parsing and rendering.
   - **No unresolved blocking findings.** PASS means ready for the lead's explicit go-ahead; it authorizes no preflight call, live run or spending. **T-06 is not accepted; nothing live run.**
+- **LIVE RUN 1 (`runs/live1/agent-s01_faulty-3f18e12af383/`, 2026-10-17).** The user's go-ahead covered one pre-run check and one live run, at most $0.51.
+  - **Result:**
+    - terminal state REPORT, exit 0 (observed when the run ended; the exit code is not stored in the run's files);
+    - the original is **VIOLATION_FOUND**, executed in the isolated Docker runner (`docker_isolated`, completed) after its typed approval;
+    - the report is labelled LIVE, model `nvidia/nemotron-3-super-120b-a12b`.
+  - **Pre-run check:** `GET /models`, status 200, request ID `a7001ce743b634d15c09664ed9939fa9`. It passed with no mismatch: prices $0.0000003 / $0.0000009 per token, context 262,144.
+  - **Budget:**
+    - **5 of 6** requests, **0 retries**;
+    - 2 of 2 revisions, 4 of 12 tool operations;
+    - 34.845 of 300 active seconds; approval wait 43.093 s; 77.938 s in all.
+  - **Cost:**
+    - **estimated $0.0087333**, from provider-reported usage at listed prices; this is not billing. Unresolved $0; below the $0.0648 estimate cap and the $0.51 authorization;
+    - the user observed about one cent of credit used;
+    - the user's literal-key search found 0 matches. Gate 4's own key-hygiene counts were also all 0.
+  - **Proposals:** two, both rejected by `validate_diff`, so **no candidate executed**. The rejection reasons were not recorded; slice 4c fixes that (below).
+- **GATE 4 REVIEW (`runs/g4/review.md`, Codex, at `d870275`): FAIL, two P2, 0 P1.** The verdict and findings, exactly as Codex wrote them:
+
+    > Verdict: GATE 4 FAIL
+    >
+    > Findings: **2 P2; 0 P1.** The recorded live boundaries hold within the stated evidence limits, but the two honest-reporting defects block this gate. The original's scientific outcome remains `VIOLATION_FOUND`; this review does not rehabilitate it.
+    >
+    > 1. **P2 — LIVE report contradicts its model provenance.** `src/atlas/agent/report.py:157` hardcodes `comparison.model` to “none (T-06 slice 1 has no model client; candidate diffs are supplied inputs)”. This appears at `E/agent_report.json:28`, despite the LIVE banner, configured model and five successful live attempts. Evidence: `evidence-checks.json` (stale model label demonstrated), `report-support-counts.txt`, and the report itself. A consumer of the comparison receives a false provenance claim. **Fails closed: no, for reporting; no execution/approval bypass demonstrated.** Derive the comparison's model provenance from the actual run context.
+    > 2. **P2 — rejected proposals and their reasons disappear from durable reporting.** `src/atlas/agent/controller.py:931`–935 catches validation rejection and returns; `_record_tool` at `:864`–875 keeps the body in memory but persists only its hash and length. `_limitations` at `:1067` omits the zero-candidate case. Both revisions reached `propose_patch` (`E/agent_log.jsonl:17` and `:21`), neither reached candidate approval/execution, and both returned to the model. Together with the saved control-flow check, this identifies the validation-rejection path; the precise rejection reasons cannot be recovered from the stored artifacts. The report retains two rationales (`E/agent_report.json:174`, `:179`) but states neither rejection nor that no candidate executed. Empty candidate arrays and the non-evidence labels do not explain what happened to the proposals. Evidence: `deep-checks.json`, `final-checks.json`, `boundary-checks.json`, `function-_propose.txt`, `function-_record_tool.txt`, `function-_limitations.txt`; `reconstructed-rejections.json` contains zero reconstructed reasons. **Fails closed: yes for candidate execution; no for durable explanation.** Persist a bounded rejection status/reason per revision and explicitly report zero candidates executed.
+    >
+    > The unmerged `t06-s4c` fixes were not reviewed and do not change this verdict on the recorded live evidence.
+    >
+    > Gate 4 decides whether this evidence supports the lead considering T-06 acceptance. **It does not yet support acceptance because two P2 reporting defects remain. This review authorizes no further run or spending.**
+
+  - **Disposition:** slice 4c addresses both findings and is reviewed in the combined Codex review (DECISIONS.md "Lead decisions, 2026-10-17", items 3 and 4):
+    - `comparison.model` now names the live model or the fixture replies;
+    - every proposal is recorded with its outcome and a bounded reason;
+    - a run-level line counts the proposals that were rejected, declined and executed.
+- **SLICE 4c RESULT (`2ce5dd5`, `292ed81`, branch `t06-s4c`; on `main` by fast-forward, 2026-10-17).**
+  - **Design** (DECISIONS.md "Lead decisions, 2026-10-17" item 4):
+    - `propose_patch` takes exactly one of `diff` or `new_source`. For `new_source`, ATLAS builds the diff with `difflib`, and the unchanged `validate_diff` remains the only gate;
+    - every proposal is recorded in `agent_report.json` `proposals` and mirrored in the tool log, with its outcome (`rejected`, `declined`, `unavailable`, `executed`) and a bounded reason. Its diff and source are kept under `<run>/proposals/`, labelled model-written and untrusted;
+    - `comparison.model` names the live model or the fixture replies;
+    - each `model_attempt` log event carries its ledger entry, or a fixture note;
+    - `292ed81`: the JSON schema shown to the model gives `diff` and `new_source` as plain strings with their length limits, under a `oneOf` that requires exactly one. Runtime validation is unchanged.
+  - **Tests** (logs in the `atlas-s4c` worktree, git-ignored `runs/s4c/`):
+    - red at the parent: 20 failed, 9 passed;
+    - full suite with Docker required: **1145 passed, 2 skipped** at `2ce5dd5`, and **1156 passed, 2 skipped** after the follow-up;
+    - targeted: 184 passed;
+    - ruff clean.
+
+    The second skip is the archived-listing control, absent in a worktree.
+  - **Not done:** live run 2 has not run, so no live run yet shows a candidate executing.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
@@ -1702,7 +1749,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 
        The timeout (60 s) and base URL were decided in the Gate 3 dispositions (2026-10-17).
     3. Implementation and Codex verification of the entry point and pre-run check: **GATE 3 PASS at `f327565`** (`runs/g3y/review.md`, under the lead's re-verification dispositions). The original three P2s are closed; the re-verification and follow-up prompt outcomes are dispositioned above. **Next: the lead's explicit go-ahead for ONE pre-run call and ONE live run (at most $0.51), as a separate instruction. Nothing live is authorized by this record.**
-    4. After the run: Codex review of the live evidence before T-06 acceptance is considered.
+    4. After the run: Codex review of the live evidence before T-06 acceptance is considered. **Done 2026-10-17: GATE 4 FAIL** (`runs/g4/review.md`; LIVE RUN 1 and GATE 4 REVIEW above). The user gave the go-ahead for live run 1.
   - **INPUT STATE:** slices 1–3 verified; the controls at `96f6fc6` reviewed; Docker running; the `.env` key present (never printed).
   - **CHANGE (owned paths):**
     - `src/atlas/cli.py`: a live entry point that refuses unless `ATLAS_MODEL_MODE=live` and an explicit authorized amount equal to the configured cap are given;
@@ -1749,8 +1796,21 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** traces and screenshots on failure; a manual walkthrough note.
 - **HANDOFF:** Codex High review; Gemini Medium for the demo later.
 - **RECOVERY:** the playbook §20 bounded repair loop.
+- **RESULT (2026-10-17): built; on `main` by fast-forward; awaiting the combined Codex review.**
+  - **Commits** (branch `t07-ui`):
+    - `03eab30` UI skills and test dependencies;
+    - `c1a8adc` UI spec corrections;
+    - `928312b` s01 happy path;
+    - `a3a648b` states and polish;
+    - `822ee27` acceptance tests and walkthrough.
+  - **Scenarios:** Playwright against the running app, scenarios 1, 2, 3, 4 and 6 plus the label checks: **17 passed** with Docker required. Scenario 5 was dropped with T-08.
+  - **Full suite at `822ee27`:** **1189 passed, 2 skipped**, exit 0.
+  - **Screenshots and logs:** worktree `C:\Users\Lain\source\atlas-t07b`, git-ignored `runs/t07/` (`screens/` at 1440x900, plus `acceptance.log` and `full_suite.log`). Walkthrough: `docs/UI_WALKTHROUGH.md`.
+  - **Build decisions:** `docs/UI_SPEC.md` §12, B1–B24. These include the worker process, the typed browser approval over a file channel, one run per server, and the disabled live mode.
+  - **Model:** Opus 5.5 high, not Sonnet medium (DECISIONS.md "Lead decisions, 2026-10-17" item 5).
 
 ### T-08 Procedures and transfer benchmark
+- **CUT (lead, 2026-10-17;** DECISIONS.md "Lead decisions, 2026-10-17" item 2). The Session 5 scenario is dropped. The entry below is kept as the record of what was planned.
 - **OWNER:** Claude Code (writer); Codex reviews; Gemini reviews the evaluation claims.
 - **MODEL DECISION:** STAY on Opus High (memory semantics).
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Codex High; Gemini Argon High.
@@ -1784,8 +1844,36 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** run JSON; the limitations section; the attribution text.
 - **HANDOFF:** Gemini review of the claims.
 - **RECOVERY:** if the dataset is unsuitable, document why and pick the next licensed candidate with the lead.
+- **RESULT (2026-10-17): built; on `main` by fast-forward; awaiting the combined Codex review.**
+  - **Commits** (branch `t09-har`):
+    - `5e4c22f` retrieval and attribution;
+    - `c5de1b0` flawed variant and clean control;
+    - `13ad59f` audits, containment note and robustness;
+    - `f5d76c9` HAR projects in the UI.
+  - **Outcomes:** both projects run in Docker through the agent path (`docs/T09_CONTAINMENT.md` §6):
+    - `har_flawed` is **VIOLATION_FOUND**, with group, sampling-unit, repeated-measures and fit-state FAILs, and window overlap NOT_ASSESSED;
+    - `har_clean` is **NO_VIOLATION_FOUND**; its window-overlap PASS rests only on documented containment, so it is conditional.
+  - **Robustness:** three repeats each gave identical outcomes, statuses, evidence and metrics (§7).
+  - **Descriptive comparison:** balanced accuracy 0.906 for the flawed variant against 0.875 for the clean control; not causal (DECISIONS.md "Lead decisions, 2026-10-17" item 7).
+  - **UI** (`f5d76c9`):
+    - both projects are in the catalogue; the flawed one is labelled "ATLAS-authored flawed variant";
+    - they show as unavailable, with the retrieval command, when the data is absent;
+    - the original's approval is typed in the browser;
+    - the UI shows the conditional PASS, the provenance scope and the descriptive comparison.
+
+    Timings with the 35 MB table: 2.5 s to the approval panel; 6.9 s (flawed) and 7.9 s (clean) from approval to the finished report.
+  - **Tests:**
+    - HAR UI scenarios: **2 passed**;
+    - UI acceptance plus UI unit tests: **36 passed**;
+    - full suite at `13ad59f`: **1189 passed, 2 skipped**;
+    - on `main` at `f5d76c9` with the data retrieved: **1193 passed, 1 skipped**.
+  - **Screenshots and logs:** worktree `C:\Users\Lain\source\atlas-t09`, git-ignored `runs/t09/`. That includes `screens/`, with nine `har_*_1440x900.png` files, plus `audit/`, `har_ui_timings.json` and the test logs.
+  - **Build decisions:** `docs/T09_CONTAINMENT.md` §8, D1–D10. D9's follow-up, putting the projects in the UI, is done in `f5d76c9`.
+  - **Approvals:** the offline evidence runs use the original-only scripted approver; the UI keeps typed approval (DECISIONS.md "Lead decisions, 2026-10-17" item 6).
+  - **Open:** the license terms are a user decision before T-12 (item 8).
 
 ### T-10 Held-out cases and campaign protocol (Q6)
+- **REDUCED (lead, 2026-10-17;** DECISIONS.md "Lead decisions, 2026-10-17" item 2): at most 3 unfamiliar cases. The rest of the entry stands.
 - **OWNER:** Codex (separate session, outside this repo) authors and validates the cases and their expected violated assertion IDs. Claude writes only the predeclared campaign protocol and never receives case contents, answer keys or case-specific feedback.
 - **MODEL DECISION:** SWITCH for case authoring (Codex, separate session). Claude stays Opus High for the protocol text.
 - **MODEL / EFFORT:** Codex High (authoring); Claude Opus 5.5 high (protocol).
