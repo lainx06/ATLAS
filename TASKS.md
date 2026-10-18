@@ -1761,6 +1761,34 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - full suite with Docker required (`full.log`): **1212 passed, 1 skipped**;
     - ruff check and format clean.
   - **Not done:** live run 3, which needs the user's go-ahead.
+- **LIVE RUN 3 (`runs/live3/agent-s01_faulty-03181c39282f/`, 2026-10-17).**
+  - The original's typed approval was **declined** (`confirmation_mismatch`; the user typed the snapshot hash prefix), so the run ended **NEEDS_INPUT** ("execution of the original was not authorized").
+  - **0 requests**, 0 retries; estimated **$0**.
+  - The user renewed the go-ahead for the retry (live run 3b).
+- **LIVE RUN 3b (`runs/live3b/agent-s01_faulty-7de5564eab88/`, 2026-10-17).**
+  - **Result:** ERROR, `schema_failure: incomplete`. The original is **VIOLATION_FOUND** (`docker_isolated`).
+  - **Budget:** 3 requests, 0 retries, 1 tool operation, 0 revisions.
+  - **Cost:** estimated **$0.0094995** (provider-reported usage at listed prices; not billing).
+  - **Causes, diagnosed from the persisted replies** (slice 4d):
+    - attempt 1 (`replies/a1.txt`): a valid `read_project_file` of `evaluate.py`;
+    - attempt 2 (`replies/a2.txt`): valid JSON for `list_project_files` plus a `rationale`, which that action did not declare, so `schema` (extra field). The corrective turn was sent;
+    - attempt 3: finish reason `length` at 8,000 completion tokens with no content, so `incomplete`, which ended the run.
+- **SLICE 4e RESULT (`67c5ed0`, branch `t06-s4e`; not merged).**
+  - **Design** (DECISIONS.md "Lead decisions, 2026-10-17" item 11):
+    - **optional rationale:** every action may carry an optional `rationale`, a non-null string of at most `MAX_TEXT_CHARS` (4,000) characters; `propose_patch` still requires it. The schema shown to the model gives it as an optional plain string (no null type, no default). It is recorded in `model_text` with the model-written label (`action_rationale`; a proposal keeps its single `patch_rationale`), is excluded from tool arguments and changes nothing the action does. A null, non-string or over-long rationale and every other undeclared field are still rejected;
+    - **empty length replies:** a reply with finish reason `length` and no text (absent, empty or only whitespace) is the schema failure `incomplete_length`, eligible for the one corrective turn with the fixed explanation "The reply hit the output limit before any action was written. Reason briefly and reply with one short JSON object." A `length` reply with text is still `incomplete` and ends the run, as do `mislabelled` and every other unfinished reply. The consecutive and final-attempt rules are unchanged;
+    - **prompt:** one added sentence, "Keep any reasoning brief and the reply short." The prompt stays generic; the budget figures are derived in the tests;
+    - **unchanged:** exact reply validation (one action, no duplicate keys, undeclared fields forbidden, no format repair); 6 requests per run, each reserved before dispatch; `validate_diff` as the only candidate gate; Docker-only execution; the request body (model, messages, `max_completion_tokens` 8,000, `n` 1; no reasoning-control parameter); the spend controls and the live entry point.
+  - **Changed assertions** (expected changes, none weakened):
+    - `test_agent_slice4d_replies.py::test_every_parse_reply_code_has_a_fixed_explanation`: the explanation set is the 7 `parse_reply` codes plus `incomplete_length`. Reason: the new correctable metadata code;
+    - `test_agent_slice4c_proposals.py::test_the_shown_schema_states_exactly_one_non_null_source`: `required` is compared as a set (`rationale`, `tool`). Reason: `rationale` is now inherited, so it is listed first; JSON Schema `required` is unordered;
+    - `test_agent_slice4c_proposals.py::test_the_prompt_figures_are_unchanged_by_the_schema_fix`: the shown schema is 2,915 bytes (2,619 in slice 4c). Reason: the optional rationale on every action.
+  - **Tests** (logs in git-ignored `runs/s4e/`):
+    - new: `tests/unit/test_agent_slice4e_rationale.py` (64 tests) and the Docker replay of live run 3b (`test_the_live_run_3b_replay_runs_a_candidate_in_docker`: the exact a1 and a2 bytes, then a valid `new_source` revision, approved by the scripted test approver, executed in Docker and recorded `executed`);
+    - red at the base `2b85715` (`red_summary.log`): **27 failed, 38 passed** of the 65 new tests. Every failure is the missing behaviour; the 38 passes are controls that already held (rejections of invalid rationales and other fields, `propose_patch` with a rationale, a `length` reply with text, other unfinished replies, `mislabelled`);
+    - full suite with Docker required (`full.log`): **1277 passed, 1 skipped**;
+    - ruff check and format clean.
+  - **Not done:** live run 4, which needs the user's go-ahead.
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).

@@ -326,5 +326,6 @@ Recorded after live run 1 (`runs/live1/agent-s01_faulty-3f18e12af383/`), Codex's
      - the README cites both terms.
 9. **Record.** `d870275` was committed from a Codex session at the lead's direction. The lead verified its content before approving it.
 10. **One corrective turn after a schema failure, within the 6-request budget; no format repair; raw replies persisted as untrusted.** Recorded after live run 2 (`runs/live2/agent-s01_faulty-93583d9e48b5/`: ERROR, `schema_failure: not_json`, reply not stored). Implemented in T-06 slice 4d (TASKS.md T-06 "SLICE 4d RESULT").
+11. **Optional bounded rationale on every action (model-written, authorizes nothing); an empty length-limited reply is eligible for the one corrective turn; the request body stays as decided (no reasoning-control parameter).** Recorded after live run 3b (`runs/live3b/agent-s01_faulty-7de5564eab88/`: a rationale on `list_project_files` rejected as an extra field, then an empty reply at the 8,000-token output limit). Implemented in T-06 slice 4e (TASKS.md T-06 "SLICE 4e RESULT").
 
 **Not authorized by this record:** live run 2 or any other spending, and anything public.
