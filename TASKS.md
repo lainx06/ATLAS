@@ -1885,6 +1885,11 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Observation (not fixed; outside this pass):** on Windows, a reader holding `pending.json` open while the approver deletes or replaces it makes the approver raise `PermissionError` (seen in the new browser test before its polling was changed). The page polls that file (`ui/worker.py:89`), so a coinciding poll could end a UI run in ERROR (`approver_error`). It fails closed (nothing executes).
   - **No Nebius call, no `.env` read, no live run.**
   - **Next:** a focused Codex re-verification of F1-F3.
+- **COMBINED RE-VERIFICATION (runs/cr2/review.md): F2, F3 closed; F1 open (apostrophe in quoted path) -> fixed in `d2110c1`; lead re-runs Codex's unchanged probe.**
+  - **F1 as found:** `'C:\Users\O'Brien\private\customer.csv'` gave `'<host-path>'Brien\private\customer.csv'`; SPEC §11 lacked the known-value fragment limit stated in the module docstring.
+  - **Fix (`d2110c1`, branch `fix-cr1`; not merged):** a quoted host path ends only at the same quote followed by the end of the line, whitespace or one of `, ) ] } : ;`; any other quote is part of the path. With no such closing quote on the line, the path is redacted to the end of the line, as an unquoted one. SPEC §11 adds "only exact known values are replaced, not fragments of them".
+  - **Tests** (logs in git-ignored `runs/fixcr1b/`): 6 new in `tests/unit/test_agent_slice4f_feedback.py` (Codex's `quoted_apostrophe` and `repr_list_apostrophe`, a double-quoted path with an inner `"`, a traceback `File "..."` line, a repr list of two paths, a quote with no valid close); red before the fix: **4 failed, 2 passed** (controls). Codex's 21 probe inputs replayed (`replay.json`): only `quoted_apostrophe` changed, now `'<host-path>'`; the URL, `x//2`, `/work` and `/usr` controls are unchanged. Codex's targeted command (`targeted.log`): **161 passed** (155 + 6), exit 0; ruff check and format clean; 0 tracked `w/crlf`.
+  - **No Nebius call, no `.env` read, no live run.**
 - **NEXT CARD: SLICE 4 (one authorized live run).**
   - **OWNER:** Claude Code (writer). Codex reviews. The lead decides and authorizes; the owner enters nothing new (the key is already in `.env`).
   - **MODEL DECISION:** STAY on Opus High (live boundary, spending and credential handling).
