@@ -45,7 +45,7 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | Spending controls, prompt budget, live entry point (slice 4) | **Controls verified by Codex (Gate 1 PASS at `8c79e5a`). The lead's values are decided (Gate 2). The live entry point and pre-run model check are implemented and self-tested offline, awaiting Codex's Gate 3 review. No pre-run call or live run has been made or authorized.** A live run needs `--live`, `ATLAS_MODEL_MODE=live` and the exact authorized amount. It refuses before touching anything otherwise, and aborts if the provider's listing differs from the configuration | Mocked-transport tests only. The owner also ran the NON-LIVE fixture CLI demonstration once on s01 (REPORT; four FAILs became PASS) |
 | T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3), and the structural checks of that evidence (passes 4 and 5). **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope. The limitations stand | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | T-03 hosting and isolated-worker probe | **Accepted by the lead at `51d3dd8`** within its research-and-feasibility scope (16 October 2026). It chose limited hosted mode for V1 (curated examples and trusted evaluation functions; generated diffs are shown as "not executed here"), with full Docker execution in the local build. It also selected Neon Postgres as the future budget store | A recommendation with dated sources, and small owner-run probes: a minimal Streamlit build, a secret canary, one sleep/wake cycle, and the budget-store scenarios on Neon. It does **not** establish production readiness, guaranteed availability, promotional-credit eligibility or isolation on any remote worker. The budget caps are planned, not built, so they are not a spending ceiling |
-| Hosted demo (T-12) | **Built offline on branch `t12-hosted` (18 October 2026); unreviewed and not deployed.** With `ATLAS_HOSTED=1` the app shows the bundled recorded runs (hash-verified) and offers one live Nemotron session per visitor. Proposals are checked by `validate_diff` and labelled "not executed here". The original's findings come from live run 6's recorded trusted evaluation. A Neon Postgres budget store enforces every cap before each request (section 6, "A budget that a database enforces") | Offline tests only: a mocked model provider and a disposable local PostgreSQL. No live call, no Neon run and no deployment. Before it can be called ready: Codex's review, then Nebius connectivity and the full locked build tested on the host |
+| Hosted demo (T-12) | **Built offline on branch `t12-hosted` (18 October 2026); Codex review 1 failed with one P2 (a local run could still execute with `ATLAS_HOSTED=1`); fix pass 1 built, re-verification pending; not deployed.** With `ATLAS_HOSTED=1` the app shows the bundled recorded runs (hash-verified) and offers one live Nemotron session per visitor. Proposals are checked by `validate_diff` and labelled "not executed here". The original's findings come from live run 6's recorded trusted evaluation. A Neon Postgres budget store enforces every cap before each request (section 6, "A budget that a database enforces") | Offline tests only: a mocked model provider and a disposable local PostgreSQL. No live call, no Neon run and no deployment. Before it can be called ready: Codex's review, then Nebius connectivity and the full locked build tested on the host |
 | Memory comparison | Planned | Do not describe it as shipped |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
@@ -313,6 +313,28 @@ WHERE cap_key = 'public' AND reserved_usd + spent_usd + 0.0108 <= cap_usd;
 - **Why keep a dispatched request "held"?** After a request is sent, its cost is unknown until usage comes back. A timeout must not give the money back, so only exact known usage (`settle`) or an operator's reconciliation resolves it.
 
 C++ connection: it is the same idea as acquiring two mutexes in a fixed global order, and as a compare-and-swap that only commits if the value is still what you checked.
+
+**What the caps do not promise.** A cap admits a request only if its *estimated* ceiling fits. Afterwards the provider's reported usage is charged exactly, even if it is above the reservation, so a pool can end slightly past its cap by that excess. The caps are reservation bounds, not a proven maximum invoice (`docs/HOSTED_OPERATIONS.md`, "Spend bounds").
+
+### Guarding every door, not just the front one (T-12 fix pass 1, built; not re-verified)
+
+Codex's first T-12 review found that `ATLAS_HOSTED=1` only chose which *page* to show. A program that called `run_agent(...)` directly (with the default `hosted=False`) in the same environment still reached the local executor. Choosing the page is the front door; the executor is a back door.
+
+The fix puts one small check at every place that can execute code: the local agent run, the Docker runner, the trusted-fixture subprocess, the candidate executor, the original's runner, the local UI's worker process and the command line.
+
+```python
+def refuse_if_hosted(what: str, env=None) -> None:
+    if enabled(env):  # exactly "1"
+        raise HostedExecutionRefused(
+            f"{what} refused: the hosted environment executes nothing; nothing was run"
+        )
+```
+
+Each check runs *first*, before an approval, a file, a subprocess or a network call, so a refusal leaves nothing behind. The tests replace `subprocess.run`, `subprocess.Popen` and the executor with tripwires and check that none is reached. Checking twice (`execute_and_reevaluate` also reaches the Docker runner's check) is deliberate defense in depth. Removing the first check still left the second one to stop execution, but a run directory had already been created, and a test caught that.
+
+C++ connection: like an `assert` precondition at the top of every public function of a class, rather than only in the constructor that most callers happen to use.
+
+The judge access code also got a minimum length: a configured code under 32 characters switches the judge route off (everyone uses the public pool), because a short code could be guessed.
 
 ## 7. Why Docker matters—and what it does not prove
 

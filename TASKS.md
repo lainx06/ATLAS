@@ -2154,6 +2154,30 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - real-model behavior in hosted mode;
     - the Codex review.
   - **Next:** the Codex T-12 security-and-spend review (the third of the five Codex reviews), then the user's deployment steps (secrets; stage B; stage C; the kill switch on).
+- **REVIEW 1 (Codex, 2026-10-18): FAIL, one P2 (hosted environment did not guard the local execution path; runs/t12r/review.md).**
+  - P2: `ATLAS_HOSTED=1` selected the hosted page, but a direct `run_agent` call (default `hosted=False`) still reached the local executor (Codex's tripwire `runs/t12r/test_boundary.py`, one failed).
+  - Two P3 (paths outside the allowlist; publication metadata in `demo/recorded/`) and the absolute charged-dollar maximum NOT VERIFIED. Lead dispositions: DECISIONS.md "T-12 review 1 dispositions (lead, 2026-10-18)".
+  - Codex also ran the 87 hosted tests (passed) and caught all seven weakened variants.
+- **FIX PASS 1 (2026-10-19), branch `t12-hosted`, code commit `c3a2805`; re-verification by Codex pending.**
+  - **Execution guard.** `atlas.hosted.refuse_if_hosted(what, env=None)` raises `HostedExecutionRefused` (a `RuntimeError`; a fixed message naming `what`, no environment values) when `ATLAS_HOSTED` is exactly `1`. It runs first, before any approval, file write, subprocess or network access, at six entry points:
+    1. `agent.controller.run_agent` with `hosted=False` (the process environment and a given `env`); `hosted=True` is unchanged;
+    2. `runner.docker.run_candidate`, before its run directory and the Docker CLI;
+    3. `runner.trusted.run_trusted_fixture`, before its host subprocess;
+    4. `agent.execute.execute_and_reevaluate` and `agent.controller.docker_original` (defense in depth);
+    5. `ui.worker.Registry.start`, before its run directory and worker process;
+    6. `atlas.cli`, every mode, first after argument parsing: a fixed stderr message, exit 2, nothing run, no run directory.
+  - **Judge code length (lead hardening).** A configured `JUDGE_ACCESS_CODE` shorter than 32 characters disables the judge route (treated as not configured; everyone uses the public route); an attempt records the fixed event `judge_code_too_short` (no code text or length). `hmac.compare_digest` kept. Generation command in `docs/HOSTED_OPERATIONS.md` §2. The synthetic test codes (`hosted_helpers.JUDGE_CODE`, the budget-store route test) were lengthened to 41 characters.
+  - **Docs.** `docs/HOSTED_OPERATIONS.md`: the guard and its six entry points; the judge-code rule; "Spend bounds" (caps are reservation bounds at the estimate ceiling; known usage is settled exactly, so usage above a reservation can exceed a pool by that excess; the prompt-token ceiling is an estimate; daily keys use the server's UTC clock, so up to $2.00 can be admitted across two adjacent UTC days, within $3.00).
+  - **Tests:** 34 new in `tests/hosted/test_hosted_boundary.py` (offline; tripwires on `subprocess.run`/`Popen`, the executor and the Docker probe; no container started):
+    - Codex's scenario promoted (`test_hosted_environment_refuses_a_local_agent_run`), plus the given-`env` case;
+    - one test per guard point 2 to 6 (the CLI parametrized over audit, agent, live and agent+memory);
+    - `ATLAS_HOSTED` `"0"`, `""`, `"true"`, `" 1"` and unset leave `run_agent`, the Docker entry and the guard unchanged (parametrized);
+    - `hosted=True` with `ATLAS_HOSTED=1`: the hosted happy path still passes;
+    - judge code: 31 characters → public and `judge_code_too_short` without code text; 32 → judge; a wrong code → public.
+  - **Mutation check (mutants not committed):** guard 1 removed → 2 failed (the promoted scenario failed on the created run directory, because the `docker_original` guard still refused execution; the given-`env` test did not raise); guard 2 removed → 1 failed (`test_hosted_environment_refuses_a_docker_execution`).
+  - **Verification:** `$env:ATLAS_MODEL_MODE='fixture'; $env:ATLAS_REQUIRE_DOCKER='1'; uv run --locked pytest tests -q -p no:cacheprovider` → **1519 passed, 1 skipped in 920.87 s**, exit 0 (the skip is the existing `tests/unit/test_candidates.py:116` symlink skip; `runs/t12f1/full.log`, git-ignored). `ruff check .` and `ruff format --check .`: clean. Docker Desktop was started for the run (29.8.2).
+  - **No live run, no Nebius call, no spend, no deployment, no push.**
+  - **Next:** Codex re-verification of fix pass 1; then the user's deployment steps.
 
 ### T-13 Release package (Start Here Steps 13–14)
 - **OWNER:** Claude Code (writer); Codex checks release blockers; Gemini critiques the video.

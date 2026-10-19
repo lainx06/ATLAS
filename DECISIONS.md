@@ -377,3 +377,14 @@ Recorded at the user's direction for T-12 (SPEC §13). They resolve "Lead decisi
 - **B6. The bundle is byte-exact and is not edited.** `scripts/check_recorded.py` reports host paths and the local user name in the recorded run records (46 each). Its key-shaped findings (12) are only provenance `token =` variables in the copied ATLAS sources. The lead decides whether to publish as is or to re-record.
 
 **Not authorized by this record:** any live call, deployment, stage B or C run, or cap change beyond the values above.
+
+## T-12 review 1 dispositions (lead, 2026-10-18)
+
+Codex review 1 (`runs/t12r/review.md`): "Verdict: T-12 FAIL", one P2.
+
+1. P2 execution boundary: fixed in fix pass 1 (guard at six entry points); re-verification by Codex required.
+2. P3 paths outside the allowlist (.gitattributes, app.py, DECISIONS.md, STATUS.md, TASKS.md): accepted; necessary integration changes and normal records.
+3. P3 publication metadata in demo/recorded/: user decision A (2026-10-18): publish the recorded bundle as-is. The 12 key_shaped hits are false positives (provenance registration and token= keyword arguments), confirmed by the review.
+4. Absolute charged-dollar maximum NOT VERIFIED: accepted known limitation; caps are reservation bounds (see docs/HOSTED_OPERATIONS.md "Spend bounds").
+5. Judge-code guessing: mitigated by the 32-character minimum and a random code generated at deployment.
+6. Prior work (user, 2026-10-18): the submission period began before 2026-10-14; no ATLAS code, data or documents existed before the first commit 7a0f155 (2026-10-14).

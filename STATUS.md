@@ -1,8 +1,8 @@
 # ATLAS status
 
-WRITER: Claude Code (T-12 offline build, branch `t12-hosted`)
+WRITER: Claude Code (T-12 fix pass 1, branch `t12-hosted`)
 MODEL: Claude Opus 5.5 high
-CURRENT STEP: **T-12 built offline, awaiting review and deployment (2026-10-18)** on branch `t12-hosted` from `main` `f059554` (TASKS.md T-12 "RESULT"; DECISIONS.md "T-12 decisions (user, 2026-10-18)" and builder choices B1-B6; `docs/HOSTED_OPERATIONS.md`). Commits `625987b` (step 1, engine), `75d709c` (step 2, Neon budget store), `3d7a597` (step 3, publication check), `9cb5e47` and `40027b9` (step 4, page, secrets, requirements). Full suite with Docker required: **1485 passed, 1 skipped** (`runs/t12/full.log`); ruff clean. Publication check findings for the lead: host paths and the user name (46 each) in the bundled run records; 12 key-shaped false positives; nothing rewritten. No Nebius call, no `.env` read, no live call, no Neon connection, no deployment. **Next: the Codex T-12 security-and-spend review; then the user's deployment steps (secrets, stage B, stage C, kill switch on), each with its own approval.** Earlier: T-06 accepted by the lead within its documented scope at `199a173` (DECISIONS.md item 16).
+CURRENT STEP: **T-12 review 1 FAIL (one P2), fix pass 1 built, re-verification pending (2026-10-19).** Codex review 1 (`runs/t12r/review.md`): one P2, `ATLAS_HOSTED=1` did not guard the local execution path. Fix pass 1 (`c3a2805` code, plus a docs commit) adds `atlas.hosted.refuse_if_hosted` at six execution entry points and a 32-character minimum for the judge access code; 34 new tests; full suite with Docker required **1519 passed, 1 skipped** (`runs/t12f1/full.log`); ruff clean; both mutation checks caught. Lead dispositions: DECISIONS.md "T-12 review 1 dispositions (lead, 2026-10-18)" (bundle published as-is, user decision A). **Next: Codex re-verification of fix pass 1; then the user's deployment steps (secrets, stage B, stage C, kill switch on), each with its own approval.** Earlier: T-12 built offline (2026-10-18) on branch `t12-hosted` from `main` `f059554` (TASKS.md T-12 "RESULT"; DECISIONS.md "T-12 decisions (user, 2026-10-18)" and builder choices B1-B6; `docs/HOSTED_OPERATIONS.md`). Commits `625987b` (step 1, engine), `75d709c` (step 2, Neon budget store), `3d7a597` (step 3, publication check), `9cb5e47` and `40027b9` (step 4, page, secrets, requirements). Full suite with Docker required: **1485 passed, 1 skipped** (`runs/t12/full.log`); ruff clean. Publication check findings for the lead: host paths and the user name (46 each) in the bundled run records; 12 key-shaped false positives; nothing rewritten. No Nebius call, no `.env` read, no live call, no Neon connection, no deployment. **Next: the Codex T-12 security-and-spend review; then the user's deployment steps (secrets, stage B, stage C, kill switch on), each with its own approval.** Earlier: T-06 accepted by the lead within its documented scope at `199a173` (DECISIONS.md item 16).
 - **Live run 6 was the first complete live end-to-end success** (violation found -> model-proposed fix -> human approval -> isolated execution -> trusted re-evaluation NO_VIOLATION_FOUND). **Slice 4h** (`b900373`) adds finish-after-success guidance and a recorded-run viewer; it is on `main` at `bc2ef58`.
 - **Total estimated live spend, runs 1 to 6: about $0.058 ($0.0580317)** (0.0087333 + 0.0025863 + 0 + 0.0094995 + 0.0166986 + 0.0014256 + 0.0190884; provider-reported usage at listed prices, not billing).
 - **Key checks** (the user's literal-key search): **0 for all runs** (runs 1 to 6).
@@ -153,7 +153,7 @@ CURRENT STEP: **T-12 built offline, awaiting review and deployment (2026-10-18)*
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: branch `t12-hosted` at **`40027b9`** plus the T-12 docs commit (TASKS, DECISIONS, STATUS, SPEC §13, learning guide); `main` unchanged at `f059554`. The builder verified `40027b9`: 1485 passed, 1 skipped with Docker required (`runs/t12/full.log`); ruff check and format clean. Earlier checkpoint: `main` at `199a173` (T-06 acceptance), 1398 passed, 1 skipped.
+CHECKPOINT: branch `t12-hosted` at fix pass 1 (`c3a2805` code plus its docs commit; before it `38dda05`); `main` unchanged at `f059554`. Fix pass 1: 1519 passed, 1 skipped with Docker required (`runs/t12f1/full.log`). Earlier, at `40027b9`: The builder verified `40027b9`: 1485 passed, 1 skipped with Docker required (`runs/t12/full.log`); ruff check and format clean. Earlier checkpoint: `main` at `199a173` (T-06 acceptance), 1398 passed, 1 skipped.
 - The last independently verified code is still **`f327565`** (Gate 3 PASS, `runs/g3y/review.md`).
 - Gate 4 reviewed live run 1's evidence at `d870275`: FAIL.
 - Slice 4c, T-07 and T-09 await the combined Codex review.
@@ -161,7 +161,7 @@ CHECKPOINT: branch `t12-hosted` at **`40027b9`** plus the T-12 docs commit (TASK
 - `git status`: clean except two untracked items left alone by rule: the user's root `ATLAS_Learning_Guide.md` and the user's editor settings in `.vscode/`. Branch `main`.
 - Local commits remain unpushed; no fetch or push was performed for this docs-only record. `origin` = `https://github.com/lainx06/atlas.git` (private).
 - The latest full-suite run is on `main` at `f5d76c9` (below).
-LAST UPDATED: 2026-10-18
+LAST UPDATED: 2026-10-19
 
 ## What works (verified by running)
 - **Full repository test run on `main` at `f5d76c9` (2026-10-17), Docker required:**
