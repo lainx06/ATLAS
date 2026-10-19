@@ -356,7 +356,7 @@ fn = expected - answer  # missed: sampling_unit_disjoint
 precision = len(tp) / len(tp | fp) if tp | fp else "undefined"  # never invent 0 or 1
 ```
 
-Two honest caveats. These are development cases: ATLAS's checks were debugged on them, so ATLAS doing well here says nothing about new projects. And under the decided 12,000 input estimate the two HAR manifests (561 feature names each) are too large to send, so leg (b) records their trials as refused, not answered.
+Two honest caveats. These are development cases: ATLAS's checks were debugged on them, so ATLAS doing well here says nothing about new projects. And leg (b) has its own input ceiling, 40,000 (an estimate; the agent's stays 12,000), because each HAR manifest lists 561 feature names (about 34,600 in all) and leaving the manifest out would be unfair: ATLAS reads it. That ceiling was set by a protocol amendment before any trial, and each request is reserved at it ($0.0192).
 
 ## 7. Why Docker matters—and what it does not prove
 

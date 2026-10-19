@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+from decimal import Decimal
 from pathlib import Path
 
 import httpx2
@@ -322,7 +323,7 @@ def mocked_live(tmp_path, monkeypatch):
     monkeypatch.setattr(suite, "atlas_leg", stub_atlas)
     monkeypatch.setenv("ATLAS_MODEL_MODE", "live")
     good = json.dumps({"violated": ["split.no_group_overlap"], "rationale": "r"})
-    provider = Provider([completion(good)] * 6)
+    provider = Provider([completion(good)] * 12)
     http = httpx2.Client(transport=httpx2.MockTransport(provider))
     real_preflight, real_client = preflight.run_preflight, nebius.NebiusClient
     monkeypatch.setattr(
@@ -341,7 +342,7 @@ def test_the_live_path_end_to_end_over_mocks(tmp_path, mocked_live, capsys):
     assert code == 1  # s02_clean's ATLAS result is stubbed unavailable here
     gets = [r for r in mocked_live.requests if r.method == "GET"]
     posts = [r for r in mocked_live.requests if r.method == "POST"]
-    assert len(gets) == 1 and len(posts) == 6  # two HAR cases refused before sending
+    assert len(gets) == 1 and len(posts) == 12  # every case reaches leg (b), 3 each
     for request in posts:
         body = json.loads(request.content)
         assert set(body) == {"model", "messages", "max_completion_tokens", "n"}
@@ -351,11 +352,12 @@ def test_the_live_path_end_to_end_over_mocks(tmp_path, mocked_live, capsys):
     assert record["live"] is True and record["seed"] == 3
     assert record["preflight"]["result"] == "pass"
     assert set(record["spend"]["per_case"]) == set(CASE_IDS)
-    for cid in ("har_flawed", "har_clean"):
-        trials = json.loads((run_dir / "baseline" / f"{cid}.json").read_text())[
-            "trials"
-        ]
-        assert {t["code"] for t in trials} == {"input_over_ceiling"}
+    assert record["max_input_tokens"] == 40_000
+    for cid in CASE_IDS:
+        case_run = json.loads((run_dir / "baseline" / f"{cid}.json").read_text())
+        assert [t["status"] for t in case_run["trials"]] == ["VALID"] * 3, cid
+        assert Decimal(case_run["cost"]["ceiling_per_request_usd"]) == Decimal("0.0192")
+        assert case_run["input_estimate"] <= 40_000
     for path in run_dir.rglob("*"):
         if path.is_file():
             assert KEY.encode() not in path.read_bytes(), path
@@ -416,19 +418,20 @@ def test_the_full_fixture_run_end_to_end(tmp_path, monkeypatch, capsys, isolatio
         0.0,
     )
 
-    # leg (b): every scheduled trial is reported, the HAR cases refused before sending
+    # leg (b): every scheduled trial is reported; all four cases reach the model
     b = scores["baseline"]["totals"]
     assert (b["trials_scheduled"], b["valid"], b["invalid_reply"], b["not_sent"]) == (
-        12, 4, 2, 6)  # fmt: skip
-    assert (b["tp"], b["fp"], b["fn"]) == (5, 2, 3)
-    assert b["clean_false_violation_rate"] == 0.5
+        12, 8, 4, 0)  # fmt: skip
+    assert (b["tp"], b["fp"], b["fn"]) == (14, 3, 4)
+    assert (b["clean_false_positives"], b["clean_false_violation_rate"]) == (2, 0.5)
     codes = {(r["case_id"], t["repetition"]): t["code"]
              for r in scores["baseline"]["cases"] for t in r["trials"]}  # fmt: skip
     assert codes[("s01_faulty", 3)] == "not_json"
     assert codes[("s02_clean", 3)] == "duplicate_key"
-    assert {codes[(c, r)] for c in ("har_flawed", "har_clean") for r in (1, 2, 3)} == {
-        "input_over_ceiling"
-    }
+    assert codes[("har_flawed", 3)] == "rationale_too_long"
+    assert codes[("har_clean", 3)] == "extra_field"
+    estimates = record["input_estimates"]
+    assert max(estimates.values()) <= record["max_input_tokens"] == 40_000
     assert (run_dir / "replies" / "s01_faulty" / "t3.txt").read_text().startswith("```")
 
     # leg (c): descriptive metrics from the run records

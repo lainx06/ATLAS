@@ -6,6 +6,7 @@ client is driven over an `httpx2.MockTransport` under the fixture network guard.
 synthetic marker; the repository `.env` is never read.
 """
 
+import dataclasses
 import json
 from decimal import Decimal
 
@@ -13,8 +14,8 @@ import httpx2
 import pytest
 
 from atlas.agent import budget as budget_module
-from atlas.agent.budget import SpendLimits
-from atlas.agent.client import FixtureClient, LiveModeUnavailable
+from atlas.agent.budget import DECIDED_SLICE4, SpendLimits, SpendRefused
+from atlas.agent.client import FixtureClient, LiveModeUnavailable, ModelError
 from atlas.agent.nebius import NebiusClient
 from atlas.agent.network import deny_network
 from atlas.cli import _decided_config
@@ -25,7 +26,10 @@ KEY = "sk-test-SECRET-t11-do-not-leak-0123456789"
 CASES = {c.case_id: c for c in load_cases()}
 S01, S02, HAR = CASES["s01_faulty"], CASES["s02_clean"], CASES["har_flawed"]
 DEFS = load_definitions()
-CONFIG = _decided_config()
+AGENT_CONFIG = _decided_config()  # DECIDED_SLICE4: the agent's 12,000 input ceiling
+CONFIG = B.leg_b_config(AGENT_CONFIG)  # leg (b): 40,000
+# A case whose source alone takes the estimate past 40,000 (refused before dispatch).
+OVERSIZE = dataclasses.replace(S01, entry_text=S01.entry_text + "#" * 40_000)
 LIMITS = SpendLimits(authorized_usd=Decimal("0.51"), estimate_cap_usd=Decimal("0.0648"))
 GOOD = json.dumps({"violated": ["split.no_group_overlap"], "rationale": "r"})
 USAGE = {"prompt_tokens": 3000, "completion_tokens": 400, "total_tokens": 3400}
@@ -202,9 +206,17 @@ def test_a_transport_error_is_a_trial_without_an_answer_and_is_not_retried(tmp_p
     assert len(client.requests) == 3
 
 
+@pytest.mark.parametrize("cid", ["har_flawed", "har_clean"])
+def test_the_har_sized_input_is_sent(tmp_path, cid):
+    record, client = fixture_run(tmp_path, [reply(GOOD)] * 3, case=CASES[cid])
+    assert 33_000 < record.input_estimate <= CONFIG.max_input_tokens == 40_000
+    assert [t["status"] for t in record.trials] == [B.VALID] * 3
+    assert len(client.requests) == 3
+
+
 def test_the_input_estimate_refuses_the_case_before_anything_is_sent(tmp_path):
-    record, client = fixture_run(tmp_path, [reply(GOOD)] * 3, case=HAR)
-    assert record.input_estimate > CONFIG.max_input_tokens == 12_000
+    record, client = fixture_run(tmp_path, [reply(GOOD)] * 3, case=OVERSIZE)
+    assert record.input_estimate > CONFIG.max_input_tokens == 40_000
     assert [(t["status"], t["code"], t["sent"]) for t in record.trials] == [
         (B.NOT_SENT, "input_over_ceiling", False)
     ] * 3
@@ -327,20 +339,75 @@ def test_invalid_usage_is_caught_before_accounting_and_stops_the_case(tmp_path, 
 
 
 def test_the_estimate_cap_refuses_before_the_attempt_is_reserved(tmp_path, events):
-    # unknown usage is held at the 0.0108 ceiling; a cap of two ceilings stops trial 3
-    tight = SpendLimits(
-        authorized_usd=Decimal("0.51"), estimate_cap_usd=Decimal("0.0216")
-    )
+    # Known usage above the output ceiling is charged as reported ($0.054 for 60,000
+    # tokens), so $0.054 + the next $0.0192 reservation exceeds the $0.0648 cap.
+    over = {"prompt_tokens": 3000, "completion_tokens": 60_000, "total_tokens": 63_000}
     record, provider = live_run(
-        tmp_path, [(200, completion(GOOD, usage=None))] * 3, events, limits=tight
+        tmp_path, [(200, completion(GOOD, usage=over))] * 3, events
     )
-    assert [t["status"] for t in record.trials] == [B.VALID, B.VALID, B.NOT_SENT]
-    assert record.trials[2]["code"] == "spend_cap" and record.stopped == "spend_cap"
-    assert len(provider.requests) == 2 and events.count("reserve_attempt") == 2
+    assert [t["status"] for t in record.trials] == [
+        B.MODEL_ERROR,
+        B.NOT_SENT,
+        B.NOT_SENT,
+    ]
+    assert record.trials[0]["code"] == "usage_over_ceiling"
+    assert record.trials[1]["code"] == "spend_cap" and record.stopped == "spend_cap"
+    assert record.trials[2]["code"] == "case_stopped"
+    assert len(provider.requests) == 1 and events.count("reserve_attempt") == 1
+
+
+def test_a_cap_below_three_reservations_refuses_the_run_up_front(tmp_path, events):
+    tight = SpendLimits(
+        authorized_usd=Decimal("0.51"), estimate_cap_usd=Decimal("0.0384")
+    )
+    with pytest.raises(SpendRefused):
+        live_run(tmp_path, [(200, completion(GOOD))] * 3, events, limits=tight)
+    assert events == []
+
+
+def test_the_reservation_is_the_leg_b_ceiling(tmp_path, events):
+    assert CONFIG.max_input_tokens == B.LEG_B_MAX_INPUT_TOKENS == 40_000
+    assert CONFIG.ceiling_cost() == Decimal(
+        "0.0192"
+    )  # 40,000 x 0.30/M + 8,000 x 0.90/M
+    record, _ = live_run(tmp_path, [(200, completion(GOOD, usage=None))] * 3, events)
+    assert Decimal(record.cost["ceiling_per_request_usd"]) == Decimal("0.0192")
+    # unknown usage stays held at exactly the reserved ceiling
+    assert [Decimal(e["unresolved_usd"]) for e in record.cost["entries"]] == [
+        Decimal("0.0192")
+    ] * 3
+
+
+def test_three_leg_b_reservations_fit_the_decided_estimate_cap():
+    cap = DECIDED_SLICE4["estimate_cap_usd"]
+    three = 3 * CONFIG.ceiling_cost()
+    assert three == Decimal("0.0576") and three <= cap == Decimal("0.0648")
+    assert B.REQUESTS_PER_CASE * CONFIG.ceiling_cost() <= cap
+    assert CONFIG.max_input_tokens + CONFIG.max_completion_tokens <= 262_144
+
+
+def test_the_agent_ceiling_and_the_decided_figures_are_unchanged():
+    assert DECIDED_SLICE4["max_input_tokens"] == 12_000 == AGENT_CONFIG.max_input_tokens
+    assert AGENT_CONFIG.ceiling_cost() == Decimal("0.0108")
+    agent_client = NebiusClient(AGENT_CONFIG, KEY)
+    request = B.ModelRequest(B.messages(HAR, DEFS), {})
+    with pytest.raises(ModelError) as info:  # the agent path still refuses above 12,000
+        agent_client.check_request(request)
+    assert info.value.code == "input_over_ceiling" and info.value.dispatched is False
+    B.NebiusClient(CONFIG, KEY).check_request(request)  # leg (b) sends it
+
+
+def test_a_case_run_refuses_the_agent_configuration(tmp_path):
+    with pytest.raises(ValueError):
+        B.run_case(S01, FixtureClient("t", []), tmp_path, config=AGENT_CONFIG,
+                   definitions=DEFS, env={})  # fmt: skip
+    live = NebiusClient(AGENT_CONFIG, KEY)
+    with pytest.raises(ValueError):
+        B.run_case(S01, live, tmp_path, config=CONFIG, definitions=DEFS, spend=LIMITS)
 
 
 def test_a_live_estimate_refusal_sends_and_reserves_nothing(tmp_path, events):
-    record, provider = live_run(tmp_path, [], events, case=HAR)
+    record, provider = live_run(tmp_path, [], events, case=OVERSIZE)
     assert {t["code"] for t in record.trials} == {"input_over_ceiling"}
     assert provider.requests == [] and events == [] and record.cost["entries"] == []
 

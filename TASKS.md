@@ -2065,6 +2065,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 
 ### T-11 Three-way comparison (re-scoped)
 - **RE-SCOPED (lead, 2026-10-19;** DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)"): T-08 (procedures, agent+memory) was cut, so the planned `audit` / `agent` / `agent+memory` pilot on Variant A is replaced by a three-way comparison on the four development cases. Protocol: `docs/EVALUATION.md` (predeclared before any live trial).
+- **AMENDMENT 1 (lead, 2026-10-19, before any live trial;** DECISIONS.md, same heading, item 6): leg (b) uses its own 40,000 input ceiling (`baseline.LEG_B_MAX_INPUT_TOKENS`), so the HAR cases (about 34,600) are sent with their full manifest; each request is reserved at $0.0192, three at $0.0576, within the unchanged $0.0648 cap and $0.51 authorization. The agent's 12,000 is unchanged. Built in T-11 fix pass 1.
 - **OWNER:** Claude Code (writer); Gemini reviews the claims.
 - **MODEL DECISION:** STAY on Opus High (evaluation design).
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Gemini Argon High.
@@ -2078,7 +2079,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **ACCEPTANCE:**
   - expected IDs and the protocol committed before any live trial; expected IDs never taken from a T-11 result;
   - leg (a) through existing code only (recorded runs verified by the viewer's hash check, or the T-09 Docker path), per-ID PASS/FAIL/NOT_ASSESSED with the evidence path or hash;
-  - leg (b): three trials per case, at most 3 requests per case run, each reserved before dispatch; the decided request body (model, messages, max_completion_tokens=8000, n=1); a case over the 12,000 input estimate refused before dispatch and recorded; exact validation, any invalid reply INVALID_REPLY with a fixed code, never repaired, retried or scored; seeded random case order recorded;
+  - leg (b): three trials per case, at most 3 requests per case run, each reserved before dispatch; the decided request body (model, messages, max_completion_tokens=8000, n=1); a case over leg (b)'s 40,000 input estimate (amendment 1; originally 12,000) refused before dispatch and recorded; exact validation, any invalid reply INVALID_REPLY with a fixed code, never repaired, retried or scored; seeded random case order recorded;
   - leg (c) descriptive only, never part of an outcome;
   - TP/FP/FN per case and leg; precision/recall "undefined" on a zero denominator; NOT_ASSESSED as coverage gaps, not misses; every scheduled trial reported; results descriptive with the development-case caveat at the top;
   - CLI refusals: no mode flag, live without or with a wrong amount, live refusal order and exit codes as the agent live path, `ATLAS_HOSTED=1` exit 2;

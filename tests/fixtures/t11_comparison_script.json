@@ -13,10 +13,14 @@
       {"content": "{\"violated\": [], \"violated\": [], \"rationale\": \"duplicate key\"}"}
     ],
     "har_flawed": [
-      {"content": "{\"violated\": [], \"rationale\": \"never sent: the input estimate exceeds the ceiling\"}"}
+      {"content": "{\"violated\": [\"split.no_group_overlap\", \"split.sampling_unit_disjoint\", \"split.repeated_measures_rule\", \"split.no_window_overlap\", \"fit.state_dependencies_within_fold_train\"], \"rationale\": \"Scripted: row-level KFold over overlapping windows; scaler and selector fit before the split.\"}"},
+      {"content": "{\"violated\": [\"split.no_group_overlap\", \"split.sampling_unit_disjoint\", \"split.repeated_measures_rule\", \"fit.state_dependencies_within_fold_train\"], \"rationale\": \"Scripted: the window assertion missed.\"}"},
+      {"content": "{\"violated\": [], \"rationale\": \"Scripted: a rationale over the 600-character limit. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}"}
     ],
     "har_clean": [
-      {"content": "{\"violated\": [], \"rationale\": \"never sent: the input estimate exceeds the ceiling\"}"}
+      {"content": "{\"violated\": [], \"rationale\": \"Scripted: subject-grouped folds, fitting inside each fold.\"}"},
+      {"content": "{\"violated\": [\"split.no_window_overlap\"], \"rationale\": \"Scripted false positive.\"}"},
+      {"content": "{\"violated\": [], \"rationale\": \"extra field\", \"confidence\": 0.9}"}
     ]
   }
 }

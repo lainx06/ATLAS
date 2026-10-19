@@ -334,6 +334,7 @@ def _evaluate(args) -> int:
         )
 
     from atlas.agent.client import MODE_ENV
+    from atlas.evaluation import baseline as B
     from atlas.evaluation import suite
 
     mode = os.environ.get(MODE_ENV, "fixture")
@@ -353,7 +354,7 @@ def _evaluate(args) -> int:
     record = suite.run_suite(
         args.runs_dir,
         suite.fixture_clients(name, cases),
-        config=_decided_config(),
+        config=B.leg_b_config(_decided_config()),
         seed=seed,
         live=False,
     )
@@ -403,16 +404,21 @@ def _evaluate_live(args) -> int:
             f"(given: {shown})."
         )
 
-    # 4. The decided limits must cover the provider-enforced worst case of one case run.
+    # 4. The decided limits must cover the provider-enforced worst case of one case run, and
+    #    three leg (b) reservations (at its own 40,000 input ceiling) the estimate cap.
+    from atlas.agent import money
     from atlas.evaluation import baseline as B
     from atlas.evaluation import suite
 
     try:
-        config = _decided_config()
+        config = B.leg_b_config(_decided_config())
         limits = SpendLimits(
             authorized_usd=amount, estimate_cap_usd=DECIDED_SLICE4["estimate_cap_usd"]
         )
         figures = limits.check(config, B.REQUESTS_PER_CASE)
+        reserved = money.times(B.REQUESTS_PER_CASE, config.ceiling_cost())
+        if money.exceeds(reserved, limits.estimate_cap_usd):
+            raise SpendRefused("three leg (b) reservations exceed the estimate cap")
     except (SpendRefused, ValueError, TypeError) as exc:
         return _refuse(f"spending limits refused: {exc}")
     seed = _seed(args)

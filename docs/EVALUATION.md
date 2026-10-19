@@ -6,6 +6,8 @@
 
 T-11 was re-scoped because T-08 (procedures, agent+memory) was cut. T-10 (held-out cases) is cut for the submission; that is a recorded limitation (decision 4).
 
+**Amendment 1 (2026-10-19, before any live trial; decision 6).** Leg (b) uses its own input ceiling of 40,000 (an ATLAS estimate) instead of the agent's 12,000, so the HAR cases (about 34,600) are sent with their full manifest: leaving the manifest out would be unfair, because ATLAS reads it. The agent's 12,000 (`DECIDED_SLICE4`) is unchanged. Each leg (b) request is reserved at the new ceiling, $0.0192. Sections 4, 5 and 9 below are amended accordingly; nothing else changes, and no trial had been run.
+
 ## 1. Cases
 
 The canonical violated assertion IDs per case are fixed in `evaluation/expected.json`, each with its source in an existing benchmark record (decision 3). They were never taken from a T-11 result. The canonical set of a case is the required assertion set of its own claim under `policy-v1.3` (`policy.required_assertions`).
@@ -61,31 +63,32 @@ You review a small Python/scikit-learn tabular classification evaluation against
 
 **Repetitions and order.** Three trials per case, at most three requests per case run (within the 6-request run limit). The four case runs go in a random order: Python `random.Random(seed).shuffle` over the order in `expected.json`; the three repetitions of a case run back to back. The seed is given with `--seed` or drawn at run time (`secrets`) and recorded. Order has no designed influence (no state is shared); randomizing guards only against unknown time effects.
 
-**Input-estimate refusal.** Before anything is reserved or sent, a case is refused if ATLAS's input-token estimate (the production client's own: UTF-8 bytes plus 16 per message; an estimate, not a proven bound) exceeds the decided 12,000 ceiling. All three of its trials are then recorded NOT_SENT `input_over_ceiling`. The estimates at predeclaration:
+**Input-estimate refusal.** Before anything is reserved or sent, a case is refused if ATLAS's input-token estimate (the production client's own: UTF-8 bytes plus 16 per message; an estimate, not a proven bound) exceeds leg (b)'s input ceiling, `LEG_B_MAX_INPUT_TOKENS` = 40,000 (amendment 1; `src/atlas/evaluation/baseline.py`). The same ceiling is the client's own pre-send check and the basis of every reservation (`leg_b_config`: the decided configuration with only `max_input_tokens` replaced). All three trials of a refused case are recorded NOT_SENT `input_over_ceiling`. The estimates:
 
-| Case | Input estimate | Under 12,000 |
+| Case | Input estimate | Under 40,000 |
 | --- | --- | --- |
 | `s01_faulty` | 8,293 | yes |
 | `s02_clean` | 8,264 | yes |
-| `har_flawed` | 34,605 | **no: refused, nothing sent** |
-| `har_clean` | 33,726 | **no: refused, nothing sent** |
+| `har_flawed` | 34,605 | yes |
+| `har_clean` | 33,726 | yes |
 
-The HAR manifests list 561 feature names (about 23 KB each), so under the decided ceiling leg (b) has no trial on the real-data cases. The inputs are not shortened to fit: that would be a different, undecided input.
+The HAR manifests list 561 feature names (about 23 KB each). Under the agent's 12,000 they would have been refused (the predeclared text before amendment 1); the inputs were never shortened to fit.
 
 ## 5. Budgets (per case run)
 
-Per case run, in the controller's order: the estimate cap check, then the attempt reservation (`Budget(max_attempts=3)`), then the ledger reservation (`CostLedger`), and only then the request. Before the run, `SpendLimits.check` requires the provider-enforced worst case of three requests within the authorization.
+Per case run, in the controller's order: the estimate cap check, then the attempt reservation (`Budget(max_attempts=3)`), then the ledger reservation (`CostLedger`), and only then the request. Before the run, `SpendLimits.check` requires the provider-enforced worst case of three requests within the authorization, and three reservations at the leg (b) ceiling must fit the estimate cap (otherwise nothing runs).
 
 | Figure | Value |
 | --- | --- |
-| Ceiling cost per request (12,000 input + 8,000 output tokens at $0.30 / $0.90 per 1M) | $0.0108 |
-| Estimate cap per case run (decided) | $0.0648 (three requests reach at most $0.0324) |
-| Authorization per case run (decided; `--authorize-spend-usd 0.51`) | $0.51 |
-| Provider-enforced worst case per request / per case run of 3 | $0.0834432 / $0.2503296 |
-| Requests the suite can send (HAR refused) | 6 |
-| Suite estimate at the ceilings / provider worst case for those 6 | $0.0648 / $0.5006592 |
+| Ceiling cost per leg (b) request (40,000 input + 8,000 output tokens at $0.30 / $0.90 per 1M) | $0.0192 |
+| Three reservations per case run | $0.0576 |
+| Estimate cap per case run (decided, unchanged) | $0.0648 |
+| Authorization per case run (decided, unchanged; `--authorize-spend-usd 0.51`) | $0.51 |
+| Provider-enforced worst case per request / per case run of 3 (rests on the 262,144-token listed context, so unchanged) | $0.0834432 / $0.2503296 |
+| Requests the suite can send | 12 |
+| Suite total at the ceilings / provider worst case | $0.2304 / $1.0013184 |
 
-Totals are estimates at listed prices from provider-reported usage, not billing. If the HAR cases were within the ceiling, the suite could send 12 requests: $0.1296 at the ceilings and $1.0013 provider worst case, above $0.51 for the suite. The $0.51 is applied per case run, as decision 5 states it.
+Totals are estimates at listed prices from provider-reported usage, not billing. The $0.51 and the $0.0648 apply per case run, as decision 5 states them; the suite's provider worst case ($1.0013) is above $0.51.
 
 ## 6. Invalid replies
 
@@ -120,7 +123,7 @@ Command: `uv run --locked python -m atlas.cli evaluate --suite comparison [--fix
 
 - Development cases, not held-out; four cases and three repetitions support descriptive observations only.
 - The case files name their own flaws: `s01_faulty`'s docstring and comments say it is faulty and why, `s02_clean`'s says clean, and `har_flawed`'s claim statement says it is "deliberately wrong". Leg (b) reads them as they are, which can only help the model.
-- Under the decided 12,000 input ceiling, leg (b) has no trial on the two real-data cases (section 4).
+- Leg (b)'s 40,000 input ceiling differs from the agent's 12,000 (amendment 1): leg (b) sends whole files in one request, while the agent reads them through bounded tool results. The ceiling is an estimate, not a proven token bound.
 - Leg (b) judges from text; leg (a) from executed evidence. The legs differ in what they can see by design, so the comparison does not isolate a cause.
 - `split.no_window_overlap` on `har_flawed` is expected but cannot be established by ATLAS on this data (coverage gap).
 - The input estimate is not a proven token bound, and the cost figures rely on provider-reported usage.

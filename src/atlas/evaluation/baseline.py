@@ -15,8 +15,10 @@ counts as a trial with no valid answer.
 
 **The live machinery, unchanged.** The request goes through the client's `complete` (for a
 live run `nebius.NebiusClient`: the decided body, model, messages, max_completion_tokens and
-n=1 only). Per case run, in the controller's order: the input estimate is checked first (over
-the ceiling: the whole case is refused, nothing reserved or sent); before each request the
+n=1 only), built from `leg_b_config`: the decided configuration with leg (b)'s own input
+ceiling, `LEG_B_MAX_INPUT_TOKENS` (40,000; the agent's 12,000 is unchanged). Per case run, in
+the controller's order: the input estimate is checked first (over the ceiling: the whole case
+is refused, nothing reserved or sent); before each request the
 estimate cap (`SpendLimits`, committed plus the next ceiling), then the attempt reservation
 (`Budget`, at most `REQUESTS_PER_CASE`), then the ledger reservation (`CostLedger`), and only
 then the request. Reported usage is validated (`sanitize_usage`) before accounting. There are
@@ -33,7 +35,7 @@ marked so. No request, header or key is stored.
 
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -47,6 +49,7 @@ from atlas.agent.budget import (
     BudgetExhausted,
     CostLedger,
     SpendLimits,
+    SpendRefused,
 )
 from atlas.agent.client import (
     ModelError,
@@ -67,6 +70,20 @@ from atlas.hosted import refuse_if_hosted
 
 REPETITIONS = 3
 REQUESTS_PER_CASE = 3  # within the 6-request run limit; no retries
+# Leg (b)'s own input ceiling, an ATLAS estimate (DECISIONS.md "T-11 re-scope and T-10 (lead,
+# 2026-10-19)" item 6; protocol amendment 1): the HAR cases' manifest and source estimate about
+# 34,600, and leaving the manifest out would be unfair (ATLAS reads it). The agent's 12,000
+# (DECIDED_SLICE4) is unchanged. Each request is reserved at this ceiling: 40,000 x $0.30/M +
+# 8,000 x $0.90/M = $0.0192, so three reserve $0.0576, within the per-run estimate cap $0.0648.
+LEG_B_MAX_INPUT_TOKENS = 40_000
+
+
+def leg_b_config(agent_config: NebiusConfig) -> NebiusConfig:
+    """The decided configuration with only the input ceiling replaced by leg (b)'s; the
+    pre-dispatch refusal, the client's own pre-send check and every reservation use it."""
+    return replace(agent_config, max_input_tokens=LEG_B_MAX_INPUT_TOKENS)
+
+
 MAX_RATIONALE_CHARS = 600
 REPLY_LABEL = "model-written (untrusted); never evidence"
 
@@ -270,11 +287,20 @@ def run_case(
     refuse_if_hosted("a T-11 comparison case run")
     if env is not None:
         refuse_if_hosted("a T-11 comparison case run", env)
+    if config.max_input_tokens != LEG_B_MAX_INPUT_TOKENS:
+        raise ValueError("leg (b) runs with its own input ceiling (leg_b_config)")
     live = getattr(client, "live", None)
     if live is True:
         if not isinstance(spend, SpendLimits):
             raise ValueError("a live case run needs explicit spending limits")
+        if getattr(client, "config", None) != config:
+            raise ValueError("the live client must use the leg (b) configuration")
         spend.check(client, REQUESTS_PER_CASE)  # may raise SpendRefused: nothing sent
+        reserved = money.times(REQUESTS_PER_CASE, client.ceiling_cost())
+        if money.exceeds(reserved, spend.estimate_cap_usd):
+            raise SpendRefused(
+                "three leg (b) reservations exceed the per-run estimate cap; nothing was run"
+            )
         return _CaseRunner(case, client, run_dir, config, definitions, spend).run()
     if live is not False:
         raise ValueError("the client does not declare whether it is live")
