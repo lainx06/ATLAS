@@ -1,8 +1,8 @@
 # ATLAS status
 
-WRITER: Claude Code (fix pass 1 for combined review 1, branch `fix-cr1`)
+WRITER: Claude Code (T-06 acceptance record, `main`)
 MODEL: Claude Opus 5.5 high
-CURRENT STEP: T-06 slice 4. **Combined review 1** (`runs/cr1/review.md`, of `bc2ef58`): **COMBINED FAIL**, three P2 (F1 host-path redaction bypass, F2 missing snapshot-prefix approval test, F3 CRLF fixture checkout). **Fix pass 1** on branch `fix-cr1` (not merged): `ad69a97` pins LF line endings and byte-exact fixtures (`.gitattributes`; 23 CRLF working copies restored, 0 left); `2519efa` redacts UNC and spaced drive paths (best-effort, limits documented in SPEC §11) and adds snapshot-prefix rejection tests for both approvers (mutation (d) now CAUGHT). Full suite with Docker required: **1380 passed, 1 skipped**. DECISIONS.md item 15; TASKS.md T-06 "COMBINED REVIEW 1" and "FIX PASS 1". No Nebius call, no `.env` read, no live run. **Next: a focused Codex re-verification of F1-F3, then the lead's T-06 acceptance decision.**
+CURRENT STEP: **T-06 accepted by the lead within its documented scope (2026-10-18)** at `199a173` on `main` (DECISIONS.md item 16; TASKS.md T-06 "ACCEPTANCE (lead, 2026-10-18)"). Combined review 1 (`runs/cr1/review.md`, COMBINED FAIL, three P2) is resolved: the re-verification (`runs/cr2/review.md`) closed F2 and F3; F1 is closed by the lead re-running the reviewer's probes after the end-of-line redaction fix (`199a173`). `fix-cr1` was merged by fast-forward (`bc2ef58..199a173`). Full suite with Docker required: **1398 passed, 1 skipped**. No Nebius call, no `.env` read, no live run. **Next: T-12 (hosted demo) planning; the HAR license decision is open (the user's).**
 - **Live run 6 was the first complete live end-to-end success** (violation found -> model-proposed fix -> human approval -> isolated execution -> trusted re-evaluation NO_VIOLATION_FOUND). **Slice 4h** (`b900373`) adds finish-after-success guidance and a recorded-run viewer; it is on `main` at `bc2ef58`.
 - **Total estimated live spend, runs 1 to 6: about $0.058 ($0.0580317)** (0.0087333 + 0.0025863 + 0 + 0.0094995 + 0.0166986 + 0.0014256 + 0.0190884; provider-reported usage at listed prices, not billing).
 - **Key checks** (the user's literal-key search): **0 for all runs** (runs 1 to 6).
@@ -153,7 +153,7 @@ CURRENT STEP: T-06 slice 4. **Combined review 1** (`runs/cr1/review.md`, of `bc2
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `main` at **`f5d76c9`**, "T-09: HAR projects in the UI", a fast-forward of `t06-s4c`, `t07-ui` and `t09-har`. The builder verified it on `main`: 1193 passed, 1 skipped; ruff clean.
+CHECKPOINT: `main` at **`199a173`**, "Redact host paths to end of line, keeping traceback frame tails", a fast-forward of `fix-cr1`; the T-06 acceptance record follows as a docs-only commit. The builder verified `199a173`: 1398 passed, 1 skipped with Docker required (`runs/fixcr1c/full.log`); ruff clean; 0 tracked `w/crlf`.
 - The last independently verified code is still **`f327565`** (Gate 3 PASS, `runs/g3y/review.md`).
 - Gate 4 reviewed live run 1's evidence at `d870275`: FAIL.
 - Slice 4c, T-07 and T-09 await the combined Codex review.
@@ -408,8 +408,8 @@ LAST UPDATED: 2026-10-18
   5. **Email visibility:** the commit email will be visible in public history. If GitHub's "block command line pushes that expose my email" setting is enabled, the push will be rejected until that is resolved.
 
 ## Next task
-1. **Next: a focused Codex re-verification of F1-F3** (combined review 1, `runs/cr1/review.md`) on branch `fix-cr1` at the fix pass's docs commit: the redaction cases and its documented limits (SPEC §11), the snapshot-prefix rejection tests and mutation (d) (`runs/fixcr1/m/`), and the line endings (`.gitattributes`, 0 tracked `w/crlf`, the live6 fixture hashes). Then the lead's T-06 acceptance decision. Live runs 2 to 6 are done; any further live run needs its own explicit user go-ahead (DECISIONS.md "Lead decisions, 2026-10-17" item 1).
-2. **Done: the combined Codex review** (slices 4c-4h, T-07, T-09, live runs 2-6): COMBINED FAIL with three P2, repaired in fix pass 1 (TASKS.md T-06 "FIX PASS 1").
+1. **Next: T-12 (limited hosted demo and judge access) planning.** It needs the user's HAR license decision (item 3 below) before any HAR data or results are hosted. Nothing hosted, published, deployed or spent is authorized by this record.
+2. **Done: T-06 accepted (2026-10-18)** within its documented scope (TASKS.md T-06 "ACCEPTANCE (lead, 2026-10-18)"), after the combined Codex review (COMBINED FAIL, three P2), fix pass 1, the re-verification (F2, F3 closed) and the end-of-line redaction fix (F1).
    - **History:** Gates 1–3 passed (`8c79e5a`, `f327565`); live run 1 ran 2026-10-17; Gate 4 FAILED (`runs/g4/review.md`).
    - **Target milestone:** the playbook's *live-agent milestone*, "Working NVIDIA model on Nebius" (playbook §23 checklist: a sanitized runtime trace, the model ID and a reproduced code-edit/check workflow). Live run 1 delivered the trace and the model ID; the code-edit/check workflow needs a candidate to execute (live run 2).
 3. **Open user decision before T-12:** the HAR license terms (DECISIONS.md "Lead decisions, 2026-10-17" item 8).
