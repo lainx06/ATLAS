@@ -33,6 +33,10 @@ the walk did not accept and chained extension headers cannot recurse inside it.
 Containers reduce execution risk; they do not make hostile code safe (SPEC §10) and do not
 prove provenance integrity or scientific correctness (SPEC §9.9).
 
+With ATLAS_HOSTED=1 nothing here starts a process (T-12 fix pass 2): the two process helpers
+`_docker` and `_spawn`, `build_image`, `probe`, `run_candidate` and `main` each refuse first
+(`hosted.HostedExecutionRefused`; `main` exits 2).
+
 Build the image:  uv run --locked python -m atlas.runner.docker build
 Probe capability: uv run --locked python -m atlas.runner.docker probe
 """
@@ -71,7 +75,7 @@ from atlas.candidates import (
     safe_relpath,
     sha256_bytes,
 )
-from atlas.hosted import refuse_if_hosted
+from atlas.hosted import HostedExecutionRefused, refuse_if_hosted
 from atlas.reports import write_json
 
 RUNNER_NAME = "docker_isolated"
@@ -227,6 +231,7 @@ def cli_env(cli: Path, env=None) -> dict:
 
 def _docker(cli: Path, args: list[str], env: dict, timeout: float = CLI_TIMEOUT_S):
     """Every short Docker CLI call goes through here (one place to observe in tests)."""
+    refuse_if_hosted("a Docker CLI call")
     return subprocess.run(
         [str(cli), *args],
         env=env,
@@ -239,6 +244,7 @@ def _docker(cli: Path, args: list[str], env: dict, timeout: float = CLI_TIMEOUT_
 
 def _spawn(cli: Path, args: list[str], env: dict) -> subprocess.Popen:
     """The container run itself (one place to observe in tests)."""
+    refuse_if_hosted("a Docker container start")
     return subprocess.Popen(
         [str(cli), *args],
         env=env,
@@ -275,6 +281,7 @@ def write_build_context(dest: Path) -> list[str]:
 
 
 def build_image(tag: str = IMAGE_TAG, env=None) -> dict:
+    refuse_if_hosted("a Docker image build")
     cli = resolve_docker_cli(env)
     if cli is None:
         raise RuntimeError("Docker CLI not found")
@@ -302,6 +309,7 @@ def build_image(tag: str = IMAGE_TAG, env=None) -> dict:
 def probe(image: str = IMAGE_TAG, env=None, exclude=()) -> Capability:
     """Is isolated execution available right now? Checks the CLI, the daemon, the server OS
     and the runner image (recipe label and non-root user). Does not run a container."""
+    refuse_if_hosted("a Docker capability probe")
 
     def unavailable(reason: str, **kw) -> Capability:
         return Capability(CAPABILITY_UNAVAILABLE, reason, **kw)
@@ -1055,6 +1063,11 @@ def _run(snapshot, candidate, approval, run_dir, limits, image, env, record) -> 
 
 
 def main(argv: list[str]) -> int:
+    try:
+        refuse_if_hosted("python -m atlas.runner.docker")
+    except HostedExecutionRefused as exc:
+        print(str(exc), file=sys.stderr)  # fixed text only
+        return 2
     if argv == ["build"]:
         print(json.dumps(build_image(), indent=2))
         return 0

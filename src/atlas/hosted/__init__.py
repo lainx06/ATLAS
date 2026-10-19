@@ -11,7 +11,9 @@ execution entry point calls `refuse_if_hosted` before any approval, file write, 
 network access. They are `agent.controller.run_agent` (local, `hosted=False`),
 `agent.controller.docker_original`, `agent.execute.execute_and_reevaluate`,
 `runner.docker.run_candidate`, `runner.trusted.run_trusted_fixture`, `ui.worker.Registry.start`
-and the `atlas.cli` audit and agent modes (exit 2).
+and the `atlas.cli` audit and agent modes (exit 2). T-12 fix pass 2 adds every process start in
+`runner.docker`: its two process helpers `_docker` and `_spawn`, and the maintenance entries
+`build_image`, `probe` and `python -m atlas.runner.docker` (exit 2).
 
 Without `ATLAS_HOSTED=1` nothing here is used: the local build is unchanged.
 """

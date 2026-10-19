@@ -11,6 +11,7 @@ shorter than 32 characters disables the judge route.
 
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import hosted_helpers as H
@@ -255,6 +256,100 @@ def test_the_cli_refuses_every_mode_in_the_hosted_environment(
     assert out.out == ""
     assert reached == []
     assert not runs.exists()
+
+
+# -- guard 7 (fix pass 2): every process start in runner/docker.py ----------------------------
+# Review 2 (runs/t12-review/review.md, P2-1): `python -m atlas.runner.docker build|probe` and the
+# direct `build_image()`/`probe()` calls reached subprocess.run with ATLAS_HOSTED=1.
+
+DOCKER_CLI_REFUSAL = (
+    "python -m atlas.runner.docker refused: the hosted environment executes nothing; "
+    "nothing was run\n"
+)
+
+
+@pytest.fixture
+def docker_cli(monkeypatch):
+    """A harmless resolved CLI path and no build context on disk; returns resolve calls."""
+    resolved = []
+    monkeypatch.setattr(
+        dr,
+        "resolve_docker_cli",
+        lambda *a, **k: resolved.append(True) or Path("review-docker.exe"),
+    )
+    monkeypatch.setattr(dr, "recipe_sha256", lambda: "review-recipe")
+    monkeypatch.setattr(dr, "write_build_context", lambda dest: [])
+    return resolved
+
+
+@pytest.mark.parametrize("command", ["build", "probe"])
+def test_the_docker_maintenance_cli_refuses_in_the_hosted_environment(
+    monkeypatch, capsys, reached, docker_cli, command
+):
+    """Codex's two bypass cases (review 2 `test_other_docker_cli_reaches_subprocess`)."""
+    monkeypatch.setenv("ATLAS_HOSTED", "1")
+    assert dr.main([command]) == 2
+    out = capsys.readouterr()
+    assert out.err == DOCKER_CLI_REFUSAL
+    assert out.out == ""
+    assert reached == [] and docker_cli == []
+
+
+@pytest.mark.parametrize("entry", ["build_image", "probe"])
+def test_direct_build_and_probe_calls_refuse_in_the_hosted_environment(
+    monkeypatch, reached, docker_cli, entry
+):
+    monkeypatch.setenv("ATLAS_HOSTED", "1")
+    with pytest.raises(HostedExecutionRefused):
+        getattr(dr, entry)()
+    assert reached == [] and docker_cli == []
+
+
+@pytest.mark.parametrize(
+    "helper",
+    [
+        lambda: dr._docker(Path("review-docker.exe"), ["version"], {}),
+        lambda: dr._spawn(Path("review-docker.exe"), ["run"], {}),
+    ],
+    ids=["_docker", "_spawn"],
+)
+def test_the_process_helpers_refuse_when_called_directly(monkeypatch, reached, helper):
+    monkeypatch.setenv("ATLAS_HOSTED", "1")
+    with pytest.raises(HostedExecutionRefused):
+        helper()
+    assert reached == []
+
+
+def test_runner_image_verification_refuses_in_the_hosted_environment(
+    monkeypatch, reached, docker_cli
+):
+    from atlas import docker_evidence
+
+    monkeypatch.setenv("ATLAS_HOSTED", "1")
+    with pytest.raises(HostedExecutionRefused):
+        docker_evidence.verify_runner_image("sha256:review")
+    assert reached == [] and docker_cli == []
+
+
+@pytest.mark.parametrize("value", NOT_HOSTED)
+@pytest.mark.parametrize(
+    "entry",
+    [
+        lambda: dr.build_image(),
+        lambda: dr.probe(),
+        lambda: dr.main(["build"]),
+        lambda: dr.main(["probe"]),
+    ],
+    ids=["build_image", "probe", "main-build", "main-probe"],
+)
+def test_other_values_leave_build_and_probe_unchanged(
+    monkeypatch, reached, docker_cli, value, entry
+):
+    set_hosted(monkeypatch, value)
+    with pytest.raises(Tripwire):
+        entry()
+    assert reached == ["subprocess.run"]  # the process start is reached as before
+    assert docker_cli == [True]
 
 
 # -- the guard itself -------------------------------------------------------------------------

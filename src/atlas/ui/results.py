@@ -1,8 +1,13 @@
 """The finished-run cards (2. Analysis to 6. Trust and export), shared by a run started on this
-page and a recorded run opened read-only (`atlas.ui.recorded`). Every value is read from the
-run's own files; nothing here executes or decides an outcome.
+page, the hosted live session and a recorded run opened read-only (`atlas.ui.recorded`). Every
+value is read from the run's own files; nothing here executes or decides an outcome.
+
+The cards render into one clearable placeholder (T-12 fix pass 2). If rendering raises, the
+placeholder is cleared, so no headline or partial result remains, and one fixed error is shown
+instead; the event is logged by a fixed code only. The saved run record is never touched.
 """
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -15,6 +20,12 @@ from atlas.ui.catalogue import BY_NAME
 
 AGENT = "agent"
 AUDIT = "audit"
+RENDER_FAILED = (
+    "The results could not be displayed. The saved run record is unchanged; open it in the "
+    "recorded-run viewer."
+)
+RENDER_FAILED_EVENT = "results_render_failed"
+_log = logging.getLogger(__name__)
 
 
 def recorded_page(run: R.RecordedRun) -> None:
@@ -74,7 +85,41 @@ def finished_run(
     """`compare` is (this fixture, the related fixture) for the descriptive protocol
     comparison; `on_restart` is None where nothing may be started (a recorded run).
     `original_title` labels the original's headline (the hosted page names the recorded
-    trusted evaluation, SPEC §13)."""
+    trusted evaluation, SPEC §13).
+
+    All or nothing: a rendering failure clears every card drawn so far and shows only the
+    fixed RENDER_FAILED error (no exception text). Streamlit's stop and rerun signals are not
+    `Exception`s and pass through."""
+    slot = st.empty()
+    try:
+        with slot.container():
+            _cards(
+                run_dir,
+                report,
+                mode,
+                decisions=decisions,
+                notes=notes,
+                compare=compare,
+                on_restart=on_restart,
+                original_title=original_title,
+            )
+    except Exception:  # noqa: BLE001 - never a partial result; the record is unchanged
+        slot.empty()
+        _log.error(RENDER_FAILED_EVENT)
+        st.error(RENDER_FAILED, icon=":material/error:")
+
+
+def _cards(
+    run_dir: Path | None,
+    report: dict | None,
+    mode: str,
+    *,
+    decisions: list[dict],
+    notes: tuple[str, ...],
+    compare: tuple | None,
+    on_restart: Callable[[], None] | None,
+    original_title: str,
+) -> None:
     terminal = report.get("terminal_state") if report else None
     terminal_reason = report.get("terminal_reason") if report else None
     comp = (report or {}).get("comparison") or {}
