@@ -5,7 +5,7 @@ ATLAS is a coding agent that audits machine-learning evaluation code for leakage
 <!-- Sources for this section: PROJECT_BRIEF.md; AGENTS.md "Scope" and "Isolation"; docs/SPEC.md §9, §11. -->
 
 - Outcome codes are exactly `VIOLATION_FOUND`, `NO_VIOLATION_FOUND`, `INCONCLUSIVE` and `NOT_SUPPORTED`. `NO_VIOLATION_FOUND` means every required check passed within the coverage shown; it does not say the claim is true.
-- Status: hosted demo built offline, **not deployed**; demo URL [TODO: source needed]. Public repository URL [TODO: source needed].
+- Status: hosted demo built and security-reviewed (Codex, two reviews with fault injection; all findings fixed and re-verified), **not yet deployed**; demo URL [TODO: source needed]. Public repository URL [TODO: source needed].
 
 ## Headline results
 
@@ -27,7 +27,7 @@ All figures come from the project's own records; none is a benchmark of detectio
 
 Source: TASKS.md T-06 "LIVE RUN 6"; STATUS.md. The candidate scored *lower*: removing the leakage cost accuracy, which is the point.
 
-The six live runs ended differently, and all are recorded: run 1 two proposals rejected, no candidate executed; run 2 `ERROR` (`not_json`); run 3 declined approval (`NEEDS_INPUT`); run 3b `ERROR` (`incomplete`); run 4 both candidates `INCONCLUSIVE` (`KeyError: 'subject_id'`); run 5 `ERROR` (`not_json`); run 6 success above. Estimated total live spend, runs 1 to 6: about $0.058 ($0.0580317; not billing). Source: STATUS.md.
+The six live runs ended differently, and all are recorded: run 1 two proposals rejected, no candidate executed; run 2 `ERROR` (`not_json`); run 3 declined approval (`NEEDS_INPUT`); run 3b `ERROR` (`incomplete`); run 4 both candidates `INCONCLUSIVE` (`KeyError: 'subject_id'`); run 5 `ERROR` (`not_json`); run 6 success above. Estimated total live spend, runs 1 to 6 and the T-11 comparison: about $0.121 ($0.1210938; not billing). Source: STATUS.md.
 
 ### UCI HAR: real data, a flawed protocol against a clean control
 
@@ -40,11 +40,25 @@ Both projects are **ATLAS-authored** on the public UCI HAR data (21 training sub
 
 The 0.906 against 0.875 gap is a **descriptive** comparison of two protocols, not a causal decomposition. ATLAS recomputes the flawed project's metric from its own predictions, so the reported-metric check correctly passes there; the inflation shows only against the clean control. The clean control's `split.no_window_overlap` passes only through documented containment (conditional, not independently verified). Source: `docs/T09_CONTAINMENT.md` §2, §3, §6; DECISIONS.md "Lead decisions, 2026-10-17" item 7.
 
+### Does the agent add anything over the model alone? (T-11, development cases)
+
+The same model (Nemotron) reading the same files with no executable checks, three trials per case, against ATLAS's deterministic audit, on our four development cases. These are **not held-out**: ATLAS's checks were built on them.
+
+| | ATLAS (deterministic) | Nemotron alone (9 valid of 12 trials) |
+| --- | --- | --- |
+| Predeclared violations found | 8 of 8 assessable (1 more left `NOT_ASSESSED`: `split.no_window_overlap`) | 19 of 23 overall; 19 of 20 on the 8 ATLAS-assessable |
+| False positives | 0 | 2 |
+| False violations on the clean controls | 0 | 0 |
+| Invalid replies (unscored) | none | 3 of 12 |
+| Repeatability | deterministic by design | varied between trials |
+
+On these small cases the model reading the code finds most of the same flaws, possibly helped by the flawed projects' own comments, which describe their flaws. What ATLAS adds is executed, reproducible evidence, no false positives in this comparison, and verification of a fix by running it (live run 6). The comparison tests detection only. Source: `docs/EVALUATION.md` "Results (live, 2026-10-19)" (claims reviewed by Gemini); estimated cost $0.063, not billing.
+
 ### Safety controls and their reviews
 
 - Typed approval bound to the snapshot and code hashes; a wrong or truncated confirmation declines. Docker-only execution, no host fallback. The trusted evaluator, holdout labels and pass criteria are immutable to the agent (AGENTS.md; SPEC §9-§10).
-- Reviews: Gates 1-3 PASS; Gate 4 FAIL (two P2), resolved by slices 4c-4h; combined review FAIL (three P2), re-verified and closed; T-06 accepted by the lead within its documented scope (`f059554`, on the code at `199a173`). The Codex security-and-spend review of the hosted build (T-12) is **pending**. Source: STATUS.md; TASKS.md T-06 "ACCEPTANCE".
-- Suite at the T-12 build: 1485 passed, 1 skipped with Docker required (`runs/t12/full.log`, git-ignored).
+- Reviews: Gates 1-3 PASS; Gate 4 FAIL (two P2), resolved by slices 4c-4h; combined review FAIL (three P2), re-verified and closed; T-06 accepted by the lead within its documented scope (`f059554`, on the code at `199a173`). The hosted build (T-12) passed Codex's security-and-spend review after two fix passes: review 1 found one P2 (the hosted flag did not guard local execution), review 2 with a fault-injection matrix (C1-C10) found two P2 (unguarded Docker maintenance entries; a partial headline after a render failure); all three were fixed and re-verified (DECISIONS.md "T-12 acceptance and merge (lead, 2026-10-19)"). Source: STATUS.md; TASKS.md T-06 "ACCEPTANCE".
+- Suite on the merged `main`: 1644 passed, 1 skipped with Docker required (`runs/merge-20261019/full.log`, git-ignored); the skip is the symlink-permission skip on this host.
 
 ## How ATLAS uses NVIDIA Nemotron on Nebius Token Factory
 
@@ -151,12 +165,12 @@ Copied from `docs/SPEC.md` §15 and the acceptance records; not softened.
 - Duplicate detection without source-observation identity is an exact-value screen and can leave unresolved candidates.
 - Temporal assertions verify declared availability and separation rules, and `split.no_window_overlap` verifies declared stream identity and window intervals. None of them is proof of statistical independence.
 - A green outcome means only that the listed assertions passed within the stated coverage.
-- Held-out evidence comes from two cases: limited and descriptive. Their separation is procedural, not access-enforced.
+- Held-out cases (T-10) were cut for the submission; every detection result here is on development cases (DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)").
 - Container isolation reduces risk; it is not proof of safety, provenance integrity or scientific correctness.
 - T-06 (the live agent) was accepted within its scope with these limitations: the input-token figure is an estimate and provider enforcement and billing are unverified; model format reliability varies (schema failures in 3 of 6 live runs); raw replies are stored only from live run 3b onward; candidate-output redaction is best-effort; tested on one Windows host only.
 - The HAR containment declaration is documented, not verified; the upstream normalization's fit scope is not established; both HAR projects are ATLAS-authored and are not independent benchmark evidence (`docs/T09_CONTAINMENT.md` §9).
 - Scope: small tabular classification, CPU scikit-learn, exactly three claim types (`same_population`, `unseen_group`, `future_time`); any other claim is `NOT_SUPPORTED`. No final-holdout label store exists yet.
-- Not established for the hosted build: behavior on Neon, on Community Cloud or from the host; real-model behavior in hosted mode; the security-and-spend review (TASKS.md T-12 "RESULT").
+- Not established for the hosted build until deployment: Nebius connectivity and the locked build on the host, a signed-out smoke test, and availability through 2026-12-15.
 - Procedures (saving and reusing evaluation procedures) were cut from V1 (DECISIONS.md "Lead decisions, 2026-10-17" item 2).
 
 ## License, data and acknowledgements

@@ -4,7 +4,7 @@ Paste-ready sections for the Devpost fields. Every figure comes from a repositor
 
 ## Project description
 
-<!-- Sources: PROJECT_BRIEF.md; README.md; STATUS.md; TASKS.md T-06 "LIVE RUN 6"; docs/T09_CONTAINMENT.md §2, §6. -->
+<!-- Sources: PROJECT_BRIEF.md; README.md; STATUS.md; TASKS.md T-06 "LIVE RUN 6"; docs/T09_CONTAINMENT.md §2, §6; docs/EVALUATION.md "Results (live, 2026-10-19)" (T-11; claims reviewed by Gemini). -->
 
 **What it is.** ATLAS is a coding agent that audits machine-learning evaluation code for leakage. You give it a small scikit-learn classification project and the claim it makes, for example "the activity classifier works on people absent from training". ATLAS runs executable evidence checks (split integrity, preprocessing fit provenance, independent metric recomputation). If it finds a violation, an NVIDIA Nemotron model proposes a bounded revision of the evaluation code. The revision runs only in an isolated Docker runner, after a typed human approval, and the same trusted evaluator that judged the original judges it. The model proposes; a deterministic evaluator decides.
 
@@ -14,6 +14,7 @@ Paste-ready sections for the Devpost fields. Every figure comes from a repositor
 
 - **Live run 6** (2026-10-18, the first complete live end-to-end success): the original was `VIOLATION_FOUND`; Nemotron proposed a full-source revision; the user approved it; it ran in Docker; the trusted evaluator judged it `NO_VIOLATION_FOUND`. Four checks went FAIL -> PASS (`split.no_group_overlap`, `split.sampling_unit_disjoint`, `split.repeated_measures_rule`, `fit.state_dependencies_within_fold_train`). Pooled balanced accuracy went from 0.68125 to 0.675: descriptive only, and lower, as honest correction can be. 5 requests, 0 schema failures, estimated cost $0.0190884 (provider-reported usage at listed prices, not billing).
 - **Real data, UCI HAR:** two ATLAS-authored projects on the public data. The flawed one (random row-level folds, global scaler and selector fit) is `VIOLATION_FOUND` with balanced accuracy 0.906; the clean control (subject-grouped folds, fit inside each fold) is `NO_VIOLATION_FOUND` at 0.875. The gap is a descriptive protocol comparison, not a causal claim.
+- **Agent against model alone (T-11):** on our four development cases (not held-out), Nemotron alone reading the same files found 19 of 20 ATLAS-assessable violations (19 of 23 overall) with 2 false positives and 3 of 12 replies invalid; ATLAS's deterministic audit found 8 of 8 assessable with no false positive and the same answer every run. ATLAS's value here is verifiable, reproducible evidence and fix verification by execution, not seeing more.
 - **Safety by design:** Docker-only execution with no host fallback, typed approval bound to hashes, a trusted evaluator the agent cannot edit, exact reply validation, a 6-request budget, and spending enforced before every request.
 
 **Honest limits.** Fit provenance covers only the bounded supported path; the recorder is not tamper-proof; declared containment (as on HAR) is documented, not verified; container isolation reduces risk and is not proof of safety. Full list: README.md "Limitations".
@@ -39,13 +40,13 @@ Nemotron is the agent's reasoning step, called through the OpenAI-compatible Tok
 - **What the model does.** In a bounded loop it chooses one typed action per reply: list or read project files, profile a table, run a check, propose a revision (`diff` or complete `new_source`), evaluate a candidate, or finish. The deterministic checks run before any model request and cannot be removed by the agent.
 - **Exact reply validation.** The prompt requests one raw JSON object; ATLAS validates the whole reply with strict Pydantic schemas (one action, no duplicate keys, no undeclared fields). No NVIDIA model on Nebius lists `json_mode` or `structured_outputs`, so this is application-validated, not provider-enforced. Replies are never repaired. Up to two consecutive schema failures get a corrective turn built from the schema and fixed text only.
 - **Bounds.** At most 6 requests, 12 tool operations, 2 revisions, 60 s per request, 12,000 input tokens (an ATLAS estimate) and 8,000 output tokens. Estimate cap $0.0648 per run; $0.51 maximum authorized per live run.
-- **Cost accounting.** Each request is reserved before it is sent, settled at provider-reported usage, and held at its ceiling if usage is unknown. Totals are labelled estimates, not billing. Total estimated live spend, runs 1 to 6: about $0.058 ($0.0580317).
+- **Cost accounting.** Each request is reserved before it is sent, settled at provider-reported usage, and held at its ceiling if usage is unknown. Totals are labelled estimates, not billing. Total estimated live spend, runs 1 to 6 and the T-11 comparison: about $0.121 ($0.1210938; not billing).
 - **Pre-run model check.** One free authenticated `GET /models` must list the model with exactly the configured prices and context length, or the run aborts before any completion.
 - **Authority.** A model proposal passes only `validate_diff`, then a typed human approval, then Docker execution, then the trusted evaluator. The model never decides an outcome.
 
 ## Challenges and learnings
 
-<!-- Sources: TASKS.md T-06 "LIVE RUN 1" to "LIVE RUN 6" and "SLICE 4c" to "SLICE 4h RESULT"; DECISIONS.md "Lead decisions, 2026-10-17" items 4, 10-15; STATUS.md. -->
+<!-- Sources: TASKS.md T-06 "LIVE RUN 1" to "LIVE RUN 6" and "SLICE 4c" to "SLICE 4h RESULT"; DECISIONS.md "Lead decisions, 2026-10-17" items 4, 10-15; STATUS.md; docs/EVALUATION.md "Results (live, 2026-10-19)". -->
 
 We ran the live agent six times (run 3 was declined at the approval prompt and retried as run 3b). Each failure was recorded as measured, and each fix was a small, reviewed change. We never made the evaluator more lenient to get a pass.
 
@@ -63,6 +64,7 @@ Learnings:
 - **Schema failures were the main obstacle.** Format failures ended 3 of 6 live runs (2, 3b, 5). Storing raw replies was what let us diagnose them; before that, run 2's cause was unknowable.
 - **Show the model its own errors.** Run 4's two candidates failed identically because the traceback never reached the model.
 - **Review caught real reporting defects.** Gate 4 (two P2) and a combined review (three P2: a host-path redaction bypass, a missing approval regression test, a CRLF-sensitive byte-exact test) were each fixed and re-verified. T-06 was then accepted within its documented scope.
+- **A capable model finds most flaws by reading.** Our predeclared comparison showed Nemotron alone close to ATLAS on detection for our development cases. We report it as measured; what the deterministic layer adds is evidence you can re-run, no false positives here, and verification of fixes.
 - **A rising metric is not the goal.** The accepted run-6 candidate scored lower, because it removed the leakage.
 - **Guardrails shaped the design.** Because the model is untrusted, the hosted demo never executes project code: it replays hash-verified recorded runs and shows live proposals as "not executed here".
 
@@ -74,10 +76,10 @@ ATLAS was started and built entirely during the submission period. No ATLAS code
 
 ## What's next
 
-<!-- Sources: STATUS.md "Next task"; TASKS.md T-12 "RESULT", T-10; DECISIONS.md "Lead decisions, 2026-10-17" items 2, 13; docs/HOSTED_OPERATIONS.md §9. -->
+<!-- Sources: STATUS.md "Next task"; TASKS.md T-12 "ACCEPTANCE", T-10; DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)"; DECISIONS.md "Lead decisions, 2026-10-17" items 2, 13; docs/HOSTED_OPERATIONS.md §9. -->
 
-- Finish the limited hosted demo: the Codex security-and-spend review, then deployment steps with their own approvals (secrets, a `GET /models` check from the host, the full locked build on the host, the kill switch on).
-- Held-out cases (reduced to at most 3 unfamiliar cases) so the detection claims rest on more than the development fixtures.
+- Finish the limited hosted demo: it passed Codex's security-and-spend review (two reviews with fault injection, all findings fixed and re-verified); next are the deployment steps with their own approvals (secrets, a `GET /models` check from the host, the full locked build on the host, the kill switch on) and a signed-out smoke test.
+- Held-out cases authored outside the builder's view (T-10, cut for the submission), so detection claims rest on more than development cases.
 - An evaluator-only final-holdout label store, so `final_holdout` reported metrics can be assessed rather than `NOT_ASSESSED`.
 - Native tool calling for the model, held in reserve because it changes the decided request contract and needs its own decision and review.
 - Testing beyond one Windows host.
@@ -90,7 +92,7 @@ What worked well:
 
 - **The free `GET /models?verbose=true`** returned price, context length, rate limits and `supported_features` for each model, which made an exact pre-run check possible (model present, prices and context length equal to configuration). It returned HTTP 200 in our checks.
 - **Prompt-requested JSON worked** when the model complied: both smoke calls passed strict validation, and live run 6 had 0 schema failures over 5 requests.
-- **Low cost.** Run 6 cost an estimated $0.0190884; six runs about $0.058.
+- **Low cost.** Run 6 cost an estimated $0.0190884; the six runs and the T-11 comparison about $0.121 in total (not billing).
 
 Specific observations and suggestions:
 

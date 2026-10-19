@@ -2204,6 +2204,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Verification:** `$env:ATLAS_MODEL_MODE='fixture'; $env:ATLAS_REQUIRE_DOCKER='1'; uv run --locked pytest tests -q -p no:cacheprovider` → **1552 passed, 1 skipped in 893.61 s**, exit 0 (the skip is the existing `tests/unit/test_candidates.py:116` symlink skip; `runs/t12f2/full.log`, git-ignored). `ruff check .` and `ruff format --check .`: clean.
   - **No live run, no Nebius call, no spend, no deployment, no push.**
   - **Next:** Codex re-verification of fix pass 2; then the user's deployment steps.
+- **RE-VERIFICATION (Codex, 2026-10-19): PASS (runs/t12-review/reverify/review.md).**
+- **ACCEPTANCE (lead, 2026-10-19):** T-12 is accepted as a reviewed build within its documented scope: Codex review 1 (one P2) and fix pass 1, review 2 with fault-injection matrix C1-C10 (two P2) and fix pass 2, and the review 2 re-verification PASS (runs/t12-review/reverify/review.md). The hosted app is not yet declared ready: stage B (Nebius from the deployed host), stage C (the locked environment builds and imports on the host), a signed-out hosted smoke test, and operational availability through 2026-12-15 12:00 PT remain required, each with its own approval. Record: DECISIONS.md "T-12 acceptance and merge (lead, 2026-10-19)".
 
 ### T-13 Release package (Start Here Steps 13–14)
 - **OWNER:** Claude Code (writer); Codex checks release blockers; Gemini critiques the video.
@@ -2217,3 +2219,4 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** checklist rows with paths and URLs.
 - **HANDOFF:** the user submits on Devpost.
 - **RECOVERY:** fix blockers only after the freeze.
+- **STATUS (2026-10-19):** Merged into main 2026-10-19; drafts updated with T-11 results; remaining TODOs: demo URL, repository URL, video URL, footage.

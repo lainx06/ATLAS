@@ -17,7 +17,7 @@ Screens: PNGs at 1440 x 900 from the git-ignored `runs/s4h/screens/` and `runs/t
 ## Notes for recording
 
 - Say "violation found" and "no violation found" (the meaning of the outcome codes); never "valid", "proven" or "guaranteed".
-- The hosted beat is conditional on the demo being deployed and its URL checked signed out (docs/SUBMISSION_CHECKLIST.md). The record says only "built, awaiting review and deployment" (STATUS.md).
+- The hosted beat is conditional on the demo being deployed and its URL checked signed out (docs/SUBMISSION_CHECKLIST.md). The record says only "built and security-reviewed, awaiting deployment" (STATUS.md; TASKS.md T-12 "ACCEPTANCE (lead, 2026-10-19)").
 - The run-6 candidate scored lower, and revision 2 was rejected (`syntax_error`); mention the latter only if time allows, as the honest reason the run ended `BUDGET_EXHAUSTED`.
 - Keep the key, `.env` and any terminal history off screen. The viewer shows no secret, but check each frame before upload.
 - Upload to YouTube as public only with the user's explicit decision. [TODO: video URL.]
