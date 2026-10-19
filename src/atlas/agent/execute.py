@@ -51,6 +51,7 @@ from atlas.docker_evidence import (
     VIEW_NAME,
     plan_mapping,
 )
+from atlas.hosted import refuse_if_hosted
 from atlas.intake import MANIFEST_NAME
 from atlas.policy import (
     POLICY_VERSION,
@@ -110,7 +111,10 @@ def execute_and_reevaluate(
     `trusted_manifest` (optional) is used only if the snapshot's own manifest is unusable, only
     when the snapshot is the approved one, and only when its canonical bytes have the hash
     recorded in that snapshot's inventory.
+
+    Refused with ATLAS_HOSTED=1 before anything is written (`hosted.HostedExecutionRefused`).
     """
+    refuse_if_hosted("executing a candidate")
     started = time.monotonic()
     candidate_dir = Path(candidate_dir)
     candidate_dir.mkdir(parents=True, exist_ok=False)

@@ -194,11 +194,11 @@ def test_public_exhaustion_leaves_the_judge_pool(database_url):
 
 
 @pytest.mark.parametrize(
-    "typed", ["judge-code-correct-1234", "wrong-code-xyz-5678", ""]
+    "typed", ["judge-code-correct-1234-at-least-32-chars", "wrong-code-xyz-5678", ""]
 )
 def test_the_judge_route_by_access_code(database_url, typed):
     s = store(database_url)
-    expected = "judge-code-correct-1234"
+    expected = "judge-code-correct-1234-at-least-32-chars"
     route = access.select_route(typed, expected, s.log_event)
     events = s.events()
     if typed == expected:

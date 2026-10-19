@@ -8,6 +8,15 @@ How the limited hosted demo (SPEC §13) is configured, stopped, restored and ins
 - **Recorded runs (always available).** The three bundled runs in `demo/recorded/` (live run 6 and the two HAR audit runs) are shown in the recorded-run viewer. Every recorded hash is recomputed before anything is shown; a changed byte shows "evidence changed since recording". Replay is disclosed on the page.
 - **One live session per visitor session.** Nemotron (`nvidia/nemotron-3-super-120b-a12b`) inspects s01_faulty and may propose revisions. Each proposal passes `validate_diff` and is recorded "not executed here"; no candidate code runs on the host and no approval is asked. The original's findings come from live run 6's recorded, hash-verified trusted evaluation, labelled "computed by ATLAS's trusted evaluation functions (recorded 2026-10-18)".
 - **Spending is enforced server-side** in Neon Postgres (`src/atlas/hosted/budget_store.py`) before every request, and the store fails closed.
+- **The hosted environment executes nothing** (T-12 fix pass 1). With `ATLAS_HOSTED=1` every execution entry point refuses before any approval, file write, subprocess or network access, raising `atlas.hosted.HostedExecutionRefused` (a fixed message naming what was refused, never an environment value). Only exactly `1` counts; any other value or none leaves the local build unchanged. The six entry points:
+  1. `atlas.agent.controller.run_agent` with `hosted=False` (any local run, fixture or live; checks the process environment and a given `env`). `hosted=True` is unchanged: `NotExecutedHere` and the recorded original;
+  2. `atlas.runner.docker.run_candidate`, the Docker runner's entry for the original and every candidate, before its run directory or the Docker CLI;
+  3. `atlas.runner.trusted.run_trusted_fixture`, before its host subprocess;
+  4. `atlas.agent.execute.execute_and_reevaluate` and `atlas.agent.controller.docker_original` (defense in depth; both also reach 2);
+  5. `atlas.ui.worker.Registry.start`, before its run directory or worker process;
+  6. `atlas.cli`, first after argument parsing, for every mode (audit, agent, live): a fixed message on stderr, exit 2, nothing run and no run directory.
+
+  Tests: `tests/hosted/test_hosted_boundary.py`.
 
 ## 2. Secrets (Streamlit Community Cloud, app settings → Secrets)
 
@@ -20,6 +29,14 @@ NEBIUS_API_KEY = "<the Token Factory key>"
 DATABASE_URL = "postgresql://<user>:<password>@<host>/<db>?sslmode=require"
 JUDGE_ACCESS_CODE = "<a long random code, at least 32 characters>"
 ```
+
+- **Judge access code: at least 32 characters, random, generated at deployment:**
+
+  ```powershell
+  uv run --locked python -c "import secrets; print(secrets.token_urlsafe(32))"
+  ```
+
+  (43 characters.) A configured code shorter than 32 characters disables the judge route: it is treated as not configured, every visitor uses the public route, and each attempt with a typed code records the fixed event `judge_code_too_short` (no code text, no length). The comparison stays constant-time (`hmac.compare_digest`).
 
 - The four secrets are read only on the server (`src/atlas/hosted/secrets.py`: `st.secrets`, then the environment; `.env` is never read).
 - No secret is rendered, logged, written to a report or event, or bundled. The key goes only to the production client. Tests check this with synthetic markers (`tests/hosted/test_hosted_browser.py`).
@@ -43,6 +60,13 @@ JUDGE_ACCESS_CODE = "<a long random code, at least 32 characters>"
 | `session:<id>` | $0.0648 and at most 6 requests | the session's route |
 
 Total authorized: **$8.00** (DECISIONS.md "T-12 decisions (user, 2026-10-18)", item 3).
+
+**Spend bounds (what the caps do and do not guarantee).**
+
+- The pool and session caps are **reservation bounds at the estimate ceiling** ($0.0108 per request): a request is admitted only if its ceiling fits every cap of its route and its session.
+- Known usage is **settled exactly**, even when it is above the reservation. So usage reported above a reservation can take a pool past its cap by that excess. The caps are not an independently proven maximum invoice.
+- The prompt-token ceiling is an ATLAS **estimate** (unchanged known limitation; `agent/budget.py`, `agent/nebius.py`); the provider does not enforce it.
+- Daily keys use the **application server's UTC clock**, recomputed per reservation. Up to **$2.00** can therefore be admitted across two adjacent UTC days within any 24 hours, still within the **$3.00** public total.
 
 - **How a request is admitted.**
   - Before each request, its ceiling ($0.0108: 12,000 input and 8,000 output tokens at the listed prices) is reserved against every cap of its route and its session, in one transaction, all or nothing.
@@ -88,7 +112,7 @@ Event codes:
 
 - reservations: `reserved`, `settled`, `held_unknown_usage`, `released`, `refused:<cap>`;
 - sessions: `session_opened`, `session_refused:<cap>`, `preflight_abort`;
-- judge route: `judge_code_accepted`, `judge_code_rejected`, `judge_code_unconfigured`.
+- judge route: `judge_code_accepted`, `judge_code_rejected`, `judge_code_unconfigured`, `judge_code_too_short` (the configured code is shorter than 32 characters, so the judge route is disabled: replace it, §2).
 
 ## 6. Reconciliation of held requests
 
@@ -128,4 +152,4 @@ Settling is idempotent per request ID.
   - `requirements.txt` is `uv export --frozen --no-dev --no-hashes` of `uv.lock` (56 pinned packages plus `-e .`). Which dependency file Community Cloud uses when both `uv.lock` and `requirements.txt` exist must be observed there.
   - `.streamlit/config.toml` sets `server.address = "localhost"` for the local build. Whether Community Cloud overrides it must be observed at stage C; it is not changed here.
 - **Neon:** the store was tested only on a disposable local PostgreSQL 17 container; the stage D probe ran once on Neon PostgreSQL 18. The production tables are created by the app on first use (`CREATE TABLE IF NOT EXISTS`).
-- **Review:** the Codex T-12 security-and-spend review.
+- **Review:** the Codex T-12 security-and-spend review. Review 1 (2026-10-18): FAIL, one P2 (the execution boundary), fixed in fix pass 1; re-verification by Codex pending.

@@ -23,6 +23,9 @@ after the person at the terminal types the first 12 characters of its hash.
   passes is the production client built and the run started with the decided limits; the
   evidence goes into the run's report and `preflight.json`.
 
+With `ATLAS_HOSTED=1` every mode is refused first (exit 2, a fixed message, nothing run and no
+run directory): the hosted environment executes nothing (T-12 fix pass 1).
+
 Exit codes: 0 REPORT, 1 ERROR, 3 NEEDS_INPUT, 4 BUDGET_EXHAUSTED, 5 NOT_SUPPORTED, 2 refused
 before running, 6 pre-run check aborted.
 """
@@ -36,6 +39,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from atlas.audit import audit
+from atlas.hosted import enabled as hosted_enabled
 
 AGENT_EXIT = {
     "REPORT": 0,
@@ -45,6 +49,10 @@ AGENT_EXIT = {
     "NOT_SUPPORTED": 5,
 }
 REFUSED_EXIT = 2
+HOSTED_REFUSAL = (
+    "The hosted environment (ATLAS_HOSTED=1) executes nothing: audit and agent runs are "
+    "refused."
+)
 PREFLIGHT_ABORT_EXIT = 6  # equals agent.preflight.PREFLIGHT_ABORT_EXIT
 LIVE_ENV_FILE = (
     Path(__file__).resolve().parents[2] / ".env"
@@ -90,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if hosted_enabled():
+        return _refuse(HOSTED_REFUSAL)
     if (args.live or args.authorize_spend_usd is not None) and args.mode != "agent":
         return _refuse("--live and --authorize-spend-usd require --mode agent.")
     if args.mode == "agent":

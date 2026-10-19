@@ -25,7 +25,7 @@ LISTING = json.loads(
 MODEL = "nvidia/nemotron-3-super-120b-a12b"
 # Synthetic secret markers: none may ever appear in a page, log, report, event or the bundle.
 KEY = "sk-T12SYNTHETICKEYMARKER-0f3a9c"
-JUDGE_CODE = "T12-JUDGE-CODE-MARKER-7d41b2"
+JUDGE_CODE = "T12-JUDGE-CODE-MARKER-7d41b2-5e8c-a904-c1"  # at least 32 characters
 DB_PASSWORD_MARKER = "T12DBPASSMARKER"
 # Live run 6's first three replies (list, read, the new_source revision), then a finish.
 LIVE6_REPLIES = [

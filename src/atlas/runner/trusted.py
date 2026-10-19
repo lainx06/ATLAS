@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 import atlas
+from atlas.hosted import refuse_if_hosted
 
 ALLOWLIST_PATH = Path(__file__).with_name("trusted_fixtures.json")
 CAPABILITY = "trusted_pipeline_only"
@@ -75,6 +76,7 @@ def trusted_atlas_parent() -> str:
 
 
 def run_trusted_fixture(project: Path, entry_point: str, out_dir: Path) -> dict:
+    refuse_if_hosted("a trusted-fixture execution")  # ATLAS_HOSTED=1 executes nothing
     if not is_trusted(project, entry_point):
         raise UntrustedFixtureError(
             f"{project} is not an allowlisted trusted fixture; refusing to execute"

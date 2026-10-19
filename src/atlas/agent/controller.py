@@ -83,6 +83,8 @@ propagates with a note that no report was saved. A failing approver is a recorde
   no approval is asked; and for a live client each request is also reserved in the
   server-side budget store (`reservations`) before it is sent, and settled, held or released
   after it. A store refusal or failure sends nothing. The report carries SPEC §13's labels.
+  With `ATLAS_HOSTED=1` a local run (`hosted=False`) is refused before anything else
+  (`hosted.HostedExecutionRefused`; T-12 fix pass 1), as is `docker_original`.
 - **Prompt budget for a live run.** The user message is kept within the client's
   `user_message_budget` (the input ceiling minus the system prompt and per-message
   allowances), so a normal prompt fits the pre-send estimate; older history is dropped first,
@@ -161,6 +163,7 @@ from atlas.candidates import (
     sha256_bytes,
     validate_diff,
 )
+from atlas.hosted import refuse_if_hosted
 from atlas.intake import load_project
 from atlas.reports import sha256_file, write_json
 
@@ -441,7 +444,13 @@ def run_agent(
     `hosted=True` (T-12) needs an explicit recorded `original` runner and the
     `NotExecutedHere` executor (the default when hosted), and, for a live client, the
     server-side budget store as `reservations`. Outside hosted mode neither may be given.
+    With ATLAS_HOSTED=1 (in the process environment or `env`) a run with `hosted=False` is
+    refused before any approval, file write, subprocess or network access.
     """
+    if not hosted:
+        refuse_if_hosted("a local agent run")
+        if env is not None:
+            refuse_if_hosted("a local agent run", env)
     live = getattr(client, "live", None)
     if hosted:
         executor = executor or NotExecutedHere()
@@ -498,6 +507,7 @@ def run_agent(
 
 def docker_original(run: "_Run") -> OriginalRun:
     """The production original runner: explicit authorization, then Docker (no fallback)."""
+    refuse_if_hosted("executing the original")
     return run._docker_original()
 
 

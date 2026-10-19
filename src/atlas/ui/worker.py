@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from atlas.hosted import refuse_if_hosted
 from atlas.ui import approver as channel_io
 from atlas.ui.catalogue import BY_NAME, ROOT
 from atlas.ui.scripts import BY_KEY
@@ -119,7 +120,10 @@ class Registry:
             return self._handle
 
     def start(self, project: str, mode: str, script: str | None) -> RunHandle | None:
-        """Start a run, or return None if one is already active (nothing is started)."""
+        """Start a run, or return None if one is already active (nothing is started).
+        With ATLAS_HOSTED=1 it raises `hosted.HostedExecutionRefused` (nothing is written or
+        spawned)."""
+        refuse_if_hosted("a local UI run")
         if project not in BY_NAME:
             raise ValueError(f"unknown project {project!r}")
         if BY_NAME[project].unavailable() is not None:

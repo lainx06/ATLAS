@@ -71,6 +71,7 @@ from atlas.candidates import (
     safe_relpath,
     sha256_bytes,
 )
+from atlas.hosted import refuse_if_hosted
 from atlas.reports import write_json
 
 RUNNER_NAME = "docker_isolated"
@@ -883,7 +884,11 @@ def run_candidate(
     `cleanup_failed` (container removal unconfirmed; the outcome it replaced is kept in
     `execution_status`), and `runner_error` (an unexpected exception, re-raised after the
     record is written; cleanup has already run if a container was started).
+
+    With ATLAS_HOSTED=1 it raises `hosted.HostedExecutionRefused` before writing anything or
+    resolving the Docker CLI: the hosted environment executes nothing.
     """
+    refuse_if_hosted("a Docker execution")
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=False)
     record: dict = {
