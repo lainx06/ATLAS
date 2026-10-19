@@ -447,3 +447,7 @@ Builder notes for the lead (Claude Code, 2026-10-19; recorded with the predeclar
 3. The smoke test passed on the public and judge routes; every request was reserved at its ceiling ($0.0108) before dispatch and settled at provider-reported usage, with nothing held; the pools stayed separate. Total $0.0122073 (estimate, not billing).
 4. Keep-awake: no automation. Community Cloud sleeps an app after 12 hours without traffic and a visitor wakes it with a button (about 23-24 s observed once on 2026-10-16). The judge testing instructions say how to wake it; all budget state is in Neon, so sleep loses nothing; the local build remains the fallback.
 5. The kill switch stays off and the app stays private until the publication step; at submission the user makes the app public, runs the signed-out check and sets HOSTED_LIVE_ENABLED to "true" for the judging period through 2026-12-15 12:00 PT, each with approval.
+
+## Publication decision (user, 2026-10-19)
+
+The repository is published as-is (option A): history, commit hashes and docs/handoff/ unchanged; the commit author email and local Windows paths (DECISIONS.md, docs/TOOLING.md, demo/recorded/) are published. Alternatives considered: rewriting history (breaks every cited commit hash) and a fresh single-commit repository (loses the dated development history supporting the prior-work statement). The repository becomes public after the release review; only main is pushed (never --all or --mirror).
