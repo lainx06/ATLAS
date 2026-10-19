@@ -23,6 +23,15 @@ after the person at the terminal types the first 12 characters of its hash.
   passes is the production client built and the run started with the decided limits; the
   evidence goes into the run's report and `preflight.json`.
 
+**Comparison (T-11):** `evaluate --suite comparison` runs the predeclared three-way comparison
+(`atlas.evaluation`, `docs/EVALUATION.md`). It refuses unless one of these is given (nothing
+run): `--fixture-script FILE` (non-live, `ATLAS_MODEL_MODE=fixture`, the default) or `--live
+--authorize-spend-usd AMOUNT`, which has the same refusals, in the same order and with the same
+exit codes, as the agent live path above (the worst case is checked per case run of at most
+three requests), then the same key read and pre-run check. `--seed N` fixes the case order
+(otherwise a seed is drawn and recorded). Exit 0 when every case's ATLAS result was obtained,
+1 when one was unavailable (the records say why).
+
 With `ATLAS_HOSTED=1` every mode is refused first (exit 2, a fixed message, nothing run and no
 run directory): the hosted environment executes nothing (T-12 fix pass 1).
 
@@ -96,10 +105,28 @@ def main(argv: list[str] | None = None) -> int:
         help="with --live: the maximum authorized expenditure, which must equal the decided "
         "amount",
     )
+    e = sub.add_parser("evaluate", help="run a predeclared evaluation suite (T-11)")
+    e.add_argument("--suite", required=True, choices=["comparison"])
+    e.add_argument("--runs-dir", type=Path, default=Path("runs") / "t11")
+    e.add_argument(
+        "--fixture-script",
+        type=Path,
+        help="non-live leg (b) replies (JSON: name, cases: {case: [replies]})",
+    )
+    e.add_argument(
+        "--live",
+        action="store_true",
+        help="leg (b) against the model (needs ATLAS_MODEL_MODE=live and "
+        "--authorize-spend-usd)",
+    )
+    e.add_argument("--authorize-spend-usd", dest="authorize_spend_usd")
+    e.add_argument("--seed", type=int, help="case-order seed (recorded)")
     args = parser.parse_args(argv)
 
     if hosted_enabled():
         return _refuse(HOSTED_REFUSAL)
+    if args.command == "evaluate":
+        return _evaluate(args)
     if (args.live or args.authorize_spend_usd is not None) and args.mode != "agent":
         return _refuse("--live and --authorize-spend-usd require --mode agent.")
     if args.mode == "agent":
@@ -277,6 +304,159 @@ def _live(args) -> int:
     )
     _write_json(result.run_dir / "preflight.json", evidence)
     return _finish(result)
+
+
+def _decided_config():
+    from atlas.agent.budget import DECIDED_SLICE4
+    from atlas.agent.nebius import NebiusConfig
+
+    return NebiusConfig(**{k: DECIDED_SLICE4[k] for k in CONFIG_KEYS})
+
+
+def _seed(args) -> int | None:
+    """The given seed if in range, a new recorded one if none was given, else None."""
+    from atlas.evaluation.suite import new_seed
+
+    if args.seed is None:
+        return new_seed()
+    return args.seed if 0 <= args.seed < 2**32 else None
+
+
+def _evaluate(args) -> int:
+    if args.live:
+        return _evaluate_live(args)
+    if args.authorize_spend_usd is not None:
+        return _refuse("--authorize-spend-usd applies only with --live.")
+    if args.fixture_script is None:
+        return _refuse(
+            "evaluate needs --fixture-script FILE (non-live replies) or --live "
+            "--authorize-spend-usd AMOUNT."
+        )
+
+    from atlas.agent.client import MODE_ENV
+    from atlas.evaluation import suite
+
+    mode = os.environ.get(MODE_ENV, "fixture")
+    if mode != "fixture":
+        return _refuse(
+            f"{MODE_ENV}={mode!r} without --live: live inference is not authorized this "
+            "way (a live run needs --live and --authorize-spend-usd)."
+        )
+    seed = _seed(args)
+    if seed is None:
+        return _refuse("--seed must be from 0 to 2**32 - 1.")
+    try:
+        name, cases = suite.load_fixture_script(args.fixture_script)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return _refuse(f"fixture script unusable ({type(exc).__name__}).")
+    print(f"NON-LIVE comparison: leg (b) replies come from fixture script {name!r}.")
+    record = suite.run_suite(
+        args.runs_dir,
+        suite.fixture_clients(name, cases),
+        config=_decided_config(),
+        seed=seed,
+        live=False,
+    )
+    return _evaluate_finish(record)
+
+
+def _evaluate_finish(record: dict) -> int:
+    print(
+        f"seed {record['seed']}; leg (b) case order {', '.join(record['case_order'])}"
+    )
+    for cid, estimate in record["input_estimates"].items():
+        print(
+            f"  {cid}: input estimate {estimate} (ceiling {record['max_input_tokens']})"
+        )
+    print(f"results: {Path(record['run_dir']) / 'results.md'}")
+    if record["atlas_unavailable"]:
+        print(
+            "ATLAS result unavailable: " + ", ".join(record["atlas_unavailable"]),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+def _evaluate_live(args) -> int:
+    # 1. Flag combination (no run directory, Docker call, key read, client or network yet).
+    if args.fixture_script is not None:
+        return _refuse("--live cannot be combined with --fixture-script.")
+
+    from atlas.agent.client import MODE_ENV
+
+    # 2. The mode.
+    mode = os.environ.get(MODE_ENV, "fixture")
+    if mode != "live":
+        return _refuse(f"--live needs {MODE_ENV}=live (it is {mode!r}).")
+
+    from atlas.agent.budget import DECIDED_SLICE4, SpendLimits, SpendRefused
+
+    # 3. The authorized amount must equal the decided one (Decimal comparison).
+    decided = DECIDED_SLICE4["authorized_usd"]
+    given = args.authorize_spend_usd
+    amount = _decimal(given)
+    if amount is None or amount != decided:
+        shown = "missing" if given is None else repr(given[:40])
+        return _refuse(
+            f"--authorize-spend-usd must equal the decided authorization {decided} USD "
+            f"(given: {shown})."
+        )
+
+    # 4. The decided limits must cover the provider-enforced worst case of one case run.
+    from atlas.evaluation import baseline as B
+    from atlas.evaluation import suite
+
+    try:
+        config = _decided_config()
+        limits = SpendLimits(
+            authorized_usd=amount, estimate_cap_usd=DECIDED_SLICE4["estimate_cap_usd"]
+        )
+        figures = limits.check(config, B.REQUESTS_PER_CASE)
+    except (SpendRefused, ValueError, TypeError) as exc:
+        return _refuse(f"spending limits refused: {exc}")
+    seed = _seed(args)
+    if seed is None:
+        return _refuse("--seed must be from 0 to 2**32 - 1.")
+
+    # 5. The key, the pre-run check, and only then the client and the run.
+    from atlas.agent import nebius
+    from atlas.agent import preflight as pf
+
+    try:
+        key = nebius.load_api_key(LIVE_ENV_FILE)
+    except (OSError, ValueError) as exc:
+        return _refuse(f"the API key is not available ({type(exc).__name__}).")
+    try:
+        evidence = pf.run_preflight(config, key)
+    except Exception as exc:  # noqa: BLE001 - any failure of the check is an abort, never a pass
+        evidence = pf.error_evidence(config, type(exc))
+    for line in pf.summary_lines(evidence):
+        print(line)
+    if evidence["result"] != pf.PASS:
+        path = _save_preflight(Path(args.runs_dir), evidence)
+        print(
+            f"Pre-run check aborted: no completion was sent. Evidence: {path}",
+            file=sys.stderr,
+        )
+        return PREFLIGHT_ABORT_EXIT
+    client = nebius.NebiusClient(config, key)
+    del key
+    print(
+        f"LIVE comparison: model {config.model_id!r}; per case run authorized up to "
+        f"{figures['authorized_usd']} USD, estimate cap {figures['estimate_cap_usd']} USD, "
+        f"at most {figures['max_attempts']} requests."
+    )
+    record = suite.run_suite(
+        args.runs_dir,
+        lambda case_id: client,
+        config=config,
+        seed=seed,
+        live=True,
+        spend=limits,
+        preflight=evidence,
+    )
+    return _evaluate_finish(record)
 
 
 def _save_preflight(runs_dir: Path, evidence: dict) -> Path:

@@ -1,0 +1,22 @@
+{
+  "name": "t11-comparison",
+  "note": "NON-LIVE scripted leg (b) replies for the T-11 harness tests and the fixture suite run. Not model output; chosen to exercise scoring and invalid-reply handling.",
+  "cases": {
+    "s01_faulty": [
+      {"content": "{\"violated\": [\"split.no_group_overlap\", \"split.sampling_unit_disjoint\", \"split.repeated_measures_rule\", \"fit.state_dependencies_within_fold_train\"], \"rationale\": \"Scripted: random KFold mixes subjects; SelectKBest is fit on all rows.\"}"},
+      {"content": "{\"violated\": [\"split.no_group_overlap\", \"split.no_row_overlap\"], \"rationale\": \"Scripted: one miss set and one false positive.\"}"},
+      {"content": "```json\n{\"violated\": [], \"rationale\": \"fenced\"}\n```"}
+    ],
+    "s02_clean": [
+      {"content": "{\"violated\": [], \"rationale\": \"Scripted: grouped folds and fold-local fitting.\"}"},
+      {"content": "{\"violated\": [\"fit.coverage_complete\"], \"rationale\": \"Scripted false positive.\"}"},
+      {"content": "{\"violated\": [], \"violated\": [], \"rationale\": \"duplicate key\"}"}
+    ],
+    "har_flawed": [
+      {"content": "{\"violated\": [], \"rationale\": \"never sent: the input estimate exceeds the ceiling\"}"}
+    ],
+    "har_clean": [
+      {"content": "{\"violated\": [], \"rationale\": \"never sent: the input estimate exceeds the ceiling\"}"}
+    ]
+  }
+}

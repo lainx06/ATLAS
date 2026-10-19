@@ -46,7 +46,8 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3), and the structural checks of that evidence (passes 4 and 5). **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope. The limitations stand | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | T-03 hosting and isolated-worker probe | **Accepted by the lead at `51d3dd8`** within its research-and-feasibility scope (16 October 2026). It chose limited hosted mode for V1 (curated examples and trusted evaluation functions; generated diffs are shown as "not executed here"), with full Docker execution in the local build. It also selected Neon Postgres as the future budget store | A recommendation with dated sources, and small owner-run probes: a minimal Streamlit build, a secret canary, one sleep/wake cycle, and the budget-store scenarios on Neon. It does **not** establish production readiness, guaranteed availability, promotional-credit eligibility or isolation on any remote worker. The budget caps are planned, not built, so they are not a spending ceiling |
 | Hosted demo (T-12) | **Built offline on branch `t12-hosted` (18 October 2026); Codex review 1 failed with one P2 (a local run could still execute with `ATLAS_HOSTED=1`); fix pass 1 built, re-verification pending; not deployed.** With `ATLAS_HOSTED=1` the app shows the bundled recorded runs (hash-verified) and offers one live Nemotron session per visitor. Proposals are checked by `validate_diff` and labelled "not executed here". The original's findings come from live run 6's recorded trusted evaluation. A Neon Postgres budget store enforces every cap before each request (section 6, "A budget that a database enforces") | Offline tests only: a mocked model provider and a disposable local PostgreSQL. No live call, no Neon run and no deployment. Before it can be called ready: Codex's review, then Nebius connectivity and the full locked build tested on the host |
-| Memory comparison | Planned | Do not describe it as shipped |
+| Memory comparison (T-08) and held-out cases (T-10) | **Cut** (lead, 17 and 19 October 2026). There is no procedure memory and no held-out campaign | Do not describe either as shipped. The lack of held-out cases is a stated limitation |
+| Three-way comparison (T-11, re-scoped) | **Predeclared and built offline on branch `t11-compare` (19 October 2026); no live trial; not reviewed.** ATLAS's audit, Nemotron reading the same files alone, and the reported against recomputed metric, on the four development cases (section 6, "Comparing ATLAS with the model alone") | A fixture (scripted) run and offline tests. Development cases, not held-out: nothing here is evidence of generalization |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
 
@@ -335,6 +336,27 @@ Each check runs *first*, before an approval, a file, a subprocess or a network c
 C++ connection: like an `assert` precondition at the top of every public function of a class, rather than only in the constructor that most callers happen to use.
 
 The judge access code also got a minimum length: a configured code under 32 characters switches the judge route off (everyone uses the public pool), because a short code could be guessed.
+
+### Comparing ATLAS with the model alone (T-11, built offline; no live trial)
+
+The question: does ATLAS's executed evidence find more than the same model reading the same files? `atlas.cli evaluate --suite comparison` (protocol `docs/EVALUATION.md`) runs three legs on four cases (`s01_faulty`, `s02_clean`, `har_flawed`, `har_clean`):
+
+- **(a) ATLAS:** the outcome and per-assertion statuses, taken from hash-verified recorded runs, or for `s02_clean` from a fresh Docker run through the T-09 path;
+- **(b) Nemotron alone:** three independent requests per case. Each shows the claim, the manifest, `evaluate.py` and the assertion definitions, and asks for exactly `{"violated": [...], "rationale": "..."}`. Anything else is INVALID_REPLY, never repaired or retried;
+- **(c) metrics:** the reported number against ATLAS's recomputed one and the clean control's. Descriptive only.
+
+The answer key (`evaluation/expected.json`) was written and committed *before* any trial, from earlier records. Scoring an answer against it:
+
+```python
+expected = {"split.no_group_overlap", "split.sampling_unit_disjoint"}
+answer = {"split.no_group_overlap", "split.no_row_overlap"}
+tp = answer & expected  # found: no_group_overlap
+fp = answer - expected  # claimed but not a planted flaw: no_row_overlap
+fn = expected - answer  # missed: sampling_unit_disjoint
+precision = len(tp) / len(tp | fp) if tp | fp else "undefined"  # never invent 0 or 1
+```
+
+Two honest caveats. These are development cases: ATLAS's checks were debugged on them, so ATLAS doing well here says nothing about new projects. And under the decided 12,000 input estimate the two HAR manifests (561 feature names each) are too large to send, so leg (b) records their trials as refused, not answered.
 
 ## 7. Why Docker matters—and what it does not prove
 
