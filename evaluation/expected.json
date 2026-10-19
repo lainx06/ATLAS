@@ -1,0 +1,111 @@
+{
+  "schema": "atlas-t11-expected/1",
+  "fixed": "2026-10-19, before any live T-11 trial (DECISIONS.md \"T-11 re-scope and T-10 (lead, 2026-10-19)\", item 3)",
+  "status": "Development cases, not held-out: ATLAS's checks were built and debugged on them, so ATLAS's results on them are not evidence of generalization.",
+  "policy_version": "policy-v1.3",
+  "rule": "Each case's canonical violated assertion IDs come from the existing benchmark records named in its sources, never from a T-11 result. An empty list means no assertion is violated by design (a clean control).",
+  "cases": {
+    "s01_faulty": {
+      "path": "benchmarks/t01/s01_faulty",
+      "data": "synthetic (benchmarks/t01/generate.py, seed 20261014)",
+      "role": "flawed",
+      "clean_control": "s02_clean",
+      "expected_violated": [
+        {
+          "assertion_id": "split.no_group_overlap",
+          "sources": [
+            "tests/integration/test_t01_scenarios.py, EXPECTED[\"s01_faulty\"], column GO = FAIL",
+            "benchmarks/t01/README.md, section Scenarios, row s01_faulty (random-row KFold)"
+          ]
+        },
+        {
+          "assertion_id": "split.sampling_unit_disjoint",
+          "sources": [
+            "tests/integration/test_t01_scenarios.py, EXPECTED[\"s01_faulty\"], column SU = FAIL",
+            "benchmarks/t01/README.md, section Scenarios, row s01_faulty (random-row KFold)"
+          ]
+        },
+        {
+          "assertion_id": "split.repeated_measures_rule",
+          "sources": [
+            "tests/integration/test_t01_scenarios.py, EXPECTED[\"s01_faulty\"], column RM = FAIL",
+            "benchmarks/t01/README.md, section Scenarios, row s01_faulty (random-row KFold)"
+          ]
+        },
+        {
+          "assertion_id": "fit.state_dependencies_within_fold_train",
+          "sources": [
+            "tests/integration/test_t01_scenarios.py, EXPECTED[\"s01_faulty\"], column SD = FAIL",
+            "benchmarks/t01/README.md, section Scenarios, row s01_faulty (global SelectKBest on all rows)"
+          ]
+        }
+      ],
+      "empty_set_sources": []
+    },
+    "s02_clean": {
+      "path": "benchmarks/t01/s02_clean",
+      "data": "synthetic (benchmarks/t01/generate.py, seed 20261014)",
+      "role": "clean_control",
+      "clean_control": null,
+      "expected_violated": [],
+      "empty_set_sources": [
+        "tests/integration/test_t01_scenarios.py, EXPECTED[\"s02_clean\"]: every column PASS, outcome NO_VIOLATION_FOUND",
+        "benchmarks/t01/README.md, section Scenarios, row s02_clean (GroupKFold(4) by subject; scaler, selector and classifier fit per fold)"
+      ]
+    },
+    "har_flawed": {
+      "path": "benchmarks/real_sensor/har_flawed",
+      "data": "UCI HAR training partition (real data); ATLAS-authored flawed variant",
+      "role": "flawed",
+      "clean_control": "har_clean",
+      "expected_violated": [
+        {
+          "assertion_id": "split.no_group_overlap",
+          "sources": [
+            "docs/T09_CONTAINMENT.md, section 6, har_flawed, FAIL list",
+            "benchmarks/real_sensor/har_flawed/evaluate.py, module docstring, deliberate flaw 2"
+          ]
+        },
+        {
+          "assertion_id": "split.sampling_unit_disjoint",
+          "sources": [
+            "docs/T09_CONTAINMENT.md, section 6, har_flawed, FAIL list"
+          ]
+        },
+        {
+          "assertion_id": "split.repeated_measures_rule",
+          "sources": [
+            "docs/T09_CONTAINMENT.md, section 6, har_flawed, FAIL list"
+          ]
+        },
+        {
+          "assertion_id": "split.no_window_overlap",
+          "sources": [
+            "benchmarks/real_sensor/har_flawed/evaluate.py, module docstring, deliberate flaw 2: \"the same subjects (and overlapping windows of the same recordings) sit on both sides of every fold\"",
+            "benchmarks/real_sensor/README.md, project table, row har_flawed: \"subjects and their overlapping windows cross every fold\"",
+            "docs/T09_CONTAINMENT.md, sections 3 and 6: ATLAS records this assertion NOT_ASSESSED (missing_metadata) for har_flawed; violated by design, not established by ATLAS"
+          ]
+        },
+        {
+          "assertion_id": "fit.state_dependencies_within_fold_train",
+          "sources": [
+            "docs/T09_CONTAINMENT.md, section 6, har_flawed, FAIL list",
+            "benchmarks/real_sensor/har_flawed/evaluate.py, module docstring, deliberate flaw 1"
+          ]
+        }
+      ],
+      "empty_set_sources": []
+    },
+    "har_clean": {
+      "path": "benchmarks/real_sensor/har_clean",
+      "data": "UCI HAR training partition (real data); clean control",
+      "role": "clean_control",
+      "clean_control": null,
+      "expected_violated": [],
+      "empty_set_sources": [
+        "docs/T09_CONTAINMENT.md, section 6, har_clean: all 10 required assertions PASS, NO_VIOLATION_FOUND (split.no_window_overlap conditional on documented containment, section 3)",
+        "benchmarks/real_sensor/README.md, project table, row har_clean (GroupKFold(5) by subject; everything fit inside each fold)"
+      ]
+    }
+  }
+}

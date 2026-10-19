@@ -413,3 +413,18 @@ Codex review 2 (`runs/t12-review/review.md`): "Verdict: T-12 REVIEW 2 FAIL", two
 3. E1's failure is a stale exception expectation in the review 1 probe (it catches ValueError, the guard raises HostedExecutionRefused before the executor); not a regression. Review 1 P2 confirmed fixed by 34 boundary tests and 10 independent tripwires.
 4. C10 operational availability (host and database sleep, free-tier expiry, wake latency, credits) is not testable offline; it is checked during deployment and in the hosted smoke test before submission.
 5. The exact-"1" ATLAS_HOSTED rule stands (decided); deployment must set exactly ATLAS_HOSTED=1, verified in the hosted smoke test.
+
+## T-11 re-scope and T-10 (lead, 2026-10-19)
+
+1. T-11 is re-scoped because T-08 (procedures, agent+memory) was cut: a three-way comparison on the four development cases benchmarks s01_faulty, s02_clean (synthetic) and the T-09 har_flawed, har_clean projects (ATLAS-authored, real UCI HAR data): (a) ATLAS deterministic audit; (b) Nemotron alone, the same model reading the same files with no executable checks, three repetitions per case; (c) the project's reported metric against ATLAS's recomputed metric and the clean control. Results are descriptive.
+2. These are development cases, not held-out: ATLAS's checks were built and debugged on them, so ATLAS's results on them are not evidence of generalization. Every report of T-11 states this.
+3. Expected violated assertion IDs per case are fixed in evaluation/expected.json and committed before any live trial; they come from the existing benchmark records, never from a T-11 result.
+4. T-10 (held-out cases) is cut for the submission: its cases must be authored outside Claude's view (Codex), and Codex capacity is reserved for gates. Recorded as a limitation.
+5. Live T-11 trials need the user's explicit go-ahead; each Nemotron-alone case run makes at most 3 requests (within the 6-request run limit), reserved before dispatch, under the decided per-run estimate cap $0.0648 and $0.51 authorization.
+
+Builder notes for the lead (Claude Code, 2026-10-19; recorded with the predeclaration, decide before any live trial):
+
+- **The two HAR cases cannot reach the model under the decided input ceiling.** Their manifests list 561 feature names, so the leg (b) input estimate is 34,605 (`har_flawed`) and 33,726 (`har_clean`) against the decided 12,000; each such case is refused before dispatch and its three trials are recorded NOT_SENT `input_over_ceiling`. The inputs were not shortened to fit. `s01_faulty` and `s02_clean` are at 8,293 and 8,264.
+- **`har_flawed`'s expected set includes `split.no_window_overlap`**, sourced from the variant's own docstring (deliberate flaw 2) and `benchmarks/real_sensor/README.md`; ATLAS records it NOT_ASSESSED (T-09 §3), scored as a coverage gap. The other expected IDs are the T-01 scenario table and the T-09 §6 FAIL list.
+- **The $0.51 authorization is applied per case run** (as item 5 states it): the provider worst case of one case run is $0.2503296. With the HAR cases refused the suite sends at most 6 requests (provider worst case $0.5006592); with all four cases sendable it would be 12 ($1.0013184).
+- **The case files label their own flaws** (docstrings, comments, `har_flawed`'s claim statement); leg (b) reads them unchanged. Protocol: `docs/EVALUATION.md`.

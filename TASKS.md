@@ -19,8 +19,8 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-07 | 12 | **Built** (`03eab30`…`822ee27`, on `main` 2026-10-17): 17 acceptance scenarios passed with Docker required. Awaiting the combined Codex review | UI spec, one complete Streamlit path, Playwright scenarios |
 | T-08 | 11 | **CUT** (lead, 2026-10-17; DECISIONS.md "Lead decisions, 2026-10-17" item 2) | Procedures: admission, reuse, refusal; transfer benchmark |
 | T-09 | 11 | **Built** (`5e4c22f`…`f5d76c9`, on `main` 2026-10-17): `har_flawed` VIOLATION_FOUND, `har_clean` NO_VIOLATION_FOUND, both in Docker; in the UI with typed approval (2 scenarios passed). License terms OPEN (user decision before T-12). Awaiting the combined Codex review | Real-data example, clean control, robustness reporting |
-| T-10 | 11 | **REDUCED** (lead, 2026-10-17): at most 3 unfamiliar cases | Held-out cases (Codex, outside repo) and predeclared campaign |
-| T-11 | 11 | Proposed | Three-way comparison pilot |
+| T-10 | 11 | **CUT for the submission** (lead, 2026-10-19; DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)" item 4); recorded as a limitation | Held-out cases (Codex, outside repo) and predeclared campaign |
+| T-11 | 11 | **Re-scoped** (lead, 2026-10-19): three-way comparison on the four development cases; predeclared (`docs/EVALUATION.md`, `evaluation/expected.json`) and harness built offline on branch `t11-compare`. No live trial (needs the user's go-ahead) | Three-way comparison: ATLAS audit, Nemotron alone, reported vs recomputed metric |
 | T-12 | 11 | **Built offline** (`625987b`…`40027b9`, branch `t12-hosted`, 2026-10-18): hosted mode in the engine, Neon budget store, recorded bundle, hosted page; full suite 1485 passed, 1 skipped. Unreviewed, not deployed. Next: Codex security-and-spend review, then the user's deployment steps | Limited hosted demo and judge access |
 | T-13 | 13–14 | Proposed | Release package and submission evidence |
 
@@ -2046,6 +2046,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Open:** the license terms are a user decision before T-12 (item 8).
 
 ### T-10 Held-out cases and campaign protocol (Q6)
+- **CUT for the submission (lead, 2026-10-19;** DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)" item 4): its cases must be authored outside Claude's view (Codex), and Codex capacity is reserved for gates. Recorded as a limitation. The entry below is kept as the record of what was planned.
 - **REDUCED (lead, 2026-10-17;** DECISIONS.md "Lead decisions, 2026-10-17" item 2): at most 3 unfamiliar cases. The rest of the entry stands.
 - **OWNER:** Codex (separate session, outside this repo) authors and validates the cases and their expected violated assertion IDs. Claude writes only the predeclared campaign protocol and never receives case contents, answer keys or case-specific feedback.
 - **MODEL DECISION:** SWITCH for case authoring (Codex, separate session). Claude stays Opus High for the protocol text.
@@ -2062,23 +2063,33 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **HANDOFF:** Codex runs the campaign at release-candidate time.
 - **RECOVERY:** if a case is used for debugging, retire it and obtain a replacement before a fresh held-out claim.
 
-### T-11 Three-way comparison pilot
+### T-11 Three-way comparison (re-scoped)
+- **RE-SCOPED (lead, 2026-10-19;** DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)"): T-08 (procedures, agent+memory) was cut, so the planned `audit` / `agent` / `agent+memory` pilot on Variant A is replaced by a three-way comparison on the four development cases. Protocol: `docs/EVALUATION.md` (predeclared before any live trial).
 - **OWNER:** Claude Code (writer); Gemini reviews the claims.
 - **MODEL DECISION:** STAY on Opus High (evaluation design).
 - **MODEL / EFFORT:** Claude Opus 5.5 high; Gemini Argon High.
-- **READ FIRST:** DECISIONS.md Q4, F5; SPEC §17; playbook §9 "Measuring agent value".
-- **INPUT STATE:** T-06 and T-08 accepted; prices verified (T-04/T-03); expected violated assertions defined.
-- **CHANGE:** `evaluation/` harness for `audit` / `agent` / `agent+memory`, with matched inputs, policy, tools, model settings and budgets, randomized order and recorded cache state.
+- **READ FIRST:** DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)", F5; SPEC §17; `docs/EVALUATION.md`; `docs/T09_CONTAINMENT.md`.
+- **INPUT STATE:** T-06 accepted; T-09 built; the decided live figures (`DECIDED_SLICE4`).
+- **CASES:** `s01_faulty`, `s02_clean` (synthetic, `benchmarks/t01/`) and `har_flawed`, `har_clean` (ATLAS-authored, real UCI HAR data, `benchmarks/real_sensor/`). **Development cases, not held-out:** ATLAS's checks were built and debugged on them, so ATLAS's results on them are not evidence of generalization; every report states this.
+- **CHANGE:**
+  - `evaluation/expected.json`: canonical violated assertion IDs per case, each sourced from an existing benchmark record; `evaluation/assertion_definitions.json`: the policy table's definitions (SPEC §5), verbatim;
+  - `src/atlas/evaluation/`: `baseline.py` (leg (b), Nemotron alone: one request per trial, fresh messages, exact reply validation, the existing live machinery unchanged, fixture path by default), `score.py` (TP/FP/FN per canonical ID), `suite.py` (leg (a) from hash-verified recorded runs, `s02_clean` through the T-09 Docker path; leg (c) metrics; records and the results table);
+  - `atlas.cli evaluate --suite comparison`; `docs/EVALUATION.md`.
 - **ACCEPTANCE:**
-  - the procedure store is frozen and its hash recorded before the first repetition;
-  - three paired repetitions on Variant A, each with fresh run state and no admissions in between;
-  - TP/FP/FN per canonical assertion ID, coverage gaps and errors reported; precision/recall undefined when a denominator is zero;
-  - repair success and token use reported across the agent modes, and procedure-creation cost separately;
-  - all scheduled trials reported; results described as descriptive.
-- **RUN:** *(create)* `uv run --locked python -m atlas.cli evaluate --suite comparison`
-- **EVIDENCE:** results table plus raw logs.
+  - expected IDs and the protocol committed before any live trial; expected IDs never taken from a T-11 result;
+  - leg (a) through existing code only (recorded runs verified by the viewer's hash check, or the T-09 Docker path), per-ID PASS/FAIL/NOT_ASSESSED with the evidence path or hash;
+  - leg (b): three trials per case, at most 3 requests per case run, each reserved before dispatch; the decided request body (model, messages, max_completion_tokens=8000, n=1); a case over the 12,000 input estimate refused before dispatch and recorded; exact validation, any invalid reply INVALID_REPLY with a fixed code, never repaired, retried or scored; seeded random case order recorded;
+  - leg (c) descriptive only, never part of an outcome;
+  - TP/FP/FN per case and leg; precision/recall "undefined" on a zero denominator; NOT_ASSESSED as coverage gaps, not misses; every scheduled trial reported; results descriptive with the development-case caveat at the top;
+  - CLI refusals: no mode flag, live without or with a wrong amount, live refusal order and exit codes as the agent live path, `ATLAS_HOSTED=1` exit 2;
+  - offline tests, the full suite with Docker required, ruff clean.
+- **RUN:**
+  - *(existing after this task)* `$env:ATLAS_MODEL_MODE='fixture'; uv run --locked python -m atlas.cli evaluate --suite comparison --fixture-script tests/fixtures/t11_comparison_script.json [--seed N]` (non-live, Docker for `s02_clean`);
+  - live, only after the user's explicit go-ahead: `$env:ATLAS_MODEL_MODE='live'; uv run --locked python -m atlas.cli evaluate --suite comparison --live --authorize-spend-usd 0.51 [--seed N]`.
+- **EVIDENCE:** `runs/t11/<UTC time>/` (git-ignored): per-trial records, raw replies (untrusted), `scores.json`, `results.md`.
 - **HANDOFF:** Gemini review of the claims.
 - **RECOVERY:** report null or negative results as measured.
+- **Earlier plan (superseded 2026-10-19):** a pilot of `audit` / `agent` / `agent+memory` with a frozen procedure store and three paired repetitions on Variant A, which needed T-08.
 
 ### T-12 Limited hosted demo and judge access
 - **OWNER:** Claude Code (writer); the lead approves any paid usage.
