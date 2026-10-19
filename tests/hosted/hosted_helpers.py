@@ -92,10 +92,13 @@ def live6_provider(**kwargs):
     return Provider([completion(c) for c in [*LIVE6_REPLIES, FINISH]], **kwargs)
 
 
+_REAL_PREFLIGHT, _REAL_CLIENT = pf.run_preflight, nebius.NebiusClient
+
+
 def wire(monkeypatch, provider):
     """Route the pre-run check and the production client to the mock provider."""
     http = httpx2.Client(transport=httpx2.MockTransport(provider))
-    real_preflight, real_client = pf.run_preflight, nebius.NebiusClient
+    real_preflight, real_client = _REAL_PREFLIGHT, _REAL_CLIENT
     monkeypatch.setattr(
         pf, "run_preflight", functools.partial(real_preflight, http_client=http)
     )

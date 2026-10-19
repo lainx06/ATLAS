@@ -16,6 +16,7 @@ PAIRS = [
     ("streamlit", "streamlit"),
     ("openai", "openai"),
     ("dotenv", "python-dotenv"),
+    ("psycopg", "psycopg"),
     ("pytest", "pytest"),
     ("atlas", "atlas"),
 ]

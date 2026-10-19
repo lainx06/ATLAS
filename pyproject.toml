@@ -7,6 +7,7 @@ dependencies = [
     "numpy>=2.4.6",
     "openai>=3.31.0",
     "pandas>=3.0.6",
+    "psycopg[binary]>=3.3.6",
     "pydantic>=2.14.1",
     "python-dotenv>=1.2.4",
     "scikit-learn>=1.9.1",
@@ -19,8 +20,9 @@ build-backend = "uv_build"
 
 [tool.ruff]
 # Ruff 0.17 also formats Markdown; keep the handoff documents and the vendored
-# third-party skills (pinned upstream copies, see docs/TOOLING.md) byte-for-byte.
-extend-exclude = ["docs/handoff", ".claude/skills", ".claude/references", ".agents"]
+# third-party skills (pinned upstream copies, see docs/TOOLING.md) byte-for-byte, and the
+# hosted demo bundle (recorded runs whose hashes the viewer re-checks, T-12).
+extend-exclude = ["docs/handoff", ".claude/skills", ".claude/references", ".agents", "demo/recorded"]
 
 [dependency-groups]
 dev = [
