@@ -2098,6 +2098,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
     - the full locked environment builds and imports on the host, and that is recorded;
     - each needs its own approval when run;
   - the Neon budget-store integration (accounting, caps, pools, leases, reconciliation, retention) is implemented and reviewed. Until then the caps are planned controls, not a spending ceiling.
+  - the judge path stays free, unrestricted and functional through 2026-12-15 12:00 PT (end of the judging period, an official rule). Checked before acceptance: the daily-reset timezone and date rollover, prune and retention logic, any date-dependent code or expiry, and that the database and host do not sleep or expire in a way that blocks judges. No paywall or access restriction before then (DECISIONS.md 2026-10-19 item 3).
 - **RUN:** *(create)* the deployment smoke and acceptance scenarios against the hosted URL.
 - **EVIDENCE:** URL, test output, cost log.
 - **HANDOFF:** lead approval before any paid usage.
@@ -2158,6 +2159,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - P2: `ATLAS_HOSTED=1` selected the hosted page, but a direct `run_agent` call (default `hosted=False`) still reached the local executor (Codex's tripwire `runs/t12r/test_boundary.py`, one failed).
   - Two P3 (paths outside the allowlist; publication metadata in `demo/recorded/`) and the absolute charged-dollar maximum NOT VERIFIED. Lead dispositions: DECISIONS.md "T-12 review 1 dispositions (lead, 2026-10-18)".
   - Codex also ran the 87 hosted tests (passed) and caught all seven weakened variants.
+- **REVIEW 2 (Codex): pending, includes fault-injection matrix C1-C10 and P2 re-verification** (DECISIONS.md 2026-10-19 item 4).
 - **FIX PASS 1 (2026-10-19), branch `t12-hosted`, code commit `c3a2805`; re-verification by Codex pending.**
   - **Execution guard.** `atlas.hosted.refuse_if_hosted(what, env=None)` raises `HostedExecutionRefused` (a `RuntimeError`; a fixed message naming `what`, no environment values) when `ATLAS_HOSTED` is exactly `1`. It runs first, before any approval, file write, subprocess or network access, at six entry points:
     1. `agent.controller.run_agent` with `hosted=False` (the process environment and a given `env`); `hosted=True` is unchanged;
@@ -2185,7 +2187,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **MODEL / EFFORT:** Sonnet 5.5 medium; Codex Extra high for the final review if offered.
 - **READ FIRST:** playbook §14, §23; `docs/SUBMISSION_CHECKLIST.md`.
 - **INPUT STATE:** feature freeze (Oct 25–26).
-- **CHANGE:** README, LICENSE (MIT), data and dependency notices, sanitized example report, `docs/SUBMISSION_CHECKLIST.md` evidence.
+- **CHANGE:** README, Apache-2.0 (DECISIONS.md 2026-10-19 item 1); LICENSE and NOTICE, data and dependency notices, sanitized example report, `docs/SUBMISSION_CHECKLIST.md` evidence.
 - **ACCEPTANCE:** a fresh install runs the offline example; every quoted metric regenerates; the submitted links are checked signed out.
 - **RUN:** *(create)* a release-check script.
 - **EVIDENCE:** checklist rows with paths and URLs.

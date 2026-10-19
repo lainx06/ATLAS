@@ -388,3 +388,18 @@ Codex review 1 (`runs/t12r/review.md`): "Verdict: T-12 FAIL", one P2.
 4. Absolute charged-dollar maximum NOT VERIFIED: accepted known limitation; caps are reservation bounds (see docs/HOSTED_OPERATIONS.md "Spend bounds").
 5. Judge-code guessing: mitigated by the 32-character minimum and a random code generated at deployment.
 6. Prior work (user, 2026-10-18): the submission period began before 2026-10-14; no ATLAS code, data or documents existed before the first commit 7a0f155 (2026-10-14).
+
+## User and lead decisions (2026-10-19)
+
+User decisions:
+
+1. License: Apache-2.0 for ATLAS, replacing the MIT plan (TASKS.md T-13). LICENSE (unmodified Apache License 2.0 text) at the repository root so GitHub detects it, plus a NOTICE file. The official rules require a public repository under an OSI-approved license; source-available licenses would disqualify. Vendored MIT- and Apache-licensed agent skills keep their own license files and are compatible.
+2. IP ownership: the submission is solely owned by the entrant (user statement, 2026-10-19). ATLAS was built on the user's personal equipment and every commit is authored by the user. No repository action.
+
+Lead decisions:
+
+3. T-12 acceptance addition: the judge path must stay free, unrestricted and functional through 2026-12-15 12:00 PT (end of the judging period, an official rule). Checked before acceptance: the daily-reset timezone and date rollover, prune and retention logic, any date-dependent code or expiry, and that the database and host do not sleep or expire in a way that blocks judges. No paywall or access restriction before then.
+4. Next gate: the Codex T-12 security-and-spend review includes a fault-injection matrix C1-C10 (kill or restart between dispatch and settlement; tab close or reload mid-session; a reply claiming completion with no valid action; a render failure after the run completes; the store unreachable between requests; a provider timeout or 5xx after dispatch; the kill switch turned off mid-session; a race for the last cents; a bundle tamper; the availability window through 2026-12-15). It also re-verifies the review 1 P2 fix (c3a2805).
+5. Not adopted: additional LLM "tester" or "customer" agents or an orchestrator layer. They would contradict "deterministic checks dictate outcomes" and add no truth; failure-path hardening goes through fault-injection review.
+
+Notes (no action before 2026-10-30): any commercialization is after submission and separate from the submitted engine, which stays Apache-2.0; the UCI HAR non-commercial note means a future commercial showcase needs different or synthetic data; the Nemotron model is used under the NVIDIA Nemotron Open Model License.
