@@ -1,0 +1,308 @@
+{
+  "atlas": {
+    "cases": [
+      {
+        "available": true,
+        "case_id": "s01_faulty",
+        "coverage_gaps": [],
+        "errors": [],
+        "expected_errors": [],
+        "expected_gaps": [],
+        "fn": [],
+        "fp": [],
+        "outcome": "VIOLATION_FOUND",
+        "tp": [
+          "fit.state_dependencies_within_fold_train",
+          "split.no_group_overlap",
+          "split.repeated_measures_rule",
+          "split.sampling_unit_disjoint"
+        ]
+      },
+      {
+        "available": true,
+        "case_id": "s02_clean",
+        "coverage_gaps": [],
+        "errors": [],
+        "expected_errors": [],
+        "expected_gaps": [],
+        "fn": [],
+        "fp": [],
+        "outcome": "NO_VIOLATION_FOUND",
+        "tp": []
+      },
+      {
+        "available": true,
+        "case_id": "har_flawed",
+        "coverage_gaps": [
+          "split.no_window_overlap"
+        ],
+        "errors": [],
+        "expected_errors": [],
+        "expected_gaps": [
+          "split.no_window_overlap"
+        ],
+        "fn": [],
+        "fp": [],
+        "outcome": "VIOLATION_FOUND",
+        "tp": [
+          "fit.state_dependencies_within_fold_train",
+          "split.no_group_overlap",
+          "split.repeated_measures_rule",
+          "split.sampling_unit_disjoint"
+        ]
+      },
+      {
+        "available": true,
+        "case_id": "har_clean",
+        "coverage_gaps": [],
+        "errors": [],
+        "expected_errors": [],
+        "expected_gaps": [],
+        "fn": [],
+        "fp": [],
+        "outcome": "NO_VIOLATION_FOUND",
+        "tp": []
+      }
+    ],
+    "totals": {
+      "cases_available": 4,
+      "clean_false_positives": 0,
+      "clean_false_violation_rate": 0.0,
+      "coverage_gaps_on_expected": 1,
+      "errors_on_expected": 0,
+      "fn": 0,
+      "fp": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "tp": 8
+    }
+  },
+  "baseline": {
+    "cases": [
+      {
+        "case_id": "s01_faulty",
+        "fn": 1,
+        "fp": 0,
+        "invalid_reply": 1,
+        "model_error": 0,
+        "not_sent": 0,
+        "tp": 7,
+        "trials": [
+          {
+            "code": null,
+            "fn": [],
+            "fp": [],
+            "repetition": 1,
+            "status": "VALID",
+            "tp": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ],
+            "violated": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ]
+          },
+          {
+            "code": "rationale_too_long",
+            "repetition": 2,
+            "status": "INVALID_REPLY"
+          },
+          {
+            "code": null,
+            "fn": [
+              "split.repeated_measures_rule"
+            ],
+            "fp": [],
+            "repetition": 3,
+            "status": "VALID",
+            "tp": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.sampling_unit_disjoint"
+            ],
+            "violated": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.sampling_unit_disjoint"
+            ]
+          }
+        ],
+        "trials_scheduled": 3,
+        "valid": 2
+      },
+      {
+        "case_id": "s02_clean",
+        "fn": 0,
+        "fp": 0,
+        "invalid_reply": 1,
+        "model_error": 0,
+        "not_sent": 0,
+        "tp": 0,
+        "trials": [
+          {
+            "code": null,
+            "fn": [],
+            "fp": [],
+            "repetition": 1,
+            "status": "VALID",
+            "tp": [],
+            "violated": []
+          },
+          {
+            "code": null,
+            "fn": [],
+            "fp": [],
+            "repetition": 2,
+            "status": "VALID",
+            "tp": [],
+            "violated": []
+          },
+          {
+            "code": "rationale_too_long",
+            "repetition": 3,
+            "status": "INVALID_REPLY"
+          }
+        ],
+        "trials_scheduled": 3,
+        "valid": 2
+      },
+      {
+        "case_id": "har_flawed",
+        "fn": 3,
+        "fp": 2,
+        "invalid_reply": 0,
+        "model_error": 0,
+        "not_sent": 0,
+        "tp": 12,
+        "trials": [
+          {
+            "code": null,
+            "fn": [
+              "split.no_window_overlap"
+            ],
+            "fp": [],
+            "repetition": 1,
+            "status": "VALID",
+            "tp": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ],
+            "violated": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ]
+          },
+          {
+            "code": null,
+            "fn": [
+              "split.no_window_overlap"
+            ],
+            "fp": [
+              "fit.coverage_complete"
+            ],
+            "repetition": 2,
+            "status": "VALID",
+            "tp": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ],
+            "violated": [
+              "fit.coverage_complete",
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ]
+          },
+          {
+            "code": null,
+            "fn": [
+              "split.no_window_overlap"
+            ],
+            "fp": [
+              "fit.coverage_complete"
+            ],
+            "repetition": 3,
+            "status": "VALID",
+            "tp": [
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ],
+            "violated": [
+              "fit.coverage_complete",
+              "fit.state_dependencies_within_fold_train",
+              "split.no_group_overlap",
+              "split.repeated_measures_rule",
+              "split.sampling_unit_disjoint"
+            ]
+          }
+        ],
+        "trials_scheduled": 3,
+        "valid": 3
+      },
+      {
+        "case_id": "har_clean",
+        "fn": 0,
+        "fp": 0,
+        "invalid_reply": 1,
+        "model_error": 0,
+        "not_sent": 0,
+        "tp": 0,
+        "trials": [
+          {
+            "code": null,
+            "fn": [],
+            "fp": [],
+            "repetition": 1,
+            "status": "VALID",
+            "tp": [],
+            "violated": []
+          },
+          {
+            "code": null,
+            "fn": [],
+            "fp": [],
+            "repetition": 2,
+            "status": "VALID",
+            "tp": [],
+            "violated": []
+          },
+          {
+            "code": "rationale_too_long",
+            "repetition": 3,
+            "status": "INVALID_REPLY"
+          }
+        ],
+        "trials_scheduled": 3,
+        "valid": 2
+      }
+    ],
+    "totals": {
+      "clean_false_positives": 0,
+      "clean_false_violation_rate": 0.0,
+      "fn": 4,
+      "fp": 2,
+      "invalid_reply": 3,
+      "model_error": 0,
+      "not_sent": 0,
+      "precision": 0.9047619047619048,
+      "recall": 0.8260869565217391,
+      "tp": 19,
+      "trials_scheduled": 12,
+      "valid": 9
+    }
+  }
+}

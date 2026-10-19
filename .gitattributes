@@ -5,3 +5,4 @@ tests/fixtures/** -text
 *.parquet binary
 *.zip binary
 demo/recorded/** -text
+evaluation/results/** -text

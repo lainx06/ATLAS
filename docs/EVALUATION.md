@@ -127,3 +127,43 @@ Command: `uv run --locked python -m atlas.cli evaluate --suite comparison [--fix
 - Leg (b) judges from text; leg (a) from executed evidence. The legs differ in what they can see by design, so the comparison does not isolate a cause.
 - `split.no_window_overlap` on `har_flawed` is expected but cannot be established by ATLAS on this data (coverage gap).
 - The input estimate is not a proven token bound, and the cost figures rely on provider-reported usage.
+
+## Results (live, 2026-10-19)
+
+Run folder `runs/t11/20261019T203928975437Z` (git-ignored), seed 2937182895; `results.md`, `scores.json` and `suite.json` copied unchanged into `evaluation/results/t11-live-20261019/` (SHA-256 in its README). The tables below are as in `results.md`.
+
+### Totals
+
+| Leg | TP | FP | FN | Precision | Recall | Clean FP | Clean false-violation rate |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| (a) ATLAS | 8 | 0 | 0 | 1.0000 | 1.0000 | 0 | 0.0000 |
+| (b) Nemotron alone, valid trials | 19 | 2 | 4 | 0.9048 | 0.8261 | 0 | 0.0000 |
+
+### Leg (b): Nemotron alone (no executable checks)
+
+| Case | Input estimate | Trial | Status | Code | Violated | TP | FP | FN |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| s01_faulty | 8293 | 1 | VALID |  | `fit.state_dependencies_within_fold_train`, `split.no_group_overlap`, `split.repeated_measures_rule`, `split.sampling_unit_disjoint` | 4 | 0 | 0 |
+| s01_faulty | 8293 | 2 | INVALID_REPLY | rationale_too_long |  |  |  |  |
+| s01_faulty | 8293 | 3 | VALID |  | `fit.state_dependencies_within_fold_train`, `split.no_group_overlap`, `split.sampling_unit_disjoint` | 3 | 0 | 1 |
+| s02_clean | 8264 | 1 | VALID |  | none | 0 | 0 | 0 |
+| s02_clean | 8264 | 2 | VALID |  | none | 0 | 0 | 0 |
+| s02_clean | 8264 | 3 | INVALID_REPLY | rationale_too_long |  |  |  |  |
+| har_flawed | 34605 | 1 | VALID |  | `fit.state_dependencies_within_fold_train`, `split.no_group_overlap`, `split.repeated_measures_rule`, `split.sampling_unit_disjoint` | 4 | 0 | 1 |
+| har_flawed | 34605 | 2 | VALID |  | `fit.coverage_complete`, `fit.state_dependencies_within_fold_train`, `split.no_group_overlap`, `split.repeated_measures_rule`, `split.sampling_unit_disjoint` | 4 | 1 | 1 |
+| har_flawed | 34605 | 3 | VALID |  | `fit.coverage_complete`, `fit.state_dependencies_within_fold_train`, `split.no_group_overlap`, `split.repeated_measures_rule`, `split.sampling_unit_disjoint` | 4 | 1 | 1 |
+| har_clean | 33726 | 1 | VALID |  | none | 0 | 0 | 0 |
+| har_clean | 33726 | 2 | VALID |  | none | 0 | 0 | 0 |
+| har_clean | 33726 | 3 | INVALID_REPLY | rationale_too_long |  |  |  |  |
+
+### Cost
+
+- Estimated total: 0.0630621 USD (not billing).
+
+### Findings (descriptive)
+
+- On these four development cases, Nemotron alone, reading the same files with no executable checks, named 19 of the 23 predeclared violations across its 9 valid trials (recall 0.83), with 2 false positives (fit.coverage_complete, twice, on har_flawed) and no false violation on either clean control (0 in 4 valid clean trials).
+- ATLAS's deterministic audit found all 8 assessable predeclared violations with no false positive and no false violation on the clean controls. It left split.no_window_overlap NOT_ASSESSED on har_flawed (missing window metadata), a coverage gap; Nemotron alone did not name it in any of its 3 valid har_flawed trials.
+- Nemotron alone varied between repetitions (s01_faulty: 4 of 4, then 3 of 4) and 3 of its 12 replies were invalid (rationale over 600 characters) and unscored; ATLAS's results are deterministic and rest on executed evidence.
+- har_flawed reports balanced accuracy 0.9064, which ATLAS's recomputation reproduces (0.9064); the clean control recomputes 0.8752. The gap is a descriptive protocol comparison.
+- These are development cases on which ATLAS's checks were built: not held-out, small in number, and not evidence of generalization. The comparison does not test repair, which needs execution (live run 6 is the repair evidence).

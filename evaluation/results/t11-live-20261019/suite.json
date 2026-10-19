@@ -1,0 +1,134 @@
+{
+  "atlas_sources": {
+    "har_clean": "recorded: demo/recorded/t09/agent-har_clean-ac63eaecd7a8",
+    "har_flawed": "recorded: demo/recorded/t09/agent-har_flawed-1e2267f662c0",
+    "s01_faulty": "recorded: demo/recorded/live6/agent-s01_faulty-877f8245a8a2",
+    "s02_clean": "re-run: the T-09 Docker audit path (benchmarks/real_sensor/run_audit.py)"
+  },
+  "atlas_unavailable": [],
+  "case_order": [
+    "s02_clean",
+    "s01_faulty",
+    "har_clean",
+    "har_flawed"
+  ],
+  "caveat": "Development cases, not held-out: ATLAS's checks were built and debugged on these four cases, so ATLAS's results on them are not evidence of generalization. Results are descriptive.",
+  "expected": {
+    "har_clean": [],
+    "har_flawed": [
+      "fit.state_dependencies_within_fold_train",
+      "split.no_group_overlap",
+      "split.no_window_overlap",
+      "split.repeated_measures_rule",
+      "split.sampling_unit_disjoint"
+    ],
+    "s01_faulty": [
+      "fit.state_dependencies_within_fold_train",
+      "split.no_group_overlap",
+      "split.repeated_measures_rule",
+      "split.sampling_unit_disjoint"
+    ],
+    "s02_clean": []
+  },
+  "input_estimates": {
+    "har_clean": 33726,
+    "har_flawed": 34605,
+    "s01_faulty": 8293,
+    "s02_clean": 8264
+  },
+  "inputs": {
+    "assertion_definitions.json": "5493737180b458b058fe238487f8f58226a13294f394208c3e4700666a2223dc",
+    "expected.json": "6a33dd89d718aefb57f1c3f0876585e6004eceae6daa6328ee0884350580989d"
+  },
+  "live": true,
+  "max_completion_tokens": 8000,
+  "max_input_tokens": 40000,
+  "max_requests_per_case": 3,
+  "metrics": [
+    {
+      "case_id": "s01_faulty",
+      "clean_control": "s02_clean",
+      "clean_control_recomputed_mean_over_folds": 0.6687500000000001,
+      "metric": "balanced_accuracy",
+      "recomputed_mean_over_folds": 0.6824305080884028,
+      "recomputed_pooled": 0.6812499999999999,
+      "reported": []
+    },
+    {
+      "case_id": "s02_clean",
+      "clean_control": null,
+      "clean_control_recomputed_mean_over_folds": null,
+      "metric": "balanced_accuracy",
+      "recomputed_mean_over_folds": 0.6687500000000001,
+      "recomputed_pooled": 0.66875,
+      "reported": []
+    },
+    {
+      "case_id": "har_flawed",
+      "clean_control": "har_clean",
+      "clean_control_recomputed_mean_over_folds": 0.8751879948782422,
+      "metric": "balanced_accuracy",
+      "recomputed_mean_over_folds": 0.906396437268804,
+      "recomputed_pooled": 0.9063346841153898,
+      "reported": [
+        0.906396437268804
+      ]
+    },
+    {
+      "case_id": "har_clean",
+      "clean_control": null,
+      "clean_control_recomputed_mean_over_folds": null,
+      "metric": "balanced_accuracy",
+      "recomputed_mean_over_folds": 0.8751879948782422,
+      "recomputed_pooled": 0.8746352443024089,
+      "reported": []
+    }
+  ],
+  "model_id": "nvidia/nemotron-3-super-120b-a12b",
+  "policy_version": "policy-v1.3",
+  "preflight": {
+    "check": "pre-run GET /models (T-06 slice 4)",
+    "expected": {
+      "context_length_tokens": 262144,
+      "price_input_per_token": "0.0000003",
+      "price_output_per_token": "0.0000009"
+    },
+    "listed": {
+      "context_length_tokens": 262144,
+      "price_input_per_token": "0.0000003",
+      "price_output_per_token": "0.0000009"
+    },
+    "method": "GET",
+    "mismatches": [],
+    "model_id": "nvidia/nemotron-3-super-120b-a12b",
+    "note": "sanitized: no key, header or provider text is recorded",
+    "reason": null,
+    "rejected": null,
+    "request_id": "bfdf7d703ef80c299b7688cf0b100f2e",
+    "result": "pass",
+    "status": 200,
+    "time_utc": "2026-10-19T20:39:28.454596+00:00",
+    "url": "https://api.tokenfactory.nebius.com/v1/models"
+  },
+  "repetitions": 3,
+  "request_body": "model, messages, max_completion_tokens, n=1 (provider default sampling)",
+  "run_dir": "runs\\t11\\20261019T203928975437Z",
+  "seed": 2937182895,
+  "spend": {
+    "estimated_total_usd": "0.0630621",
+    "label": "estimates at listed prices from provider-reported usage; not billing",
+    "per_case": {
+      "har_clean": "0.0213912",
+      "har_flawed": "0.0203715",
+      "s01_faulty": "0.0108198",
+      "s02_clean": "0.0104796"
+    },
+    "per_case_run_limits": {
+      "authorized_usd": "0.51",
+      "estimate_cap_usd": "0.0648"
+    }
+  },
+  "suite": "comparison",
+  "system_prompt_sha256": "f1b8fddff03fdbd44254e165428b7aef5e55965ff62ce8ebead6abe27fea5fe3",
+  "task": "T-11 (re-scoped), DECISIONS.md \"T-11 re-scope and T-10 (lead, 2026-10-19)\""
+}
