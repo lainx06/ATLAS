@@ -1,0 +1,14 @@
+{
+  "name": "revision",
+  "replies": [
+    {
+      "content": "{\"action\": {\"tool\": \"inspect_evidence\", \"check\": \"split_integrity\"}}"
+    },
+    {
+      "content": "{\"action\": {\"tool\": \"propose_patch\", \"diff\": \"--- a/evaluate.py\\n+++ b/evaluate.py\\n@@ -1,23 +1,26 @@\\n-\\\"\\\"\\\"s01 faulty (ATLAS-authored): supervised feature selection fit on every row, then a random-row split.\\\"\\\"\\\"\\n+\\\"\\\"\\\"s02 clean: grouped folds; scaler, selector and classifier fit per fold on training rows only.\\\"\\\"\\\"\\n \\n from sklearn.feature_selection import SelectKBest, f_classif\\n from sklearn.linear_model import LogisticRegression\\n-from sklearn.model_selection import KFold\\n+from sklearn.model_selection import GroupKFold\\n from sklearn.pipeline import Pipeline\\n from sklearn.preprocessing import StandardScaler\\n \\n from atlas import adapter\\n \\n X, y = adapter.load_table()\\n-# Global: the selector learns from every row's label, including future evaluation rows.\\n-X_selected = SelectKBest(f_classif, k=3).fit_transform(X, y)\\n-for k, (tr, ev) in enumerate(\\n-    KFold(n_splits=4, shuffle=True, random_state=0).split(X_selected)\\n-):\\n+groups = adapter.load_metadata().loc[X.index, \\\"subject_id\\\"]\\n+for k, (tr, ev) in enumerate(GroupKFold(n_splits=4).split(X, y, groups)):\\n     train_ids, eval_ids = list(X.index[tr]), list(X.index[ev])\\n     adapter.declare_split(f\\\"fold{k}\\\", train_ids, eval_ids)\\n-    model = Pipeline([(\\\"scale\\\", StandardScaler()), (\\\"clf\\\", LogisticRegression())])\\n-    model.fit(adapter.take(X_selected, train_ids), adapter.take(y, train_ids))\\n+    model = Pipeline(\\n+        [\\n+            (\\\"scale\\\", StandardScaler()),\\n+            (\\\"select\\\", SelectKBest(f_classif, k=3)),\\n+            (\\\"clf\\\", LogisticRegression()),\\n+        ]\\n+    )\\n+    model.fit(adapter.take(X, train_ids), adapter.take(y, train_ids))\\n     adapter.write_predictions(\\n-        f\\\"fold{k}\\\", eval_ids, model.predict(adapter.take(X_selected, eval_ids))\\n+        f\\\"fold{k}\\\", eval_ids, model.predict(adapter.take(X, eval_ids))\\n     )\\n\", \"rationale\": \"fold-local selection, grouped folds\"}}"
+    },
+    {
+      "content": "{\"action\": {\"tool\": \"finish\", \"summary\": \"done\"}}"
+    }
+  ]
+}
