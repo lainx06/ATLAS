@@ -143,3 +143,43 @@ Not installed: Addy `frontend-ui-engineering` (the T-07 build task names only fr
 ### Browser tests (Section 22.4)
 - `uv add --dev pytest-playwright`: pytest-playwright 0.10.0, playwright 1.64.0 (+ greenlet 3.5.6, pyee 13.0.1, python-slugify 9.1.3, text-unidecode 1.3).
 - `uv run playwright install chromium`: Chromium build 1248 (156.0.8078.4), headless shell, ffmpeg and winldd under `%LOCALAPPDATA%\ms-playwright`. Offline smoke check: launched headless Chromium, rendered a page, read it back.
+
+## UI HUD pass skills (installed 2026-10-19, worktree `atlas-ui`, branch `ui-hud`)
+
+Two skills for the HUD design pass, by the Section 22.2 route: canonical repositories fetched over HTTPS into the ignored `.dev/skill-sources/`, SHAs from `git rev-parse` after the fetch, files read from the pinned commit objects by `scripts/sync_skills.py`, copied byte-for-byte into `.claude/` and `.agents/`. No collection, hook, command, plugin or global setting was installed or changed; no fetched script was run.
+
+### Addy `frontend-ui-engineering` (for the UI engineering review; playbook §25)
+| Item | Value |
+| --- | --- |
+| Repository | https://github.com/addyosmani/agent-skills (fresh clone 2026-10-19; `HEAD` was still the existing pin) |
+| Pinned commit | `aeac41d4d005999432bb7312f7ff06383a91d59d`, the existing `addy` pin (playbook §25: "Add Addy's frontend-ui-engineering to the existing selected source revision"). Last commit touching the folder: `3e1e0a2db595ab2abe89b1204f7eabb67a24eb90` (2026-10-03, "Bind the frontend error-state retry callback") |
+| Selected path | `skills/frontend-ui-engineering/` (one file, `SKILL.md`), plus Addy's `LICENSE` copied into the folder as for the other Addy skills |
+| Companion file | `SKILL.md` "See Also" cites `../../references/accessibility-checklist.md`; copied to `.claude/references/` and `.agents/references/` (beside the three existing Addy references and their `LICENSE`), so the path resolves without editing `SKILL.md` |
+| License | MIT, (c) 2025 Addy Osmani |
+| Not installed | Nothing else is referenced; the skill names no companion skill |
+
+### Streamlit `developing-with-streamlit` (version-matched; for implementation)
+| Item | Value |
+| --- | --- |
+| Inspected | https://github.com/streamlit/agent-skills at `c69a265613f17cdd69d42e6f67b704214178fae5` (2026-07-23, "Deprecate: meta-skill now ships with Streamlit (canonical source of truth) (#29)"). Its README: the repository is deprecated and being archived; the meta-skill there only runs `scripts/discover.py` to locate the skill bundled in the installed Streamlit package (1.57+); `streamlit/streamlit` is the canonical source. Not vendored: the meta-skill resolves against the machine's interpreter (a machine-specific path, §25) and adds no content of its own |
+| Repository | https://github.com/streamlit/streamlit, tag `1.66.0` (annotated tag object `59ee618b69947e1bdd968c74b1afbf1d152dcd2c`) → commit `269e552f276f5757b2903174da18e083defb325b` (2026-10-14, "Up version to 1.66.0"); fetched with `git clone --filter=blob:none --no-checkout --depth 1 --branch 1.66.0` |
+| Version match | Exact: `uv.lock` pins streamlit 1.66.0. All 57 files of the tagged folder are byte-identical (`cmp`) to the copy inside the installed package, `.venv/Lib/site-packages/streamlit/.agents/skills/developing-with-streamlit/` |
+| Selected path | `lib/streamlit/.agents/skills/developing-with-streamlit/` whole: `SKILL.md`, `references/` (29 files), `assets/templates/` (themes and app templates). Every `references/*.md` link in `SKILL.md` and in the references resolves inside the folder; no `../` path |
+| Not copied | The sibling `lib/streamlit/.agents/skills/AGENTS.md` and `CLAUDE.md` (authoring rules for Streamlit maintainers, not part of the skill) and `.agents/meta-skill/` (the discovery wrapper above) |
+| License | Apache-2.0: the repository's root `LICENSE`, copied into the skill folder as `LICENSE`. The repository's `NOTICES` file lists third-party software contained in the Streamlit product (it opens "THE FOLLOWING SETS FORTH ATTRIBUTION NOTICES FOR THIRD PARTY SOFTWARE…"); none of that software is in the vendored folder, so it is not copied |
+| Re-pin rule | The skill matches the Streamlit version. Upgrading Streamlit means re-pinning to the new tag and replacing these copies deliberately |
+
+### Sync and verification
+- `scripts/sync_skills.py`: new `streamlit` pin and `LICENSES` entry; `SKILLS` gains `frontend-ui-engineering` and `developing-with-streamlit`; `SHARED` gains `references/accessibility-checklist.md`.
+- Before install, `--check`: the 34 existing files unchanged; 61 per destination MISSING (122). Install: 122 files written. After: "95 files x 2 destinations; problems: 0", exit 0.
+- `.claude/` and `.agents/`: sorted `sha256sum` lists of the new skill folders and `references/` identical.
+- `diff -r --strip-trailing-cr` of `.claude/skills/developing-with-streamlit` (excluding the added `LICENSE`) against the installed 1.66.0 package copy: no differences. `frontend-ui-engineering/SKILL.md` against the clone: no differences.
+- Ruff: the new folders sit under the existing `extend-exclude` entries (`.claude/skills`, `.claude/references`, `.agents`).
+
+### Load status
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Files, both roots | **installed** | `sync_skills.py --check` exit 0 |
+| Claude native discovery | **unverified** in the building session: its discovery root is the main checkout, which does not have these folders | as for frontend-design in T-07 |
+| Manual fallback | **used**: `frontend-ui-engineering/SKILL.md`, `developing-with-streamlit/SKILL.md` and `references/theme.md` read by explicit path (identical to the installed copies, above) before the design spec was written, together with `frontend-design/SKILL.md` | this session |
+| Codex discovery of `.agents/skills` | **unverified** | copied files alone do not prove loading |

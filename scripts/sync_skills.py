@@ -8,6 +8,7 @@ Prerequisite (ignored clones):
   git clone https://github.com/mattpocock/skills.git .dev/skill-sources/matt
   git clone https://github.com/addyosmani/agent-skills.git .dev/skill-sources/addy
   git clone https://github.com/anthropics/skills.git .dev/skill-sources/anthropic
+  git clone --filter=blob:none --no-checkout --depth 1 --branch 1.66.0       https://github.com/streamlit/streamlit.git .dev/skill-sources/streamlit
 
 Run:   uv run --locked python scripts/sync_skills.py          (install missing files)
        uv run --locked python scripts/sync_skills.py --check  (verify only; no writes)
@@ -36,11 +37,20 @@ PINS = {
         "https://github.com/anthropics/skills.git",
         "dbd4588f9e1033efb41dad4bef2f7947c8993d44",
     ),
+    "streamlit": (  # UI HUD pass: tag 1.66.0, matching the locked streamlit 1.66.0
+        "https://github.com/streamlit/streamlit.git",
+        "269e552f276f5757b2903174da18e083defb325b",
+    ),
 }
 
 # Where each source keeps the license notice copied into its skill folders. None: the
 # upstream skill folder already carries its own (anthropic: LICENSE.txt, Apache-2.0).
-LICENSES = {"matt": "LICENSE", "addy": "LICENSE", "anthropic": None}
+LICENSES = {
+    "matt": "LICENSE",
+    "addy": "LICENSE",
+    "anthropic": None,
+    "streamlit": "LICENSE",  # Apache-2.0, repository root
+}
 
 # (source key, upstream skill folder). Each lands at <dest>/skills/<folder name>/.
 SKILLS = [
@@ -53,6 +63,9 @@ SKILLS = [
     ("addy", "skills/debugging-and-error-recovery"),
     ("addy", "skills/test-driven-development"),
     ("anthropic", "skills/frontend-design"),  # T-07 visual direction
+    ("addy", "skills/frontend-ui-engineering"),  # UI HUD pass: UI engineering review
+    # UI HUD pass: the version-matched skill bundled in the streamlit 1.66.0 package
+    ("streamlit", "lib/streamlit/.agents/skills/developing-with-streamlit"),
 ]
 
 # Shared files cited as ../../references/<file> from a skill folder; placing them at
@@ -61,6 +74,7 @@ SHARED = [
     ("addy", "references/security-checklist.md"),  # code-review-and-quality
     ("addy", "references/performance-checklist.md"),  # code-review-and-quality
     ("addy", "references/testing-patterns.md"),  # test-driven-development
+    ("addy", "references/accessibility-checklist.md"),  # frontend-ui-engineering
 ]
 
 

@@ -91,8 +91,12 @@ These folders are byte-for-byte copies from pinned upstream commits (`docs/TOOLI
 | `debugging-and-error-recovery` | same | MIT | 2025 Addy Osmani |
 | `test-driven-development` | same | MIT | 2025 Addy Osmani |
 | `frontend-design` | https://github.com/anthropics/skills (`dbd4588f9e1033efb41dad4bef2f7947c8993d44`) | Apache-2.0 (`LICENSE.txt` in the skill folder) | no copyright line in LICENSE.txt |
+| `frontend-ui-engineering` | https://github.com/addyosmani/agent-skills (`aeac41d4d005999432bb7312f7ff06383a91d59d`) | MIT | 2025 Addy Osmani |
+| `developing-with-streamlit` | https://github.com/streamlit/streamlit, tag `1.66.0` (`269e552f276f5757b2903174da18e083defb325b`), path `lib/streamlit/.agents/skills/developing-with-streamlit/` | Apache-2.0 (the repository's root `LICENSE`, copied into the skill folder as `LICENSE`) | no copyright line in the license file; the folder is the skill bundled in the streamlit 1.66.0 package |
 
-The shared reference files copied with the Addy skills (`.claude/references/` and `.agents/references/`: `security-checklist.md`, `performance-checklist.md`, `testing-patterns.md`) carry the same MIT license (`LICENSE` in each folder).
+The shared reference files copied with the Addy skills (`.claude/references/` and `.agents/references/`: `security-checklist.md`, `performance-checklist.md`, `testing-patterns.md`, `accessibility-checklist.md`) carry the same MIT license (`LICENSE` in each folder).
+
+The Streamlit repository also has a `NOTICES` file; it lists third-party software contained in the Streamlit product, none of which is in the vendored skill folder, so it is not copied (`docs/TOOLING.md` "UI HUD pass skills").
 
 ## Data
 
