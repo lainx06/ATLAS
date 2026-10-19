@@ -403,3 +403,13 @@ Lead decisions:
 5. Not adopted: additional LLM "tester" or "customer" agents or an orchestrator layer. They would contradict "deterministic checks dictate outcomes" and add no truth; failure-path hardening goes through fault-injection review.
 
 Notes (no action before 2026-10-30): any commercialization is after submission and separate from the submitted engine, which stays Apache-2.0; the UCI HAR non-commercial note means a future commercial showcase needs different or synthetic data; the Nemotron model is used under the NVIDIA Nemotron Open Model License.
+
+## T-12 review 2 dispositions (lead, 2026-10-19)
+
+Codex review 2 (`runs/t12-review/review.md`): "Verdict: T-12 REVIEW 2 FAIL", two P2, no demonstrated P1.
+
+1. P2-1 Docker maintenance entries: fixed in fix pass 2 (guard at every process start in runner/docker.py); re-verification by Codex required.
+2. P2-2 partial headline after a render failure: fixed in fix pass 2 (clearable results container, fixed error, record unchanged); re-verification by Codex required.
+3. E1's failure is a stale exception expectation in the review 1 probe (it catches ValueError, the guard raises HostedExecutionRefused before the executor); not a regression. Review 1 P2 confirmed fixed by 34 boundary tests and 10 independent tripwires.
+4. C10 operational availability (host and database sleep, free-tier expiry, wake latency, credits) is not testable offline; it is checked during deployment and in the hosted smoke test before submission.
+5. The exact-"1" ATLAS_HOSTED rule stands (decided); deployment must set exactly ATLAS_HOSTED=1, verified in the hosted smoke test.
