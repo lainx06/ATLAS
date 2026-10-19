@@ -149,11 +149,33 @@ Settling is idempotent per request ID.
 
 ## 9. Before the hosted app is declared ready (not done in T-12's offline build)
 
-- **Stage B:** one authenticated `GET /models` from the deployed host, approved for later (decision 4).
-- **Stage C:** the full locked build on the host, approved for later (decision 4).
+- **Stage B (satisfied, 2026-10-19):** by the smoke session's own pre-run model check (one authenticated `GET /models` from the deployed host, inside a user-approved, capped session); both the public and the judge route passed it.
+- **Stage C (satisfied, 2026-10-19):** the full locked build on the host; after `a45cb19` all three recorded runs verify intact there (live6 49 items; HAR flawed and HAR clean 21 each) and the live session page re-verifies the original (49 items, `VIOLATION_FOUND`). Details and the defect found at stage C follow.
   - `requirements.txt` is `uv export --frozen --no-dev --no-hashes` of `uv.lock` (56 pinned packages plus `-e .`). Which dependency file Community Cloud uses when both `uv.lock` and `requirements.txt` exist must be observed there.
   - `.streamlit/config.toml` sets `server.address = "localhost"` for the local build. Whether Community Cloud overrides it must be observed at stage C; it is not changed here.
   - **Observed by the user on Community Cloud (2026-10-19):** the build succeeded; `ATLAS_HOSTED=1` selected the hosted page; the replay disclosure was shown; the kill switch (off) message was shown; the `localhost` server setting did not prevent serving. Which dependency file the host used was not recorded.
   - **Defect found at stage C (2026-10-19), fixed:** the bundled live6 run showed "evidence changed since recording: 8 of 37 recorded items differ" (fail-closed; no outcome shown). Recorded-run verification reduced the candidate's recorded `run_dir`, a Windows path string, to its last component with the host's path rules (`src/atlas/ui/recorded.py`, `Path(...).name`); on Linux the whole string is one component, so it looked for `candidates/C:\Users\...\c1/...` (6 items missing, 2 derived outcome entries changed). Windows-only testing, including both Codex reviews, could not observe it. Fix: one separator-agnostic helper, `atlas.ui.artifacts.recorded_basename` (PureWindowsPath semantics; None, treated as missing, for an empty, `.`, `..`, drive-only or otherwise unusable value), used at the three places that reduce a recorded path to a name (`ui/recorded.py`, `ui/artifacts.py` exports, `ui/views.py` comparison). No recorded hash, index format or match rule changed; the recorded absolute path is never opened. Acceptance: a Linux container (`python:3.11-slim` with `requirements.txt`, no network, read-only) verified all three bundles intact and a one-byte change in `candidates/c1/outcome.json` on a copy as "evidence changed" (`runs/linuxcheck-20261019/verify.txt`, with the pre-fix source reproducing the 8 of 37). The fix is in the release review's scope; the hosted app must be redeployed from the fixed commit and the live6 replay re-checked there.
 - **Neon:** the store was tested only on a disposable local PostgreSQL 17 container; the stage D probe ran once on Neon PostgreSQL 18. The production tables are created by the app on first use (`CREATE TABLE IF NOT EXISTS`).
 - **Review:** the Codex T-12 security-and-spend review. Review 1 (2026-10-18): FAIL, one P2 (the execution boundary), fixed in fix pass 1; re-verification by Codex pending.
+
+### Deployment and smoke test (user, 2026-10-19)
+
+- **Neon:** project atlas-budget (Free plan), branch production, database neondb; the app created its tables on first use.
+- **Community Cloud:** app from the private repository, branch main, `app.py`, Python 3.11; visibility private (one private app per workspace); secrets set by the user (the names in §2).
+- **Reboot:** after an app reboot the server log showed the server started but the tab kept its old session; a hard browser refresh was needed.
+- **Smoke test** (kill switch on with user approval, then set back off; sidebar "Live: unavailable"): session 1, public route: pre-run model check passed, 3 of 6 model attempts (`read_project_file`, `propose_patch`, `finish`), 1 revision (`new_source`) passed ATLAS validation and was recorded "not executed here", terminal state `REPORT`, original `VIOLATION_FOUND` (recorded, re-verified). Session 2, judge route ("Route: judge pool (access code accepted)"), new browser session: same shape, estimated $0.0045216, 0 held. Model-written text claiming the claim "is now supported" appeared only in labelled model-written boxes; the ATLAS finding stayed `VIOLATION_FOUND`.
+- **Ledger after the smoke test** (read-only SQL by the user): `atlas_reservation`: judge settled 3 requests, reserved $0.0324000, actual $0.0045216; public settled 3, reserved $0.0324000, actual $0.0076857. `atlas_cap`: judge spent $0.0045216 (3 requests); public and `public_daily:2026-10-19` spent $0.0076857 (3 requests); each session cap $0.0648 with its own spend; `reserved_usd` 0 everywhere. Smoke total $0.0122073 (estimate, not billing).
+- **Still to do at publication (each with approval):** make the app public, signed-out check, set `HOSTED_LIVE_ENABLED` to "true" through 2026-12-15 12:00 PT, add the demo URL.
+
+### Waking the app
+
+Community Cloud sleeps an app after 12 hours without traffic. A visitor clicks the wake button and waits about 30 seconds (about 23-24 s observed once on 2026-10-16). If the tab keeps spinning, refresh with Ctrl+Shift+R. All budget state is in Neon, so sleep loses nothing.
+
+### Checking the ledger
+
+Read-only queries, run in the Neon SQL Editor:
+
+```sql
+SELECT route, state, count(*) AS requests, sum(amount_usd) AS reserved_usd, sum(actual_usd) AS actual_usd FROM atlas_reservation GROUP BY route, state ORDER BY route, state;
+SELECT cap_key, cap_usd, reserved_usd, spent_usd, requests FROM atlas_cap ORDER BY cap_key;
+```

@@ -439,3 +439,11 @@ Builder notes for the lead (Claude Code, 2026-10-19; recorded with the predeclar
 
 1. Stage C observed by the user on Streamlit Community Cloud (2026-10-19): the build succeeded; ATLAS_HOSTED=1 selected the hosted page; replay disclosure shown; the kill switch (off) message shown; the localhost server setting did not prevent serving.
 2. Defect: recorded-run verification derived a candidate subfolder from a Windows path string with platform-dependent parsing, so on Linux the live6 bundle showed 'evidence changed' (fail-closed, no outcome shown). Windows-only testing, including both Codex reviews, could not observe it. Fixed with a separator-agnostic helper; acceptance includes a Linux container verification of all three bundles. The fix is in the release review's scope.
+
+## Hosted deployment, stage B and the smoke test (lead, 2026-10-19)
+
+1. Stage B is satisfied by the smoke session's own pre-run model check (one authenticated GET /models from the deployed host, inside a user-approved, capped session) rather than a separate call; both routes passed it.
+2. Stage C is satisfied: the build succeeded on Streamlit Community Cloud, the hosted page is selected, and all three recorded runs verify intact on the Linux host after a45cb19.
+3. The smoke test passed on the public and judge routes; every request was reserved at its ceiling ($0.0108) before dispatch and settled at provider-reported usage, with nothing held; the pools stayed separate. Total $0.0122073 (estimate, not billing).
+4. Keep-awake: no automation. Community Cloud sleeps an app after 12 hours without traffic and a visitor wakes it with a button (about 23-24 s observed once on 2026-10-16). The judge testing instructions say how to wake it; all budget state is in Neon, so sleep loses nothing; the local build remains the fallback.
+5. The kill switch stays off and the app stays private until the publication step; at submission the user makes the app public, runs the signed-out check and sets HOSTED_LIVE_ENABLED to "true" for the judging period through 2026-12-15 12:00 PT, each with approval.

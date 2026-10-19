@@ -5,7 +5,7 @@ ATLAS is a coding agent that audits machine-learning evaluation code for leakage
 <!-- Sources for this section: PROJECT_BRIEF.md; AGENTS.md "Scope" and "Isolation"; docs/SPEC.md §9, §11. -->
 
 - Outcome codes are exactly `VIOLATION_FOUND`, `NO_VIOLATION_FOUND`, `INCONCLUSIVE` and `NOT_SUPPORTED`. `NO_VIOLATION_FOUND` means every required check passed within the coverage shown; it does not say the claim is true.
-- Status: hosted demo built and security-reviewed (Codex, two reviews with fault injection; all findings fixed and re-verified), **not yet deployed**; demo URL [TODO: source needed]. Public repository URL [TODO: source needed].
+- Status: hosted demo deployed on Streamlit Community Cloud and smoke-tested on both routes; public link at submission [TODO: demo URL]. Public repository URL [TODO: source needed].
 
 ## Headline results
 
@@ -27,7 +27,7 @@ All figures come from the project's own records; none is a benchmark of detectio
 
 Source: TASKS.md T-06 "LIVE RUN 6"; STATUS.md. The candidate scored *lower*: removing the leakage cost accuracy, which is the point.
 
-The six live runs ended differently, and all are recorded: run 1 two proposals rejected, no candidate executed; run 2 `ERROR` (`not_json`); run 3 declined approval (`NEEDS_INPUT`); run 3b `ERROR` (`incomplete`); run 4 both candidates `INCONCLUSIVE` (`KeyError: 'subject_id'`); run 5 `ERROR` (`not_json`); run 6 success above. Estimated total live spend, runs 1 to 6 and the T-11 comparison: about $0.121 ($0.1210938; not billing). Source: STATUS.md.
+The six live runs ended differently, and all are recorded: run 1 two proposals rejected, no candidate executed; run 2 `ERROR` (`not_json`); run 3 declined approval (`NEEDS_INPUT`); run 3b `ERROR` (`incomplete`); run 4 both candidates `INCONCLUSIVE` (`KeyError: 'subject_id'`); run 5 `ERROR` (`not_json`); run 6 success above. Estimated total live spend, runs 1 to 6, the T-11 comparison and the hosted smoke test: about $0.133 ($0.1333011; not billing). Source: STATUS.md.
 
 ### UCI HAR: real data, a flawed protocol against a clean control
 

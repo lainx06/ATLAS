@@ -40,7 +40,7 @@ Nemotron is the agent's reasoning step, called through the OpenAI-compatible Tok
 - **What the model does.** In a bounded loop it chooses one typed action per reply: list or read project files, profile a table, run a check, propose a revision (`diff` or complete `new_source`), evaluate a candidate, or finish. The deterministic checks run before any model request and cannot be removed by the agent.
 - **Exact reply validation.** The prompt requests one raw JSON object; ATLAS validates the whole reply with strict Pydantic schemas (one action, no duplicate keys, no undeclared fields). No NVIDIA model on Nebius lists `json_mode` or `structured_outputs`, so this is application-validated, not provider-enforced. Replies are never repaired. Up to two consecutive schema failures get a corrective turn built from the schema and fixed text only.
 - **Bounds.** At most 6 requests, 12 tool operations, 2 revisions, 60 s per request, 12,000 input tokens (an ATLAS estimate) and 8,000 output tokens. Estimate cap $0.0648 per run; $0.51 maximum authorized per live run.
-- **Cost accounting.** Each request is reserved before it is sent, settled at provider-reported usage, and held at its ceiling if usage is unknown. Totals are labelled estimates, not billing. Total estimated live spend, runs 1 to 6 and the T-11 comparison: about $0.121 ($0.1210938; not billing).
+- **Cost accounting.** Each request is reserved before it is sent, settled at provider-reported usage, and held at its ceiling if usage is unknown. Totals are labelled estimates, not billing. Total estimated live spend, runs 1 to 6, the T-11 comparison and the hosted smoke test: about $0.133 ($0.1333011; not billing).
 - **Pre-run model check.** One free authenticated `GET /models` must list the model with exactly the configured prices and context length, or the run aborts before any completion.
 - **Authority.** A model proposal passes only `validate_diff`, then a typed human approval, then Docker execution, then the trusted evaluator. The model never decides an outcome.
 
@@ -74,6 +74,13 @@ Learnings:
 
 ATLAS was started and built entirely during the submission period. No ATLAS code, data or documents existed before the repository's first commit (`7a0f155`, 2026-10-14, "Initial project setup"); every later commit is part of the event work. Used unmodified and predating the event: the open-source Python dependencies, the vendored agent skills (pinned upstream commits, `THIRD_PARTY_NOTICES.md`), the public UCI HAR dataset (not redistributed) and the NVIDIA Nemotron model, called through Nebius Token Factory.
 
+## Testing instructions (for the Devpost field)
+
+- Hosted demo: [TODO: demo URL]. Recorded runs work without any code; every recorded hash is re-verified before a result is shown.
+- Live session: judges enter the private access code (given only in Devpost's private judging field, never here) to use the separate judge budget; each session makes at most 6 model requests, is capped at $0.0648 and never executes code on the host (proposals are marked "not executed here").
+- If the page says the app has gone to sleep, click the wake button and wait about 30 seconds; if the tab keeps spinning, refresh with Ctrl+Shift+R.
+- Full workflow (Docker execution of the original and candidates, typed approval): run locally as described in README.md "Setup and running".
+
 ## What's next
 
 <!-- Sources: STATUS.md "Next task"; TASKS.md T-12 "ACCEPTANCE", T-10; DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)"; DECISIONS.md "Lead decisions, 2026-10-17" items 2, 13; docs/HOSTED_OPERATIONS.md §9. -->
@@ -92,7 +99,7 @@ What worked well:
 
 - **The free `GET /models?verbose=true`** returned price, context length, rate limits and `supported_features` for each model, which made an exact pre-run check possible (model present, prices and context length equal to configuration). It returned HTTP 200 in our checks.
 - **Prompt-requested JSON worked** when the model complied: both smoke calls passed strict validation, and live run 6 had 0 schema failures over 5 requests.
-- **Low cost.** Run 6 cost an estimated $0.0190884; the six runs and the T-11 comparison about $0.121 in total (not billing).
+- **Low cost.** Run 6 cost an estimated $0.0190884; the six runs, the T-11 comparison and the hosted smoke test about $0.133 in total (not billing).
 
 Specific observations and suggestions:
 
