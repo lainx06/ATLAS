@@ -97,6 +97,7 @@ A dispatched request with unknown usage (a timeout, a lost connection) stays hel
 ```python
 from decimal import Decimal
 from atlas.hosted.budget_store import BudgetStore, connector
+
 BudgetStore(connector("<DATABASE_URL>")).settle("<request_id>", Decimal("0.0021"))
 ```
 

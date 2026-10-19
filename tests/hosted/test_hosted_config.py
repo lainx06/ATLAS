@@ -18,7 +18,7 @@ from atlas.hosted import secrets
 def test_requirements_txt_is_the_locked_set():
     exported = subprocess.run(
         ["uv", "export", "--frozen", "--no-dev", "--no-hashes", "--format",
-         "requirements.txt", "-o", "-"],
+         "requirements.txt"],
         cwd=H.ROOT, capture_output=True, text=True, check=True, timeout=120,
     ).stdout  # fmt: skip
     committed = (H.ROOT / "requirements.txt").read_text(encoding="utf-8")
