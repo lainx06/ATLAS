@@ -43,7 +43,7 @@ The 0.906 against 0.875 gap is a **descriptive** comparison of two protocols, no
 ### Safety controls and their reviews
 
 - Typed approval bound to the snapshot and code hashes; a wrong or truncated confirmation declines. Docker-only execution, no host fallback. The trusted evaluator, holdout labels and pass criteria are immutable to the agent (AGENTS.md; SPEC §9-§10).
-- Reviews: Gates 1-3 PASS; Gate 4 FAIL (two P2), resolved by slices 4c-4h; combined review FAIL (three P2), re-verified and closed; T-06 accepted by the lead within its documented scope at `199a173`. The Codex security-and-spend review of the hosted build (T-12) is **pending**. Source: STATUS.md; TASKS.md T-06 "ACCEPTANCE".
+- Reviews: Gates 1-3 PASS; Gate 4 FAIL (two P2), resolved by slices 4c-4h; combined review FAIL (three P2), re-verified and closed; T-06 accepted by the lead within its documented scope (`f059554`, on the code at `199a173`). The Codex security-and-spend review of the hosted build (T-12) is **pending**. Source: STATUS.md; TASKS.md T-06 "ACCEPTANCE".
 - Suite at the T-12 build: 1485 passed, 1 skipped with Docker required (`runs/t12/full.log`, git-ignored).
 
 ## How ATLAS uses NVIDIA Nemotron on Nebius Token Factory
@@ -103,10 +103,10 @@ uv run --locked python -m atlas.cli audit benchmarks/t01/s01_faulty --mode audit
 
 ```powershell
 $env:ATLAS_MODEL_MODE = 'fixture'
-uv run --locked python -m atlas.cli audit benchmarks/t01/s01_faulty --mode agent --fixture-script FILE
+uv run --locked python -m atlas.cli audit benchmarks/t01/s01_faulty --mode agent --fixture-script demo/fixtures/revision.json
 ```
 
-`FILE` is a JSON script of model replies (`name`, `replies`). [TODO: source needed for a ready-made script file at a stable path; the browser UI below ships the fixture scripts.] You type the first 12 characters of the code hash to approve the original and each candidate. The owner-observed run of this kind ended with the original `VIOLATION_FOUND` and four FAILs becoming PASS (STATUS.md "Next task").
+`demo/fixtures/revision.json` is a scripted list of model replies (NON-LIVE; see `demo/fixtures/README.md`). You type the first 12 characters of the code hash to approve the original and each candidate. The owner-observed run of this kind ended with the original `VIOLATION_FOUND` and four FAILs becoming PASS (STATUS.md "Next task").
 
 **Live run (spends real, small amounts; needs your explicit decision each time):**
 

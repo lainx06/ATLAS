@@ -19,7 +19,7 @@ How the licenses were read: the runtime list is the 56 pinned lines of `requirem
 | h11 | 0.16.0 | MIT |
 | httpcore2 | 2.13.1 | BSD-3-Clause |
 | httpx2 | 2.13.1 | BSD-3-Clause |
-| httpx2-jsfetch | 1.0 | [TODO] not installed in the checked environment, so no metadata was read |
+| httpx2-jsfetch | 1.0 | Not installed on the tested Windows environment. It is a dependency of `httpx2` only under the marker `python_full_version >= '3.12' and sys_platform == 'emscripten'` (`uv.lock`, `requirements.txt`). [TODO] license not read, since it is not installed |
 | idna | 3.20 | BSD-3-Clause |
 | itsdangerous | 2.2.0 | BSD License (classifier) |
 | jinja2 | 3.1.6 | BSD License (classifier) |
@@ -65,10 +65,16 @@ How the licenses were read: the runtime list is the 56 pinned lines of `requirem
 
 Two points for the release check:
 
-- `psycopg` is LGPL-3.0-only. ATLAS imports it unmodified from PyPI and does not vendor it. [TODO: the lead confirms this use is acceptable for the public release.]
+- `psycopg` is LGPL-3.0-only. Lead disposition (2026-10-18): acceptable for the release. `psycopg` and `psycopg-binary` are installed unmodified from PyPI as separate dependencies; ATLAS does not vendor or modify them; their license is named here.
 - `certifi` is MPL-2.0 and is used unmodified.
 
-Development-only tools (`pytest`, `pytest-playwright`, `ruff`) are not part of the runtime list; they are in the `dev` group of `pyproject.toml`. [TODO: list their licenses if the release should cover them.]
+Development-only tools (the `dev` group of `pyproject.toml`; not part of the runtime list), read with the same method:
+
+| Package | Version | License (from metadata) |
+| --- | --- | --- |
+| pytest | 9.1.1 | MIT |
+| pytest-playwright | 0.10.0 | Apache Software License (classifier; the `License` field holds the Apache License 2.0 text) |
+| ruff | 0.17.0 | MIT |
 
 ## Vendored agent skills
 
@@ -84,7 +90,7 @@ These folders are byte-for-byte copies from pinned upstream commits (`docs/TOOLI
 | `code-review-and-quality` | https://github.com/addyosmani/agent-skills (`aeac41d4d005999432bb7312f7ff06383a91d59d`) | MIT | 2025 Addy Osmani |
 | `debugging-and-error-recovery` | same | MIT | 2025 Addy Osmani |
 | `test-driven-development` | same | MIT | 2025 Addy Osmani |
-| `frontend-design` | https://github.com/anthropics/skills (`dbd4588f9e1033efb41dad4bef2f7947c8993d44`) | Apache-2.0 (`LICENSE.txt` in the skill folder) | [TODO] the copyright line was not read |
+| `frontend-design` | https://github.com/anthropics/skills (`dbd4588f9e1033efb41dad4bef2f7947c8993d44`) | Apache-2.0 (`LICENSE.txt` in the skill folder) | no copyright line in LICENSE.txt |
 
 The shared reference files copied with the Addy skills (`.claude/references/` and `.agents/references/`: `security-checklist.md`, `performance-checklist.md`, `testing-patterns.md`) carry the same MIT license (`LICENSE` in each folder).
 
@@ -97,4 +103,4 @@ The shared reference files copied with the Addy skills (`.claude/references/` an
 
 - **Container base image.** `Dockerfile.runner` builds the isolated runner on `python:3.11-slim` (`docs/TOOLING.md`, `STATUS.md`). [TODO: list the image's own license notices if the release should cover them.]
 - **Test-only database image.** The T-12 budget-store tests use `postgres:17-alpine` in a disposable local container (TASKS.md T-12 "RESULT"). It is not shipped.
-- **Model.** `nvidia/nemotron-3-super-120b-a12b`, served through Nebius Token Factory, is called over the network and is not redistributed. [TODO: source needed for the model's license terms; none are recorded in the repository.]
+- **Model.** `nvidia/nemotron-3-super-120b-a12b`, served through Nebius Token Factory. License: NVIDIA Nemotron Open Model License, https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/ (named in NVIDIA's API reference for the model, https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-super-120b-a12b; checked by the lead 2026-10-18). ATLAS calls the hosted model over the network and does not redistribute weights.
