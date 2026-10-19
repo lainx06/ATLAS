@@ -685,8 +685,12 @@ def comparison(report: dict, run_dir: Path) -> None:
     st.markdown(f"**Basis:** {comp.get('comparison_basis')}")
     orig_outcome = A.read_json(run_dir / "original" / "outcome.json")
     for i, c in enumerate(cands, start=1):
-        cand_dir = run_dir / "candidates" / Path(c.get("run_dir") or f"c{i}").name
-        cand_outcome = A.read_json(cand_dir / "outcome.json")
+        name = A.recorded_basename(c.get("run_dir") or f"c{i}")
+        cand_outcome = (
+            A.read_json(run_dir / "candidates" / name / "outcome.json")
+            if name
+            else None
+        )
         om, cm = A.primary_metric(orig_outcome), A.primary_metric(cand_outcome)
         ex = c.get("execution") or {}
 

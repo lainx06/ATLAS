@@ -434,3 +434,8 @@ Builder notes for the lead (Claude Code, 2026-10-19; recorded with the predeclar
 
 1. T-12 is accepted as a reviewed build within its documented scope: Codex review 1 (one P2) and fix pass 1, review 2 with fault-injection matrix C1-C10 (two P2) and fix pass 2, and the review 2 re-verification PASS (runs/t12-review/reverify/review.md). The hosted app is not yet declared ready: stage B (Nebius from the deployed host), stage C (the locked environment builds and imports on the host), a signed-out hosted smoke test, and operational availability through 2026-12-15 12:00 PT remain required, each with its own approval.
 2. t12-hosted, t11-compare and t13-docs are merged into main on 2026-10-19 after their reviews (T-11: Gemini claims review applied; T-13: lead review of the drafts).
+
+## Hosted stage C and the cross-platform verification defect (lead, 2026-10-19)
+
+1. Stage C observed by the user on Streamlit Community Cloud (2026-10-19): the build succeeded; ATLAS_HOSTED=1 selected the hosted page; replay disclosure shown; the kill switch (off) message shown; the localhost server setting did not prevent serving.
+2. Defect: recorded-run verification derived a candidate subfolder from a Windows path string with platform-dependent parsing, so on Linux the live6 bundle showed 'evidence changed' (fail-closed, no outcome shown). Windows-only testing, including both Codex reviews, could not observe it. Fixed with a separator-agnostic helper; acceptance includes a Linux container verification of all three bundles. The fix is in the release review's scope.

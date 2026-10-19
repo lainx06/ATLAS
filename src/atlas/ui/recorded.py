@@ -117,6 +117,14 @@ def _evaluated(run_dir: Path, sub: str, evidence: dict | None, add) -> dict | No
     return A.read_json(run_dir / base / "outcome.json") or {}
 
 
+def candidate_subfolder(candidate: dict, i: int) -> str | None:
+    """`candidates/<name>` for the i-th (1-based) candidate of a report's comparison: the last
+    component of its recorded `run_dir` (an absolute path on the recording host, Windows or
+    POSIX), or `c<i>` when none is recorded; None when the recorded value has no usable name."""
+    name = A.recorded_basename(candidate.get("run_dir") or f"c{i}")
+    return None if name is None else f"candidates/{name}"
+
+
 def verify(run_dir: Path, report: dict | None) -> list[Check]:
     """Every recorded hash, recomputed from disk, plus each reported outcome against its
     verified outcome.json. The same file listed twice with the same hash is checked once."""
@@ -163,7 +171,11 @@ def verify(run_dir: Path, report: dict | None) -> list[Check]:
         )
     reported = outcomes.get("candidates") or []
     for i, c in enumerate(comp.get("candidates") or [], start=1):
-        sub = f"candidates/{Path(c.get('run_dir') or f'c{i}').name}"
+        sub = candidate_subfolder(c, i)
+        if sub is None:  # no usable name for its folder: fail closed
+            item = f"agent_report.json:comparison.candidates[{i}].run_dir"
+            checks.append(Check(item, None, None, "missing"))
+            continue
         outcome = _evaluated(run_dir, sub, c.get("evidence_sha256"), add)
         if outcome is not None:
             same(

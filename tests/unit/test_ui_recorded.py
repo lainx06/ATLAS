@@ -8,13 +8,15 @@ path is tests/acceptance/test_scenario7_recorded.py.
 import importlib.util
 import json
 import shutil
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
 from atlas.agent import controller as ctl
 from atlas.agent.client import FixtureClient
 from atlas.audit import audit
+from atlas.hosted.bundle import BUNDLE_ROOT
+from atlas.ui import artifacts as A
 from atlas.ui.catalogue import read_claim
 
 try:  # new in slice 4h; at an earlier commit each test fails on its own (red demonstration)
@@ -230,3 +232,73 @@ def test_decisions_come_from_the_log():
         {"kind": "original", "decision": "approved"},
         {"kind": "candidate", "decision": "declined"},
     ]
+
+
+# =============================================================================================
+# 4. Recorded path strings are reduced to a name without the host's path rules
+#    (hosted stage C, 2026-10-19: a Windows run_dir parsed on Linux named a missing subfolder)
+# =============================================================================================
+
+WIN_RUN_DIR = r"C:\Users\x\runs\r\candidates\c1"
+POSIX_RUN_DIR = "/home/x/runs/r/candidates/c1"
+
+
+@pytest.mark.parametrize(
+    ("value", "name"),
+    [
+        (WIN_RUN_DIR, "c1"),
+        (POSIX_RUN_DIR, "c1"),
+        ("candidates/c1", "c1"),
+        (r"candidates\c1", "c1"),
+        ("c1", "c1"),
+        ("", None),
+        (".", None),
+        ("..", None),
+        ("C:", None),
+        ("C:\\", None),
+        ("a/..", None),
+        (r"a\..", None),
+        ("c1:stream", None),
+        (None, None),
+        (5, None),
+    ],
+)
+def test_a_recorded_basename_is_separator_agnostic_and_fails_closed(value, name):
+    assert A.recorded_basename(value) == name
+
+
+@pytest.mark.parametrize("run_dir", [WIN_RUN_DIR, POSIX_RUN_DIR, "candidates/c1"])
+def test_the_candidate_subfolder_does_not_depend_on_the_host_platform(run_dir):
+    """Pure string logic: the same subfolder for a Windows and a POSIX recorded run_dir."""
+    assert R.candidate_subfolder({"run_dir": run_dir}, 1) == "candidates/c1"
+    assert R.candidate_subfolder({}, 2) == "candidates/c2"  # none recorded: by position
+
+
+# Read only, never changed.
+LIVE6 = BUNDLE_ROOT / "live6" / "agent-s01_faulty-877f8245a8a2"
+
+
+@pytest.mark.parametrize("run_dir", [WIN_RUN_DIR, POSIX_RUN_DIR])
+def test_a_run_recorded_on_another_platform_verifies_intact(run_dir):
+    """The bundled live run 6 (recorded on Windows), with its candidate's run_dir in either
+    form: every candidate file is checked and matches."""
+    report = report_of(LIVE6)
+    assert (
+        PureWindowsPath(report["comparison"]["candidates"][0]["run_dir"]).name == "c1"
+    )
+    report["comparison"]["candidates"][0]["run_dir"] = run_dir
+    checks = R.verify(LIVE6, report)
+    assert R.intact(checks), failing(checks)
+    assert len([c for c in checks if c.item.startswith("candidates/c1/")]) >= 6
+    exported = {f.label for f in A.exports(LIVE6, report)}
+    assert "candidates/c1/outcome.json" in exported
+
+
+@pytest.mark.parametrize("run_dir", ["..", "C:\\", "a/..", 5])
+def test_an_unusable_recorded_run_dir_is_not_intact(run_dir):
+    report = report_of(LIVE6)
+    report["comparison"]["candidates"][0]["run_dir"] = run_dir
+    assert failing(R.verify(LIVE6, report)) == {
+        "agent_report.json:comparison.candidates[1].run_dir": "missing"
+    }
+    assert not any(f.label.startswith("candidates/") for f in A.exports(LIVE6, report))

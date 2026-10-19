@@ -10,7 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 OUTCOME_LABELS = {
     "VIOLATION_FOUND": "The evaluation breaks at least one requirement of this claim.",
@@ -250,6 +250,18 @@ def _inside(run_dir: Path, rel: str | None) -> Path | None:
     return path if path.is_file() else None
 
 
+def recorded_basename(value) -> str | None:
+    """The final component of a path string recorded in a run file, whichever platform
+    recorded it (PureWindowsPath accepts both separators), or None (treated as missing).
+    Pure string logic: the recorded path itself is never resolved, opened or inspected."""
+    if not isinstance(value, str):
+        return None
+    name = PureWindowsPath(value).name
+    if name in ("", ".", "..") or any(ch in name for ch in ("/", "\\", ":", "\0")):
+        return None
+    return name
+
+
 def proposals(run_dir: Path, report: dict | None) -> list[ProposalView]:
     views = []
     for record in (report or {}).get("proposals", []):
@@ -310,7 +322,9 @@ def exports(run_dir: Path, report: dict | None) -> list[ExportFile]:
     add("original/outcome.json", "original/outcome.json", original.get("outcome.json"))
     add("original/report.json", "original/report.json", original.get("report.json"))
     for i, c in enumerate(comparison.get("candidates") or [], start=1):
-        rel = Path(c.get("run_dir") or f"candidates/c{i}").name
+        rel = recorded_basename(c.get("run_dir") or f"c{i}")
+        if rel is None:
+            continue
         add(
             f"candidates/{rel}/outcome.json",
             f"candidates/{rel}/outcome.json",
