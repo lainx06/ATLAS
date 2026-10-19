@@ -1,0 +1,563 @@
+{
+  "agent_log": {
+    "path": "C:\\Users\\Lain\\source\\atlas\\runs\\live6\\agent-s01_faulty-877f8245a8a2\\agent_log.jsonl",
+    "sha256": "b9e9a10b9171e10c092e2fc2288888f5a7242ef8bd54320ccbecd25d6f2af783"
+  },
+  "banner": "LIVE RUN: model 'nvidia/nemotron-3-super-120b-a12b' via the production client.",
+  "budget": {
+    "active_s": 85.203,
+    "approval_wait_s": 44.406,
+    "limits": {
+      "active_s": 300.0,
+      "candidate_revisions": 2,
+      "model_attempts": 6,
+      "retries_per_call": 1,
+      "tool_operations": 12
+    },
+    "total_elapsed_s": 129.609,
+    "used": {
+      "attempts": 5,
+      "retries": 0,
+      "revisions": 2,
+      "tool_operations": 5
+    }
+  },
+  "comparison": {
+    "candidates": [
+      {
+        "approval": {
+          "approved_at": "2026-10-18T20:36:07.328912+00:00",
+          "base_snapshot_hash": "581648813ffd1ea6c1ab6faa8aa5160455781e6f482c8ed3afdcf621b33107c6",
+          "candidate_hash": "dfa2e2493ba480452479c4fd4f513d0de6272dfd2f1bf86fe66f47fcf1c5e8d8"
+        },
+        "candidate_hash": "dfa2e2493ba480452479c4fd4f513d0de6272dfd2f1bf86fe66f47fcf1c5e8d8",
+        "diff_sha256": "31b4c4faaa38012e24760297991a674f1bf225d0ada45ebb2bb06a209a8d62ee",
+        "evaluated": true,
+        "evidence_sha256": {
+          "approval.json": "20c4e2cf3d721a6ee08fbca3485f654d9b4cf4335e504a7b0f198c6ae0f836c6",
+          "candidate.json": "90b3c7f48f2732b8beef246865a9d64d667101c67e29dc823c723b2c78546a5a",
+          "execution.json": "fb685ae7157e1c8b15d3b1fb092836837d807fd801a9cd2125891f9e4efe332f",
+          "index.json": "23af84a9713beb07aeac204baf5501bc72a4cd8a916bbd3e8caf89f1dd30d320",
+          "outcome.json": "5ffc1d3795745e3bef0f59932e2999c1846f6efe40995db2518df1baee6bc5b1",
+          "report.json": "cf49fe654a359e3d487b95e0a810e038e4996a9bab0d132b51b60b1a861392aa"
+        },
+        "execution": {
+          "capability": "isolated_available",
+          "container_removed": true,
+          "elapsed_s": 1.765,
+          "execution_reason": null,
+          "execution_status": null,
+          "reason": null,
+          "runner": "docker_isolated",
+          "status": "completed"
+        },
+        "failure_summary": null,
+        "incomplete_coverage": [],
+        "limitations": [
+          "Candidate executed only in the isolated Docker runner (isolated_available). Container restrictions reduce execution risk; they do not prove provenance integrity or scientific correctness.",
+          "Provenance, splits, predictions and runtime.json are written inside the candidate process (candidate-produced evidence); runtime.json only corroborates.",
+          "Hash and configuration checks establish consistency with the approved candidate and the trusted runner configuration, not authenticity against an attacker who controls the host.",
+          "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
+          "Provenance begins at the supplied feature table.",
+          "Window-overlap and temporal-separation checks verify declared rules; they are not proof of statistical independence.",
+          "Training cutoffs and fold membership are declared by the evaluated code and are not verified independently."
+        ],
+        "outcome_reason": null,
+        "required_set": [
+          {
+            "assertion_id": "split.evaluation_folds_nonempty",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "split.no_row_overlap",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "split.no_shared_source_observation",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "split.no_group_overlap",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "split.sampling_unit_disjoint",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "split.repeated_measures_rule",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "fit.state_dependencies_within_fold_train",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "fit.coverage_complete",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          },
+          {
+            "assertion_id": "metric.prediction_ids_match_eval_ids",
+            "evidence_valid": true,
+            "reason": null,
+            "status": "PASS"
+          }
+        ],
+        "run_dir": "C:\\Users\\Lain\\source\\atlas\\runs\\live6\\agent-s01_faulty-877f8245a8a2\\candidates\\c1",
+        "scientific_outcome": "NO_VIOLATION_FOUND",
+        "status_by_assertion": [
+          {
+            "assertion_id": "split.evaluation_folds_nonempty",
+            "candidate": "PASS",
+            "original": "PASS"
+          },
+          {
+            "assertion_id": "split.no_row_overlap",
+            "candidate": "PASS",
+            "original": "PASS"
+          },
+          {
+            "assertion_id": "split.no_shared_source_observation",
+            "candidate": "PASS",
+            "original": "PASS"
+          },
+          {
+            "assertion_id": "split.no_group_overlap",
+            "candidate": "PASS",
+            "original": "FAIL"
+          },
+          {
+            "assertion_id": "split.sampling_unit_disjoint",
+            "candidate": "PASS",
+            "original": "FAIL"
+          },
+          {
+            "assertion_id": "split.repeated_measures_rule",
+            "candidate": "PASS",
+            "original": "FAIL"
+          },
+          {
+            "assertion_id": "fit.state_dependencies_within_fold_train",
+            "candidate": "PASS",
+            "original": "FAIL"
+          },
+          {
+            "assertion_id": "fit.coverage_complete",
+            "candidate": "PASS",
+            "original": "PASS"
+          },
+          {
+            "assertion_id": "metric.prediction_ids_match_eval_ids",
+            "candidate": "PASS",
+            "original": "PASS"
+          }
+        ],
+        "timing": {
+          "active_s": 2.188,
+          "approved_at": "2026-10-18T20:36:07.328912+00:00",
+          "execution_elapsed_s": 1.765,
+          "execution_started_utc": "2026-10-18T20:36:07.328912+00:00",
+          "proposed_at": "2026-10-18T20:35:27.720633+00:00",
+          "total_elapsed_s": 41.788
+        }
+      }
+    ],
+    "comparison_basis": "Original and candidates all executed in the isolated Docker runner.",
+    "model": "nvidia/nemotron-3-super-120b-a12b via the production client (live)",
+    "original": {
+      "capability": "isolated_available",
+      "evidence_sha256": {
+        "approval.json": "ee690f5976f78eb80345ff8ed0899c612c409668e54c1a1af72f2e606fee8fd3",
+        "candidate.json": "9fb88bcb173f4c6bca66b4aaabc461cef34697c05401df067539f4a36f2f9907",
+        "execution.json": "b9460bee13c29a49c0123df625d4d14070452dc47491e699a43d54c72208afd8",
+        "index.json": "94342830c664646e06c69fb109d1f21efb8de5699fabb1032e0e466bf9478ef5",
+        "outcome.json": "d483bc5bce2d687e645624a3960226d064fcfc29c54a4b02e20d3dc5714878d9",
+        "report.json": "415f13146f2df0c9c38cfda690ed614d6954ab11b4cc4cf5b676bf6eef607e00"
+      },
+      "executed": true,
+      "execution_status": "completed",
+      "incomplete_coverage": [],
+      "limitations": [
+        "Candidate executed only in the isolated Docker runner (isolated_available). Container restrictions reduce execution risk; they do not prove provenance integrity or scientific correctness.",
+        "Provenance, splits, predictions and runtime.json are written inside the candidate process (candidate-produced evidence); runtime.json only corroborates.",
+        "Hash and configuration checks establish consistency with the approved candidate and the trusted runner configuration, not authenticity against an attacker who controls the host.",
+        "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
+        "Provenance begins at the supplied feature table.",
+        "Window-overlap and temporal-separation checks verify declared rules; they are not proof of statistical independence.",
+        "Training cutoffs and fold membership are declared by the evaluated code and are not verified independently."
+      ],
+      "outcome_reason": null,
+      "required_set": [
+        {
+          "assertion_id": "split.evaluation_folds_nonempty",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "split.no_row_overlap",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "split.no_shared_source_observation",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "split.no_group_overlap",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "split.sampling_unit_disjoint",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "split.repeated_measures_rule",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "fit.state_dependencies_within_fold_train",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "fit.coverage_complete",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "metric.prediction_ids_match_eval_ids",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        }
+      ],
+      "run_dir": "C:\\Users\\Lain\\source\\atlas\\runs\\live6\\agent-s01_faulty-877f8245a8a2\\original",
+      "runner": "docker_isolated",
+      "scientific_outcome": "VIOLATION_FOUND"
+    },
+    "policy_version": "policy-v1.3",
+    "reading_guide": [
+      "Execution status says whether the candidate ran, and how it ended, in the isolated runner.",
+      "Scientific outcome is the trusted evaluator's result for the full required assertion set under policy-v1.3; it is derived only from evidence, never from the execution status.",
+      "A completed candidate whose outcome is VIOLATION_FOUND is a normal result, and a lower score can be the honest one.",
+      "No outcome says that the deployment claim is true; NO_VIOLATION_FOUND means only that no required check found a violation, with the limitations listed."
+    ],
+    "report": "t06-slice1-candidate-reevaluation"
+  },
+  "cost": {
+    "applicable": true,
+    "basis": "validated reported usage at listed prices, computed exactly; each unknown count held at its configured ceiling, never below the request's original reservation",
+    "ceiling_per_request_usd": "0.0108000",
+    "entries": [
+      {
+        "attempt": 1,
+        "known_usd": "0.0012849",
+        "status": "settled",
+        "unresolved_usd": "0"
+      },
+      {
+        "attempt": 2,
+        "known_usd": "0.0008430",
+        "status": "settled",
+        "unresolved_usd": "0"
+      },
+      {
+        "attempt": 3,
+        "known_usd": "0.0045345",
+        "status": "settled",
+        "unresolved_usd": "0"
+      },
+      {
+        "attempt": 4,
+        "known_usd": "0.0063780",
+        "status": "settled",
+        "unresolved_usd": "0"
+      },
+      {
+        "attempt": 5,
+        "known_usd": "0.0060480",
+        "status": "settled",
+        "unresolved_usd": "0"
+      }
+    ],
+    "estimated_total_usd": "0.0190884",
+    "known_usd": "0.0190884",
+    "note": "accounting only; not a spending authorization",
+    "unknown_usage_attempts": 0,
+    "unrepresentable_attempts": 0,
+    "unresolved_note": "Unresolved amounts are estimates from the configured ceilings, not a guaranteed maximum charge: the input ceiling is enforced before sending only by an unverified token estimate, so a provider could report more.",
+    "unresolved_usd": "0"
+  },
+  "limitations": [
+    "The original executed in the isolated Docker runner after explicit authorization.",
+    "Every candidate (1) executed in the isolated Docker runner after explicit authorization.",
+    "The same trusted evaluator judged the original and each executed candidate.",
+    "2 proposals: 1 rejected by validation, 0 declined, 1 executed",
+    "Container evidence is produced inside the executed code's process; the evaluator checks its consistency, not its authenticity."
+  ],
+  "live": true,
+  "mode": "live",
+  "model_id": "nvidia/nemotron-3-super-120b-a12b",
+  "model_text": [
+    {
+      "kind": "action_rationale",
+      "label": "model-written text; not evidence and not an outcome",
+      "text": "See what files are present to understand the entry point and any supporting code.",
+      "tool": "list_project_files"
+    },
+    {
+      "kind": "action_rationale",
+      "label": "model-written text; not evidence and not an outcome",
+      "text": "Examine current implementation to understand why group overlap and repeated measures rules are violated.",
+      "tool": "read_project_file"
+    },
+    {
+      "kind": "patch_rationale",
+      "label": "model-written text; not evidence and not an outcome",
+      "text": "Fix feature selection leakage and enforce group-based splits respecting subject_id and session_id repeated measures."
+    },
+    {
+      "kind": "patch_rationale",
+      "label": "model-written text; not evidence and not an outcome",
+      "text": "Replace global feature selection with per-fold selection and split by subject_id to prevent group overlap and state dependencies, satisfying split.integrity and fit.provenance."
+    }
+  ],
+  "preflight": {
+    "check": "pre-run GET /models (T-06 slice 4)",
+    "expected": {
+      "context_length_tokens": 262144,
+      "price_input_per_token": "0.0000003",
+      "price_output_per_token": "0.0000009"
+    },
+    "listed": {
+      "context_length_tokens": 262144,
+      "price_input_per_token": "0.0000003",
+      "price_output_per_token": "0.0000009"
+    },
+    "method": "GET",
+    "mismatches": [],
+    "model_id": "nvidia/nemotron-3-super-120b-a12b",
+    "note": "sanitized: no key, header or provider text is recorded",
+    "reason": null,
+    "rejected": null,
+    "request_id": "cc08d87097ccc620da3ec5064aac7325",
+    "result": "pass",
+    "status": 200,
+    "time_utc": "2026-10-18T20:34:50.005475+00:00",
+    "url": "https://api.tokenfactory.nebius.com/v1/models"
+  },
+  "prompt_budget": {
+    "tool_result_chars": 4857,
+    "user_message_bytes": 9715
+  },
+  "proposals": [
+    {
+      "candidate_hash": "dfa2e2493ba480452479c4fd4f513d0de6272dfd2f1bf86fe66f47fcf1c5e8d8",
+      "code": null,
+      "detail": null,
+      "detail_label": "validator message; may quote model text",
+      "diff_path": "proposals/r1.diff",
+      "diff_sha256": "31b4c4faaa38012e24760297991a674f1bf225d0ada45ebb2bb06a209a8d62ee",
+      "execution_status": "completed",
+      "files_label": "model-written (untrusted)",
+      "new_source_path": "proposals/r1.new_source.py",
+      "new_source_sha256": "f12ab900f8b649623f8d4d569ac693de618d85ecfdeba92d8d8944a9a4d8b837",
+      "outcome": "executed",
+      "revision": 1,
+      "source_kind": "new_source"
+    },
+    {
+      "code": "syntax_error",
+      "detail": "unexpected character after line continuation character (evaluate.py, line 19)",
+      "detail_label": "validator message; may quote model text",
+      "diff_path": "proposals/r2.diff",
+      "diff_sha256": "f35130d4d1a503b72d621582a4fdb6fece1d0ad3805f2e122eb966367a0a052e",
+      "files_label": "model-written (untrusted)",
+      "new_source_path": "proposals/r2.new_source.py",
+      "new_source_sha256": "575288b5105028897b196ce981def694a9c9a75b0bc5df0ac042861d45ffc9af",
+      "outcome": "rejected",
+      "revision": 2,
+      "source_kind": "new_source"
+    }
+  ],
+  "replies": [
+    {
+      "attempt": 1,
+      "bytes": 157,
+      "label": "model-written (untrusted); never evidence",
+      "path": "replies/a1.txt",
+      "received_bytes": 157,
+      "sha256": "deb06356e1e2f7ca70f41bd99c7c370cb0553cb739eee8de694712a79ac98485",
+      "truncated": false
+    },
+    {
+      "attempt": 2,
+      "bytes": 206,
+      "label": "model-written (untrusted); never evidence",
+      "path": "replies/a2.txt",
+      "received_bytes": 206,
+      "sha256": "07bf7b2fd0cc5da673bd44aceb4d0eac046369c8ce45361231b6d626af8b9d97",
+      "truncated": false
+    },
+    {
+      "attempt": 3,
+      "bytes": 1591,
+      "label": "model-written (untrusted); never evidence",
+      "path": "replies/a3.txt",
+      "received_bytes": 1591,
+      "sha256": "b518f4d8592cddd7a74e251f29124793e26f227f78c982ab61049f076ac50246",
+      "truncated": false
+    },
+    {
+      "attempt": 4,
+      "bytes": 1817,
+      "label": "model-written (untrusted); never evidence",
+      "path": "replies/a4.txt",
+      "received_bytes": 1817,
+      "sha256": "3c1538bfd03a2fa04ef0372bb5b7557e2dedb53ea7462286d792e327b7f55d72",
+      "truncated": false
+    },
+    {
+      "attempt": 5,
+      "bytes": 1451,
+      "label": "model-written (untrusted); never evidence",
+      "path": "replies/a5.txt",
+      "received_bytes": 1451,
+      "sha256": "e50d1df230f78f391968475a614ba0994668e0a1e592a9401bad7a2310f6cd5b",
+      "truncated": false
+    }
+  ],
+  "report": "t06-agent-run",
+  "schema_failures": [],
+  "scientific_outcomes": {
+    "candidates": [
+      "NO_VIOLATION_FOUND"
+    ],
+    "original": "VIOLATION_FOUND",
+    "source": "trusted evaluator only"
+  },
+  "spending": {
+    "authorized_usd": "0.51",
+    "ceiling_per_request_usd": "0.0108000",
+    "estimate_cap_usd": "0.0648",
+    "labels": {
+      "authorized_usd": "the lead's authorization for this run",
+      "estimate_cap_usd": "a cap on the estimate (known plus held); not a guaranteed charge",
+      "provider_worst_case_run_usd": "attempts x the most one request can cost if only the provider's documented limits hold; ATLAS has not verified that enforcement"
+    },
+    "max_attempts": 6,
+    "provider_worst_case_run_usd": "0.5006592"
+  },
+  "states": [
+    {
+      "detail": null,
+      "state": "INTAKE",
+      "time_utc": "2026-10-18T20:34:50.453466+00:00"
+    },
+    {
+      "detail": "original 50a783960ca297082468fe558d6520f32e1f0784e48de83f1a769411155dd210",
+      "state": "APPROVAL",
+      "time_utc": "2026-10-18T20:34:50.468337+00:00"
+    },
+    {
+      "detail": "original in Docker; trusted evaluation of the full required set",
+      "state": "CHECK",
+      "time_utc": "2026-10-18T20:34:55.262212+00:00"
+    },
+    {
+      "detail": null,
+      "state": "MODEL",
+      "time_utc": "2026-10-18T20:34:58.328233+00:00"
+    },
+    {
+      "detail": "list_project_files",
+      "state": "INSPECT",
+      "time_utc": "2026-10-18T20:35:08.725236+00:00"
+    },
+    {
+      "detail": null,
+      "state": "MODEL",
+      "time_utc": "2026-10-18T20:35:08.725236+00:00"
+    },
+    {
+      "detail": "read_project_file",
+      "state": "INSPECT",
+      "time_utc": "2026-10-18T20:35:10.672431+00:00"
+    },
+    {
+      "detail": null,
+      "state": "MODEL",
+      "time_utc": "2026-10-18T20:35:10.672431+00:00"
+    },
+    {
+      "detail": "revision 1",
+      "state": "PROPOSE_PATCH",
+      "time_utc": "2026-10-18T20:35:27.720633+00:00"
+    },
+    {
+      "detail": "dfa2e2493ba480452479c4fd4f513d0de6272dfd2f1bf86fe66f47fcf1c5e8d8",
+      "state": "APPROVAL",
+      "time_utc": "2026-10-18T20:35:27.720633+00:00"
+    },
+    {
+      "detail": "dfa2e2493ba480452479c4fd4f513d0de6272dfd2f1bf86fe66f47fcf1c5e8d8",
+      "state": "EXECUTE",
+      "time_utc": "2026-10-18T20:36:07.328912+00:00"
+    },
+    {
+      "detail": "trusted evaluator: full required set",
+      "state": "VERIFY",
+      "time_utc": "2026-10-18T20:36:09.508757+00:00"
+    },
+    {
+      "detail": null,
+      "state": "MODEL",
+      "time_utc": "2026-10-18T20:36:09.509755+00:00"
+    },
+    {
+      "detail": "revision 2",
+      "state": "PROPOSE_PATCH",
+      "time_utc": "2026-10-18T20:36:35.430690+00:00"
+    },
+    {
+      "detail": null,
+      "state": "MODEL",
+      "time_utc": "2026-10-18T20:36:35.432679+00:00"
+    },
+    {
+      "detail": "candidate_revisions: 2 revisions already proposed",
+      "state": "BUDGET_EXHAUSTED",
+      "time_utc": "2026-10-18T20:37:00.049592+00:00"
+    }
+  ],
+  "terminal_reason": "candidate_revisions: 2 revisions already proposed",
+  "terminal_state": "BUDGET_EXHAUSTED"
+}

@@ -74,6 +74,15 @@ propagates with a note that no report was saved. A failing approver is a recorde
   authorized expenditure (`SpendLimits.check`). Before each request, the committed amount plus
   the next request's ceiling must be within the estimate cap, otherwise the run ends
   BUDGET_EXHAUSTED without sending.
+- **Hosted mode (T-12; SPEC §13 limited hosted).** `run_agent(..., hosted=True)` reuses this
+  loop unchanged (replies, exact validation, corrections, the attempt budget, the in-memory
+  reservation before dispatch, `validate_diff` and the request body). Only three things
+  differ, all chosen by the caller: the original is not executed (its runner supplies the
+  outcome of a recorded run that it re-verified by hash, `runner` RECORDED_RUNNER); the
+  executor is `NotExecutedHere`, so a validated proposal is recorded "not executed here" and
+  no approval is asked; and for a live client each request is also reserved in the
+  server-side budget store (`reservations`) before it is sent, and settled, held or released
+  after it. A store refusal or failure sends nothing. The report carries SPEC §13's labels.
 - **Prompt budget for a live run.** The user message is kept within the client's
   `user_message_budget` (the input ceiling minus the system prompt and per-message
   allowances), so a normal prompt fits the pre-send estimate; older history is dropped first,
@@ -88,6 +97,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
 
@@ -103,6 +113,7 @@ from atlas.agent.budget import (
     Budget,
     BudgetExhausted,
     CostLedger,
+    ReservationRefused,
     SpendLimits,
 )
 from atlas.agent.client import (
@@ -231,6 +242,35 @@ CORRECTION_EXPLANATIONS = {
 }
 
 
+# Hosted mode (T-12, SPEC §13 "Required labeling").
+RECORDED_RUNNER = "recorded_trusted_evaluation"
+NOT_EXECUTED_HERE = "not executed here"
+PASSES_VALIDATION = "passes ATLAS validation"
+HOSTED_PROPOSAL_NOTE = (
+    "This revision passes ATLAS validation. It is not executed here: the hosted demo runs no "
+    "candidate code and nothing evaluates it, so there is no outcome for it. Finish with a "
+    "summary, or propose another revision."
+)
+
+
+def recorded_label(recorded_date: str) -> str:
+    """SPEC §13's label for the original's findings in a hosted session."""
+    return (
+        f"computed by ATLAS's trusted evaluation functions (recorded {recorded_date})"
+    )
+
+
+class NotExecutedHere:
+    """The hosted executor (T-12): it executes nothing. With it, a proposal that passes
+    `validate_diff` is recorded "not executed here", no approval is asked and no candidate
+    runs. The controller never calls it; calling it is a programming error."""
+
+    executes = False
+
+    def __call__(self, *args, **kwargs):
+        raise AssertionError("NotExecutedHere never executes a candidate")
+
+
 @dataclass(frozen=True)
 class ApprovalRequest:
     """What a human approver is shown: the exact diff and the hashes it would be bound to."""
@@ -282,12 +322,19 @@ class OriginalRun:
     runner: str
     executed: bool
     execution: dict = field(default_factory=dict)
+    # Hosted mode: the recorded run the findings come from (label, date, verified items).
+    recorded: dict = field(default_factory=dict)
 
 
 class _Terminal(Exception):
     def __init__(self, state: str, reason: str):
         super().__init__(f"{state}: {reason}")
         self.state, self.reason = state, reason
+
+
+class RunRefused(_Terminal):
+    """Raised by an original runner to end the run with a recorded terminal state (for
+    example a recorded original whose evidence changed: ERROR, nothing else runs)."""
 
 
 def _utf8_len(text: str) -> int:
@@ -379,6 +426,8 @@ def run_agent(
     live_authorized: bool = False,
     spend: SpendLimits | None = None,
     preflight: dict | None = None,
+    hosted: bool = False,
+    reservations=None,
 ) -> AgentResult:
     """One bounded agent run. Always writes a report (or says that it could not).
 
@@ -388,8 +437,26 @@ def run_agent(
     cover the run's provider-enforced worst case. `preflight` is the sanitized evidence of the
     pre-run model check (`agent.preflight`), recorded in the report as given; the caller runs
     the check, the controller never does.
+
+    `hosted=True` (T-12) needs an explicit recorded `original` runner and the
+    `NotExecutedHere` executor (the default when hosted), and, for a live client, the
+    server-side budget store as `reservations`. Outside hosted mode neither may be given.
     """
     live = getattr(client, "live", None)
+    if hosted:
+        executor = executor or NotExecutedHere()
+        if not isinstance(executor, NotExecutedHere):
+            raise ValueError("hosted mode executes nothing: use NotExecutedHere")
+        if original is None:
+            raise ValueError("hosted mode needs a recorded original runner")
+        if live is True and reservations is None:
+            raise LiveModeUnavailable(
+                "a hosted live run needs the server-side budget store; nothing was run"
+            )
+    elif isinstance(executor, NotExecutedHere) or reservations is not None:
+        raise ValueError("NotExecutedHere and reservations are for hosted mode only")
+    if reservations is not None and live is not True:
+        raise ValueError("budget-store reservations apply only to a live client")
     budget = budget or Budget()
     spend_figures = None
     if live is True:
@@ -420,6 +487,8 @@ def run_agent(
         spend=spend if live else None,
         spend_figures=spend_figures,
         preflight=preflight,
+        hosted=hosted,
+        reservations=reservations,
     )
     if live:
         return run.run()
@@ -446,6 +515,8 @@ class _Run:
         spend=None,
         spend_figures=None,
         preflight=None,
+        hosted=False,
+        reservations=None,
     ):
         self.project = Path(project).resolve()
         self.runs_root = Path(runs_root)
@@ -458,6 +529,8 @@ class _Run:
         self.ledger = CostLedger(client)
         self.spend, self.spend_figures = spend, spend_figures
         self.preflight = preflight
+        self.hosted = bool(hosted)
+        self.reservations = reservations
         budget_for = getattr(client, "user_message_budget", None)
         if self.live and callable(budget_for):
             self.prompt_budget = budget_for(SYSTEM_PROMPT)
@@ -815,9 +888,13 @@ class _Run:
         retry = False
         while True:
             self._check_spend()  # before the attempt is reserved: a refusal sends nothing
+            # Hosted: the server-side store reserves this request's ceiling first, so a
+            # refusal or a store failure is, like the spend cap, not an attempt (nothing sent).
+            held = self._store_reserve() if self.budget.can_attempt() else None
             try:
                 attempt = self.budget.reserve_attempt(retry)
             except BudgetExhausted as exc:
+                self._store_release(held)  # never dispatched
                 if retry:
                     raise _Terminal(
                         BUDGET_EXHAUSTED,
@@ -834,6 +911,7 @@ class _Run:
             }
             t0 = time.monotonic()
             self.ledger.reserve(attempt)
+            self._store_dispatched(held, attempt, entry)  # committed before sending
             try:
                 reply = self.client.complete(request)
             except ModelError as exc:
@@ -845,6 +923,7 @@ class _Run:
                 invalid = sorted(set(invalid) | set(error_usage_fields(exc)))
                 dispatched = getattr(exc, "dispatched", True) is not False
                 status = self.ledger.settle(attempt, usage, dispatched=dispatched)
+                self._store_settle(held, attempt)
                 entry["cost"] = self._attempt_cost(attempt)
                 code = safe_error_code(getattr(exc, "code", None))
                 record = {**entry, "elapsed_s": _since(t0), "result": code,
@@ -876,6 +955,7 @@ class _Run:
                 status = self.ledger.settle(
                     attempt, None, dispatched=True
                 )  # unknown: stays reserved
+                self._store_settle(held, attempt)
                 entry["cost"] = self._attempt_cost(attempt)
                 self.log(
                     {**entry, "elapsed_s": _since(t0), "result": "client_error",
@@ -889,6 +969,7 @@ class _Run:
             # credential (`identifiers_checked`) and they are short plain identifiers.
             usage, invalid = sanitize_usage(getattr(reply, "usage", None))
             status = self.ledger.settle(attempt, usage, dispatched=True)
+            self._store_settle(held, attempt)
             entry["cost"] = self._attempt_cost(attempt)
             entry.update(self._persist_reply(attempt, getattr(reply, "content", None)))
             checked = getattr(reply, "identifiers_checked", False) is True
@@ -1019,6 +1100,94 @@ class _Run:
         note for fixture replies."""
         view = self.ledger.entry_view(attempt)
         return "not applicable (fixture)" if view is None else view
+
+    # -- hosted budget store (T-12) -------------------------------------------------------------
+    def _store_event(self, action: str, attempt: int, **fields) -> None:
+        self.log(
+            {"event": "hosted_budget", "action": action, "attempt": attempt, **fields}
+        )
+
+    def _store_reserve(self):
+        """Reserve the next request's ceiling in the server-side store (hosted live runs
+        only). A refusal ends the run BUDGET_EXHAUSTED and a store failure ERROR; either way
+        nothing was counted or sent. Returns the store's handle, or None when not hosted."""
+        if self.reservations is None:
+            return None
+        attempt = self.budget.used.attempts + 1
+        amount = self.ledger.ceiling
+        try:
+            handle = self.reservations.reserve(attempt, amount)
+        except ReservationRefused as exc:
+            code = safe_identifier(getattr(exc, "code", None)) or "refused"
+            self._store_event("refused", attempt, code=code)
+            raise _Terminal(
+                BUDGET_EXHAUSTED,
+                f"hosted_budget: {code}; the live demo budget is reached; not sent",
+            ) from None
+        except Exception as exc:  # noqa: BLE001 - any store failure fails closed
+            self._store_event("store_error", attempt, detail=type(exc).__name__)
+            raise _Terminal(
+                ERROR, f"hosted_store_unavailable: {type(exc).__name__}; not sent"
+            ) from None
+        self._store_event("reserved", attempt, amount_usd=money.text(amount))
+        return handle
+
+    def _store_release(self, handle) -> None:
+        """Release a reservation that was never dispatched (best effort: on failure it stays
+        held, which only overstates the committed amount)."""
+        if handle is None:
+            return
+        attempt = self.budget.used.attempts + 1
+        try:
+            self.reservations.release(handle)
+        except Exception as exc:  # noqa: BLE001 - recorded; the amount stays held
+            self._store_event("store_error", attempt, detail=type(exc).__name__)
+            return
+        self._store_event("released", attempt)
+
+    def _store_dispatched(self, handle, attempt: int, entry: dict) -> None:
+        """Commit 'dispatched' before sending; if that fails nothing is sent."""
+        if handle is None:
+            return
+        try:
+            self.reservations.dispatched(handle)
+        except Exception as exc:  # noqa: BLE001 - fails closed: not sent
+            self.ledger.settle(attempt, None, dispatched=False)
+            try:
+                self.reservations.release(handle)
+            except Exception:  # noqa: BLE001, S110 - it stays held (conservative)
+                pass
+            entry["cost"] = self._attempt_cost(attempt)
+            self.log({**entry, "result": "hosted_store_error", "sent": False,
+                      "detail": type(exc).__name__})  # fmt: skip
+            raise _Terminal(
+                ERROR, f"hosted_store_unavailable: {type(exc).__name__}; not sent"
+            ) from None
+
+    def _store_settle(self, handle, attempt: int) -> None:
+        """After the request: exact known usage is settled, a request that was never sent is
+        released, and anything else (unknown, partial or unrepresentable usage) stays held at
+        the reserved ceiling. A store failure is recorded; the amount then stays held."""
+        if handle is None:
+            return
+        entry = next(e for e in self.ledger.entries if e["attempt"] == attempt)
+        try:
+            if entry["status"] == "settled":
+                self.reservations.settle(handle, entry["known_usd"])
+                self._store_event(
+                    "settled", attempt, amount_usd=money.text(entry["known_usd"])
+                )
+            elif entry["status"] == "released":
+                # The client itself refused before sending (ModelError dispatched=False): as
+                # in the ledger, nothing was spent. The store row is already dispatched, so
+                # it is settled at zero rather than released.
+                self.reservations.settle(handle, Decimal(0))
+                self._store_event("settled_not_sent", attempt, amount_usd="0")
+            else:
+                self.reservations.hold(handle)
+                self._store_event("held", attempt, status=entry["status"])
+        except Exception as exc:  # noqa: BLE001 - recorded; the reservation stays held
+            self._store_event("store_error", attempt, detail=type(exc).__name__)
 
     def _check_spend(self) -> None:
         """End the run before sending if the next request could take the estimate past the
@@ -1177,6 +1346,22 @@ class _Run:
             reject(exc)
             return
         computed = candidate_hash(self.snapshot.base_hash, candidate.entry_bytes)
+        if self.hosted:
+            # Hosted mode: validated, recorded, never approved or executed (SPEC §13).
+            record.update(
+                outcome=_proposals.NOT_EXECUTED_HERE,
+                code=None,
+                candidate_hash=computed,
+                validation=PASSES_VALIDATION,
+                execution=NOT_EXECUTED_HERE,
+            )
+            self._record_tool(
+                op, "propose_patch", args,
+                {"validation": PASSES_VALIDATION, "executed": False,
+                 "candidate_hash": computed, "next_step": HOSTED_PROPOSAL_NOTE},
+                outcome=_proposals.NOT_EXECUTED_HERE, code=None,
+            )  # fmt: skip
+            return
         request = ApprovalRequest(
             entry_point=candidate.entry_point,
             diff=diff,  # for new_source: the diff ATLAS generated
@@ -1314,8 +1499,42 @@ class _Run:
                 self.original.outcome,
                 self.candidates,
                 model=self._model_description(),
+                recorded=self.original.recorded or None,
             )
+            if self.original.recorded:
+                report["scientific_outcomes"]["original_source"] = (
+                    self.original.recorded.get("label")
+                )
+        if self.hosted:
+            report["hosted"] = self._hosted_section()
         return report
+
+    def _hosted_section(self) -> dict:
+        recorded = self.original.recorded if self.original is not None else {}
+        return {
+            "mode": "limited hosted (SPEC §13)",
+            "original": {
+                "executed_here": False,
+                "label": recorded.get("label"),
+                "recorded_run": recorded.get("run"),
+                "recorded_utc": recorded.get("recorded_utc"),
+                "verified_items": recorded.get("verified_items"),
+            },
+            "candidates": {
+                "executed_here": False,
+                "label": NOT_EXECUTED_HERE,
+                "validation": (
+                    f"a proposal marked '{NOT_EXECUTED_HERE}' {PASSES_VALIDATION} "
+                    "(validate_diff); nothing here validates it beyond that"
+                ),
+            },
+            "approvals": "none asked: nothing executes here",
+            "budget_store": (
+                "server-side reservations before each request"
+                if self.reservations is not None
+                else "not used (no live client)"
+            ),
+        }
 
     def _model_description(self) -> str:
         """Which client produced the replies, for the comparison section."""
@@ -1324,6 +1543,17 @@ class _Run:
         return "fixture replies (non-live)"
 
     def _banner(self) -> str:
+        if self.hosted:
+            model = (
+                f"model {self.client.model_id!r} via the production client"
+                if self.live
+                else f"fixture script {self.client.model_id!r} (no model was called)"
+            )
+            return (
+                f"HOSTED {'LIVE' if self.live else 'NON-LIVE'} SESSION: {model}. The "
+                "original's findings come from a recorded, hash-verified trusted evaluation; "
+                f"generated diffs are {NOT_EXECUTED_HERE}."
+            )
         if self.live:
             return (
                 f"LIVE RUN: model {self.client.model_id!r} via the production client."
@@ -1344,7 +1574,14 @@ class _Run:
         # Execution claims follow what was observed (`executed`, execution status), never the
         # selected runner alone.
         original = self.original
-        if original is not None:
+        if original is not None and original.runner == RECORDED_RUNNER:
+            recorded = original.recorded
+            items.append(
+                f"The original was not executed here. Its findings were "
+                f"{recorded.get('label')} in the recorded run {recorded.get('run')}, and "
+                f"re-verified by hash ({recorded.get('verified_items')} items) before use."
+            )
+        elif original is not None:
             if not original.executed:
                 status = original.execution.get("status") or "unknown"
                 items.append(
@@ -1380,6 +1617,12 @@ class _Run:
                     "The same trusted evaluator judged the original and each executed "
                     "candidate."
                 )
+        if self.hosted:
+            items.append(
+                f"Hosted mode: no candidate is executed or evaluated here. A proposal marked "
+                f"'{NOT_EXECUTED_HERE}' {PASSES_VALIDATION} (validate_diff) only; nothing "
+                "here validates the diff beyond that, and no approval was asked."
+            )
         items.append(_proposals.summary_line(self.proposals))
         if self.schema_failures:
             n = len(self.schema_failures)

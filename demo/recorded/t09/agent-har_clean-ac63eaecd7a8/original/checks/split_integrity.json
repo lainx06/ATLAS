@@ -1,0 +1,407 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "split.evaluation_folds_nonempty",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "empty_evaluation_folds": [],
+        "folds": 5
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_row_overlap",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "folds": 5,
+        "overlapping_rows": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_shared_source_observation",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [
+        "exact-value screen only: no source-observation identity declared; near-duplicates not assessed"
+      ],
+      "observed": {
+        "documented_duplicates_across_partitions": [],
+        "duplicate_candidates": {},
+        "shared_observation_ids": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_group_overlap",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "column": "subject_id",
+        "folds": 5,
+        "overlapping_groups": {},
+        "rows_with_unknown_identity": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.sampling_unit_disjoint",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "column": "subject_id",
+        "folds": 5,
+        "overlapping_units": {},
+        "rows_with_unknown_identity": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.repeated_measures_rule",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "units": [
+          {
+            "column": "subject_id",
+            "complete": true,
+            "mapping_contradictions": [],
+            "participating_rows": 7352,
+            "reason": null,
+            "route": "sampling_unit",
+            "rows_with_unknown_identity": {},
+            "status": "PASS",
+            "witnesses": []
+          }
+        ]
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_window_overlap",
+      "depends_on": [
+        "split.no_group_overlap"
+      ],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [
+        "PASS for folds fold0, fold1, fold2, fold3, fold4 is conditional on documented containment, not independently verified: source \"UCI HAR README.txt (archive SHA-256 c00b803081a5c797cd5e4b83700a9810b38d53d9d84e01917e090e1fdbc81031): each of 30 volunteers performed the activities wearing a smartphone; the signals 'were sampled in fixed-width sliding windows of 2.56 sec and 50% overlap (128 readings/window)'; the volunteers were partitioned into training and test sets. Reviewed in docs/T09_CONTAINMENT.md.\"; statement \"Every window is cut from one volunteer's own recording, so a window can overlap only windows of the same subject (subject_id). Subject-disjoint folds therefore keep every pair of overlapping windows on one side of the split.\". The source was not fetched; a non-empty declaration does not show that it proves the claim. It also depends on the valid split.no_group_overlap PASS.",
+        "Verifies declared stream identity and window intervals; not proof of statistical independence."
+      ],
+      "observed": {
+        "established_by": {
+          "fold0": "documented_containment",
+          "fold1": "documented_containment",
+          "fold2": "documented_containment",
+          "fold3": "documented_containment",
+          "fold4": "documented_containment"
+        },
+        "folds": [
+          {
+            "direct": "incomplete",
+            "fold": "fold0",
+            "why": "stream_id column not declared or absent"
+          },
+          {
+            "direct": "incomplete",
+            "fold": "fold1",
+            "why": "stream_id column not declared or absent"
+          },
+          {
+            "direct": "incomplete",
+            "fold": "fold2",
+            "why": "stream_id column not declared or absent"
+          },
+          {
+            "direct": "incomplete",
+            "fold": "fold3",
+            "why": "stream_id column not declared or absent"
+          },
+          {
+            "direct": "incomplete",
+            "fold": "fold4",
+            "why": "stream_id column not declared or absent"
+          }
+        ],
+        "route_c": {
+          "declaration": {
+            "source": "UCI HAR README.txt (archive SHA-256 c00b803081a5c797cd5e4b83700a9810b38d53d9d84e01917e090e1fdbc81031): each of 30 volunteers performed the activities wearing a smartphone; the signals 'were sampled in fixed-width sliding windows of 2.56 sec and 50% overlap (128 readings/window)'; the volunteers were partitioned into training and test sets. Reviewed in docs/T09_CONTAINMENT.md.",
+            "statement": "Every window is cut from one volunteer's own recording, so a window can overlap only windows of the same subject (subject_id). Subject-disjoint folds therefore keep every pair of overlapping windows on one side of the split.",
+            "within": "group_id"
+          },
+          "group_check": {
+            "assertion_id": "split.no_group_overlap",
+            "evidence_valid": true,
+            "status": "PASS"
+          },
+          "needed_for_folds": [
+            "fold0",
+            "fold1",
+            "fold2",
+            "fold3",
+            "fold4"
+          ],
+          "stream_group_contradictions": []
+        },
+        "witness_count": 0,
+        "witnesses": []
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "split_integrity",
+  "descriptive": [
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "24f0b1c3a5ba36d17d77afdfe98ecaf003b11bfe922cac724e86b85927e1fc63"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "23e1992e89e2de3d2fa0976f2b4dd4a0f51055692953565f7cd6755e54cecdb7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "ceae1aa8baa555c443c4cc7df0b666e0d1d9c914b19065af769594ad41c8b850"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "5f0967711bccbfd26e2d9d4d0eae3f1a8bc1887a328c58a7cdc9cda6bce37eb6"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "080bf20224861cd25fc4a682a33f31fcb6c3e0f2aca74285ba7cb90b114af9e6"
+        }
+      ],
+      "limitations": [
+        "Descriptive: missing class support is never a split violation."
+      ],
+      "observed": {
+        "duplicate_fold_identifiers": [],
+        "folds": [
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "1": 239,
+              "2": 207,
+              "3": 184,
+              "4": 251,
+              "5": 260,
+              "6": 279
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold0",
+            "kind": "development_eval",
+            "train_counts": {
+              "1": 987,
+              "2": 866,
+              "3": 802,
+              "4": 1035,
+              "5": 1114,
+              "6": 1128
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "1": 206,
+              "2": 191,
+              "3": 176,
+              "4": 271,
+              "5": 287,
+              "6": 289
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold1",
+            "kind": "development_eval",
+            "train_counts": {
+              "1": 1020,
+              "2": 882,
+              "3": 810,
+              "4": 1015,
+              "5": 1087,
+              "6": 1118
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "1": 237,
+              "2": 216,
+              "3": 191,
+              "4": 247,
+              "5": 260,
+              "6": 266
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold2",
+            "kind": "development_eval",
+            "train_counts": {
+              "1": 989,
+              "2": 857,
+              "3": 795,
+              "4": 1039,
+              "5": 1114,
+              "6": 1141
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "1": 276,
+              "2": 220,
+              "3": 212,
+              "4": 225,
+              "5": 233,
+              "6": 244
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold3",
+            "kind": "development_eval",
+            "train_counts": {
+              "1": 950,
+              "2": 853,
+              "3": 774,
+              "4": 1061,
+              "5": 1141,
+              "6": 1163
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "1": 268,
+              "2": 239,
+              "3": 223,
+              "4": 292,
+              "5": 334,
+              "6": 329
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold4",
+            "kind": "development_eval",
+            "train_counts": {
+              "1": 958,
+              "2": 834,
+              "3": 763,
+              "4": 994,
+              "5": 1040,
+              "6": 1078
+            },
+            "train_invalid_labels": 0
+          }
+        ],
+        "splitter_minimum_requirements": "unavailable: not recorded by the recorder (SPEC \u00a74.2)"
+      },
+      "reason": null,
+      "result_id": "split.class_support"
+    }
+  ]
+}

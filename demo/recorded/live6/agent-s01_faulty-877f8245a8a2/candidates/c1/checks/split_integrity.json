@@ -1,0 +1,277 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "split.evaluation_folds_nonempty",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "b3f75e92dc5f6c9edf1fc193b86a1742ad8ea7c6a19aff61f8b4df7116529faa"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "empty_evaluation_folds": [],
+        "folds": 4
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_row_overlap",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "b3f75e92dc5f6c9edf1fc193b86a1742ad8ea7c6a19aff61f8b4df7116529faa"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "folds": 4,
+        "overlapping_rows": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_shared_source_observation",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "b3f75e92dc5f6c9edf1fc193b86a1742ad8ea7c6a19aff61f8b4df7116529faa"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "documented_duplicates_across_partitions": [],
+        "duplicate_candidates": {},
+        "rows_with_unknown_identity": {},
+        "shared_observation_ids": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_group_overlap",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "b3f75e92dc5f6c9edf1fc193b86a1742ad8ea7c6a19aff61f8b4df7116529faa"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "column": "subject_id",
+        "folds": 4,
+        "overlapping_groups": {},
+        "rows_with_unknown_identity": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.sampling_unit_disjoint",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "b3f75e92dc5f6c9edf1fc193b86a1742ad8ea7c6a19aff61f8b4df7116529faa"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "column": "subject_id",
+        "folds": 4,
+        "overlapping_units": {},
+        "rows_with_unknown_identity": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.repeated_measures_rule",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "b3f75e92dc5f6c9edf1fc193b86a1742ad8ea7c6a19aff61f8b4df7116529faa"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "units": [
+          {
+            "column": "subject_id",
+            "complete": true,
+            "mapping_contradictions": [],
+            "participating_rows": 160,
+            "reason": null,
+            "route": "sampling_unit",
+            "rows_with_unknown_identity": {},
+            "status": "PASS",
+            "witnesses": []
+          },
+          {
+            "column": "session_id",
+            "complete": true,
+            "mapping_contradictions": [],
+            "note": "A group-separation witness shows a group crossing partitions; it is not same-unit overlap and not label leakage.",
+            "participating_rows": 160,
+            "reason": null,
+            "route": "contained_group",
+            "rows_missing_group": {},
+            "rows_with_unknown_identity": {},
+            "status": "PASS",
+            "witnesses": []
+          }
+        ]
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "split_integrity",
+  "descriptive": [
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "b3f75e92dc5f6c9edf1fc193b86a1742ad8ea7c6a19aff61f8b4df7116529faa"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "970bdd5dc4c4d082bd7962b341cafa2268d290043d6b438abee45184f416b1a3"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "ab175670a54a95963a9bae03651f80a21bea9cbc7f07084508867f3c7c4a6117"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "f0581339508d36e16ca0232016c47ca33272bdce0181f2c528c039cc28673a6e"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "e69225fa597958c111cc9bc94ae35a7f9cf285fe10c961b566ae9aa108b11087"
+        }
+      ],
+      "limitations": [
+        "Descriptive: missing class support is never a split violation."
+      ],
+      "observed": {
+        "duplicate_fold_identifiers": [],
+        "folds": [
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 20,
+              "1": 20
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold0",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 60,
+              "1": 60
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 20,
+              "1": 20
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold1",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 60,
+              "1": 60
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 20,
+              "1": 20
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold2",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 60,
+              "1": 60
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 20,
+              "1": 20
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold3",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 60,
+              "1": 60
+            },
+            "train_invalid_labels": 0
+          }
+        ],
+        "splitter_minimum_requirements": "unavailable: not recorded by the recorder (SPEC \u00a74.2)"
+      },
+      "reason": null,
+      "result_id": "split.class_support"
+    }
+  ]
+}

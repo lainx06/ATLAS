@@ -1,0 +1,24 @@
+{
+  "check": "pre-run GET /models (T-06 slice 4)",
+  "expected": {
+    "context_length_tokens": 262144,
+    "price_input_per_token": "0.0000003",
+    "price_output_per_token": "0.0000009"
+  },
+  "listed": {
+    "context_length_tokens": 262144,
+    "price_input_per_token": "0.0000003",
+    "price_output_per_token": "0.0000009"
+  },
+  "method": "GET",
+  "mismatches": [],
+  "model_id": "nvidia/nemotron-3-super-120b-a12b",
+  "note": "sanitized: no key, header or provider text is recorded",
+  "reason": null,
+  "rejected": null,
+  "request_id": "cc08d87097ccc620da3ec5064aac7325",
+  "result": "pass",
+  "status": 200,
+  "time_utc": "2026-10-18T20:34:50.005475+00:00",
+  "url": "https://api.tokenfactory.nebius.com/v1/models"
+}

@@ -1,0 +1,283 @@
+{
+  "adapter_version": "0.2",
+  "claim": {
+    "dependence": [
+      {
+        "column": "subject_id",
+        "kind": "repeated_measures",
+        "text": null
+      },
+      {
+        "column": null,
+        "kind": "overlapping_windows",
+        "text": "2.56 s windows with 50% overlap within each volunteer's recording (UCI HAR README)"
+      }
+    ],
+    "sampling_unit": "subject",
+    "statement": "The activity classifier works on people absent from training. [ATLAS-authored flawed variant: this evaluation is deliberately wrong; no flaw is alleged in the original study.]",
+    "type": "unseen_group"
+  },
+  "execution": {
+    "approval": {
+      "approved_at": "2026-10-17T19:59:33.353489+00:00",
+      "base_snapshot_hash": "36089ef25c66e14e6e8041ab61d6fbe7ddd23ccd7416dfd4358719de5ce10fb6",
+      "candidate_hash": "d57316ac07bca19c226eb0ede3ed5f43260a9d16419b6080faa1b51065e0f5b7"
+    },
+    "base_snapshot_hash": "36089ef25c66e14e6e8041ab61d6fbe7ddd23ccd7416dfd4358719de5ce10fb6",
+    "candidate_hash": "d57316ac07bca19c226eb0ede3ed5f43260a9d16419b6080faa1b51065e0f5b7",
+    "capability": "isolated_available",
+    "cleanup": {
+      "errors": [],
+      "status": "confirmed_absent"
+    },
+    "collection": {
+      "files": [
+        {
+          "path": "provenance.jsonl",
+          "sha256": "84bad38dec359fca3a287f451197f0fc36d07d1a824e62b99f0ed2f0344f5ddc",
+          "size": 2287203
+        },
+        {
+          "path": "runtime.json",
+          "sha256": "0985973347206347eff5a007472a5404894e4e6ba98b5e488f26cb45545e617c",
+          "size": 487
+        },
+        {
+          "path": "splits.json",
+          "sha256": "c1fd9fde0de8af0c97a8823843abfa6cad0ba81c7853d1e986c348bb643b533d",
+          "size": 478497
+        },
+        {
+          "path": "predictions/fold0.parquet",
+          "sha256": "4b4251d6a4072e3ad65707db79bf584277c114e51d7a3294543f3c8ae5ebb1ec",
+          "size": 11153
+        },
+        {
+          "path": "predictions/fold1.parquet",
+          "sha256": "eb1d587138eaaff7fddf02b036fd2763ad720e281f963a01f50fd8e7a49e17f7",
+          "size": 11144
+        },
+        {
+          "path": "predictions/fold2.parquet",
+          "sha256": "bbf9156e83e45ecd4064ee15301bae8607b26f6292dae3dfe49115ea6f261740",
+          "size": 11168
+        },
+        {
+          "path": "predictions/fold3.parquet",
+          "sha256": "72a87f61954521cf8073f206c158457428f8e9e24bd362d20b83d85aff8157a3",
+          "size": 11102
+        },
+        {
+          "path": "predictions/fold4.parquet",
+          "sha256": "944f08a2bd4976dca538fb578cac89995a422918ffa0f9d58364248623155196",
+          "size": 11153
+        }
+      ],
+      "problem": null,
+      "status": "ok"
+    },
+    "container_name": "atlas-t05-79bbdf1b7956",
+    "container_removed": true,
+    "docker": {
+      "context": "desktop-linux",
+      "docker_cli": "C:\\Users\\Lain\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe",
+      "image_id": "sha256:e13f91a3c9baa52e2314b91a0b17c2437033acd98cbb396a104b9c3545b5f625",
+      "image_ref": "atlas-runner:t05",
+      "reason": null,
+      "recipe_sha256": "f67fd121afc1a2aa8cab009b85ddf49da09a377e0397800d4b45bc60712f0b4a",
+      "server_os": "linux",
+      "server_version": "29.8.2",
+      "state": "isolated_available"
+    },
+    "docker_args": [
+      "run",
+      "--name",
+      "atlas-t05-79bbdf1b7956",
+      "--label",
+      "atlas.runner=t05",
+      "--label",
+      "atlas.run=exec",
+      "--pull",
+      "never",
+      "--network",
+      "none",
+      "--read-only",
+      "--user",
+      "10001:10001",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges=true",
+      "--memory",
+      "1073741824",
+      "--memory-swap",
+      "1073741824",
+      "--cpus",
+      "1",
+      "--pids-limit",
+      "128",
+      "--ulimit",
+      "core=0",
+      "--ulimit",
+      "nofile=1024:1024",
+      "--ipc",
+      "none",
+      "--hostname",
+      "atlas-runner",
+      "--log-driver",
+      "none",
+      "--tmpfs",
+      "/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777",
+      "--tmpfs",
+      "/work/out:rw,noexec,nosuid,nodev,size=33554432,mode=1777",
+      "--mount",
+      "type=bind,source=C:\\Users\\Lain\\source\\atlas-t09\\runs\\t09\\audit\\agent-har_flawed-1e2267f662c0\\original\\exec\\stage\\project,target=/work/project,readonly",
+      "--mount",
+      "type=bind,source=C:\\Users\\Lain\\source\\atlas-t09\\runs\\t09\\audit\\agent-har_flawed-1e2267f662c0\\original\\exec\\stage\\code,target=/opt/atlas,readonly",
+      "--workdir",
+      "/work/project",
+      "--entrypoint",
+      "/usr/local/bin/python",
+      "sha256:e13f91a3c9baa52e2314b91a0b17c2437033acd98cbb396a104b9c3545b5f625",
+      "-I",
+      "-B",
+      "/opt/atlas/atlas_runner_entry.py",
+      "supervise",
+      "30.0",
+      "256",
+      "33554432"
+    ],
+    "docker_cli_returncode": 0,
+    "docker_state": {
+      "Dead": false,
+      "Error": "",
+      "ExitCode": 0,
+      "FinishedAt": "2026-10-17T19:59:36.581305066Z",
+      "OOMKilled": false,
+      "Paused": false,
+      "Pid": 0,
+      "Restarting": false,
+      "Running": false,
+      "StartedAt": "2026-10-17T19:59:33.737808716Z",
+      "Status": "exited"
+    },
+    "elapsed_s": 3.203,
+    "full_reevaluation": "not performed by the runner (T-06 schedules the required set)",
+    "host_timed_out": false,
+    "io_problems": [],
+    "limits": {
+      "cpus": "1",
+      "deadline_s": 60.0,
+      "exec_timeout_s": 30.0,
+      "host_deadline_s": null,
+      "host_grace_s": 30.0,
+      "max_archive_bytes": 34144256,
+      "max_output_files": 256,
+      "max_stderr_bytes": 1048576,
+      "max_stdout_bytes": 34406414,
+      "memory_bytes": 1073741824,
+      "output_bytes": 33554432,
+      "pids": 128,
+      "scratch_bytes": 67108864
+    },
+    "mounted_code": [
+      [
+        "atlas/__init__.py",
+        "da19d0bc84eb016648a3c94c7db6a0b54b65181cc70f096258e5a38aff453872"
+      ],
+      [
+        "atlas/adapter.py",
+        "82eb7ced6cd76bd08d9c23d47281b4a87906c151700f5e64c5b16b9d5e016619"
+      ],
+      [
+        "atlas/recorder.py",
+        "5c201b73a7edcf2481e6a89e264c7fc004e44223f1cfdd6fb2d5e54cd9a5bc37"
+      ],
+      [
+        "atlas/reports.py",
+        "62f01bd8eb90299fc5c6e4c7d540db6e1b7d40c362cca7dbcfbd8b5ec4ad288b"
+      ],
+      [
+        "atlas/tables.py",
+        "fdd2026dbc42ed1568dca715dbfdd4a7a86f54010dae393accc87c5963de8b17"
+      ],
+      [
+        "atlas_runner_entry.py",
+        "a95544f7b026770dfd3944b033715d69b996af6a456631f3bce64ee9bc1f3b96"
+      ]
+    ],
+    "reason": null,
+    "runner": "docker_isolated",
+    "staged_project": [
+      [
+        "atlas_manifest.json",
+        "53cd281dd23c607e62c7a3ae93ba4539da4e08ef56538a1cdbf634cb6cec0bde"
+      ],
+      [
+        "evaluate.py",
+        "9a19938ab4f0f9d65c6c0fd93915f21ecccec1699b471fb74cf587b94b010fb0"
+      ],
+      [
+        "table.parquet",
+        "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+      ]
+    ],
+    "started_utc": "2026-10-17T19:59:33.360998+00:00",
+    "status": "completed",
+    "stderr_bytes": 0,
+    "stderr_tail": "",
+    "stdout_bytes": 2837237,
+    "supervisor": {
+      "archive_bytes": 2836480,
+      "archive_error": null,
+      "archive_sha256": "8952a36de45a459c5d257b3898e0fda1f200d0007f5131acd4a6878c2ad4ce35",
+      "candidate_output_bytes": 231,
+      "candidate_output_tail": "/usr/local/lib/python3.11/site-packages/joblib/_multiprocessing_helpers.py:44: UserWarning: [Errno 2] No such file or directory.  joblib will operate in serial mode\n  warnings.warn(\"%s.  joblib will operate in serial mode\" % (e,))\n",
+      "cgroup": {
+        "memory_events": {
+          "high": 0,
+          "low": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_group_kill": 0,
+          "oom_kill": 0
+        },
+        "pids_events": {
+          "max": 0
+        }
+      },
+      "child_elapsed_s": 2.619,
+      "child_returncode": 0,
+      "expanded_bytes": 2821907,
+      "files": 8,
+      "nondumpable": true,
+      "skipped": [],
+      "skipped_count": 0,
+      "timed_out": false,
+      "version": 1
+    }
+  },
+  "incomplete_coverage": [
+    "split.no_window_overlap"
+  ],
+  "limitations": [
+    "Candidate executed only in the isolated Docker runner (isolated_available). Container restrictions reduce execution risk; they do not prove provenance integrity or scientific correctness.",
+    "Provenance, splits, predictions and runtime.json are written inside the candidate process (candidate-produced evidence); runtime.json only corroborates.",
+    "Hash and configuration checks establish consistency with the approved candidate and the trusted runner configuration, not authenticity against an attacker who controls the host.",
+    "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
+    "Provenance begins at the supplied feature table.",
+    "Window-overlap and temporal-separation checks verify declared rules; they are not proof of statistical independence.",
+    "Training cutoffs and fold membership are declared by the evaluated code and are not verified independently."
+  ],
+  "outcome": "VIOLATION_FOUND",
+  "policy_version": "policy-v1.3",
+  "project": "snapshot",
+  "reason": null,
+  "versions": {
+    "atlas": "0.1.0",
+    "numpy": "2.4.6",
+    "pandas": "3.0.6",
+    "pydantic": "2.14.1",
+    "scikit-learn": "1.9.1"
+  }
+}

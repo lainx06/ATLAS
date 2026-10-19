@@ -1,0 +1,7 @@
+
+{
+  "action": {
+    "tool": "list_project_files",
+    "rationale": "See what files are present to understand the entry point and any supporting code."
+  }
+}

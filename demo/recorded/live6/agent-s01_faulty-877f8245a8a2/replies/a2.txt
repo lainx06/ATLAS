@@ -1,0 +1,8 @@
+
+{
+  "action": {
+    "tool": "read_project_file",
+    "path": "evaluate.py",
+    "rationale": "Examine current implementation to understand why group overlap and repeated measures rules are violated."
+  }
+}

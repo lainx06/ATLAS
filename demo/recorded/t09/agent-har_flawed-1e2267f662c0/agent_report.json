@@ -1,0 +1,203 @@
+{
+  "agent_log": {
+    "path": "C:\\Users\\Lain\\source\\atlas-t09\\runs\\t09\\audit\\agent-har_flawed-1e2267f662c0\\agent_log.jsonl",
+    "sha256": "d1a418065cb357b80152c91b34867205c29e4a06e28f61d316278db1c35353c7"
+  },
+  "banner": "NON-LIVE RUN: every model reply came from fixture script 'fixture:t09-audit-finish'; no model was called. Python networking in this process was guarded during the run (an in-process fixture-testing safeguard, not a sandbox; it does not govern other processes).",
+  "budget": {
+    "active_s": 5.844,
+    "approval_wait_s": 0.0,
+    "limits": {
+      "active_s": 300.0,
+      "candidate_revisions": 2,
+      "model_attempts": 6,
+      "retries_per_call": 1,
+      "tool_operations": 12
+    },
+    "total_elapsed_s": 5.844,
+    "used": {
+      "attempts": 1,
+      "retries": 0,
+      "revisions": 0,
+      "tool_operations": 0
+    }
+  },
+  "comparison": {
+    "candidates": [],
+    "comparison_basis": "Original and candidates all executed in the isolated Docker runner.",
+    "model": "fixture replies (non-live)",
+    "original": {
+      "capability": "isolated_available",
+      "evidence_sha256": {
+        "approval.json": "7449de3fd111d311338004caa04ff35399ac2af482f4b21ec6cfd30baf80403d",
+        "candidate.json": "8202923a91d258ef78540cd2ca4761d00f81b31c5ffa6774efac0e24aed70e38",
+        "execution.json": "7ceef3a8d7c79bbceaaadbe5956cf61d8c7f190f89eecff6c75ce5ddd2436193",
+        "index.json": "e7dd91c99624dea23700d1078e352320ae12ce5829f4bff75d9f84b45d745e21",
+        "outcome.json": "dc4a4b10c2be86d232f364ded8893018a85ad3a09119a82ed0193110c24dc6d5",
+        "report.json": "74a1b9f34df2d2c04a8ad58f8f99db24326a289ed3d4830d87a544bdc7e28bdc"
+      },
+      "executed": true,
+      "execution_status": "completed",
+      "incomplete_coverage": [
+        "split.no_window_overlap"
+      ],
+      "limitations": [
+        "Candidate executed only in the isolated Docker runner (isolated_available). Container restrictions reduce execution risk; they do not prove provenance integrity or scientific correctness.",
+        "Provenance, splits, predictions and runtime.json are written inside the candidate process (candidate-produced evidence); runtime.json only corroborates.",
+        "Hash and configuration checks establish consistency with the approved candidate and the trusted runner configuration, not authenticity against an attacker who controls the host.",
+        "Fit provenance covers only the bounded supported path; the in-process recorder is not tamper-proof.",
+        "Provenance begins at the supplied feature table.",
+        "Window-overlap and temporal-separation checks verify declared rules; they are not proof of statistical independence.",
+        "Training cutoffs and fold membership are declared by the evaluated code and are not verified independently."
+      ],
+      "outcome_reason": null,
+      "required_set": [
+        {
+          "assertion_id": "split.evaluation_folds_nonempty",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "split.no_row_overlap",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "split.no_shared_source_observation",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "split.no_group_overlap",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "split.sampling_unit_disjoint",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "split.repeated_measures_rule",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "split.no_window_overlap",
+          "evidence_valid": true,
+          "reason": "missing_metadata",
+          "status": "NOT_ASSESSED"
+        },
+        {
+          "assertion_id": "fit.state_dependencies_within_fold_train",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "FAIL"
+        },
+        {
+          "assertion_id": "fit.coverage_complete",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "metric.prediction_ids_match_eval_ids",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        },
+        {
+          "assertion_id": "metric.reported_matches_recomputed",
+          "evidence_valid": true,
+          "reason": null,
+          "status": "PASS"
+        }
+      ],
+      "run_dir": "C:\\Users\\Lain\\source\\atlas-t09\\runs\\t09\\audit\\agent-har_flawed-1e2267f662c0\\original",
+      "runner": "docker_isolated",
+      "scientific_outcome": "VIOLATION_FOUND"
+    },
+    "policy_version": "policy-v1.3",
+    "reading_guide": [
+      "Execution status says whether the candidate ran, and how it ended, in the isolated runner.",
+      "Scientific outcome is the trusted evaluator's result for the full required assertion set under policy-v1.3; it is derived only from evidence, never from the execution status.",
+      "A completed candidate whose outcome is VIOLATION_FOUND is a normal result, and a lower score can be the honest one.",
+      "No outcome says that the deployment claim is true; NO_VIOLATION_FOUND means only that no required check found a violation, with the limitations listed."
+    ],
+    "report": "t06-slice1-candidate-reevaluation"
+  },
+  "cost": {
+    "applicable": false,
+    "reason": "fixture replies: no provider request"
+  },
+  "limitations": [
+    "Fixture responses only: this run says nothing about a real model's behavior.",
+    "The original executed in the isolated Docker runner after explicit authorization.",
+    "0 proposals: 0 rejected by validation, 0 declined, 0 executed",
+    "Container evidence is produced inside the executed code's process; the evaluator checks its consistency, not its authenticity."
+  ],
+  "live": false,
+  "mode": "fixture",
+  "model_id": "fixture:t09-audit-finish",
+  "model_text": [
+    {
+      "kind": "finish_summary",
+      "label": "model-written text; not evidence and not an outcome",
+      "text": "T-09 audit: no revision."
+    }
+  ],
+  "preflight": {
+    "applicable": false,
+    "reason": "no pre-run check was supplied"
+  },
+  "prompt_budget": {
+    "tool_result_chars": 16000,
+    "user_message_bytes": 96000
+  },
+  "proposals": [],
+  "report": "t06-agent-run",
+  "scientific_outcomes": {
+    "candidates": [],
+    "original": "VIOLATION_FOUND",
+    "source": "trusted evaluator only"
+  },
+  "spending": {
+    "applicable": false,
+    "reason": "fixture replies: no provider request"
+  },
+  "states": [
+    {
+      "detail": null,
+      "state": "INTAKE",
+      "time_utc": "2026-10-17T19:59:33.312686+00:00"
+    },
+    {
+      "detail": "original d57316ac07bca19c226eb0ede3ed5f43260a9d16419b6080faa1b51065e0f5b7",
+      "state": "APPROVAL",
+      "time_utc": "2026-10-17T19:59:33.353489+00:00"
+    },
+    {
+      "detail": "original in Docker; trusted evaluation of the full required set",
+      "state": "CHECK",
+      "time_utc": "2026-10-17T19:59:33.354489+00:00"
+    },
+    {
+      "detail": null,
+      "state": "MODEL",
+      "time_utc": "2026-10-17T19:59:39.152542+00:00"
+    },
+    {
+      "detail": null,
+      "state": "REPORT",
+      "time_utc": "2026-10-17T19:59:39.154542+00:00"
+    }
+  ],
+  "terminal_reason": null,
+  "terminal_state": "REPORT"
+}

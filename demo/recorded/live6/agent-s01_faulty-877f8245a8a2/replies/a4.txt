@@ -1,0 +1,9 @@
+
+
+{
+  "action": {
+    "tool": "propose_patch",
+    "rationale": "Replace global feature selection with per-fold selection and split by subject_id to prevent group overlap and state dependencies, satisfying split.integrity and fit.provenance.",
+    "new_source": "from sklearn.feature_selection import SelectKBest, f_classif\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import KFold\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nfrom atlas import adapter\n\ndef main():\n    X, y = adapter.load_table()\n    meta = adapter.load_metadata()\n    subject_ids = meta['subject_id'].unique()\n    kf = KFold(n_splits=4, shuffle=True, random_state=0)\n    for k, (train_subj_idx, test_subj_idx) in enumerate(kf.split(subject_ids)):\n        train_subjects = subject_ids[train_subj_idx]\n        test_subjects = subject_ids[test_subj_idx]\n        train_ids = list(meta.index[meta['subject_id'].isin(train_subjects)])\n        test_ids = list(meta.index[meta['subject_id'].isin(test_subjects)])\n        adapter.declare_split(f\\\"fold{k}\\\", train_ids, test_ids, kind=\\\"development_eval\\\")\n        X_train = adapter.take(X, train_ids)\n        y_train = adapter.take(y, train_ids)\n        selector = SelectKBest(f_classif, k=3)\n        X_train_sel = selector.fit_transform(X_train, y_train)\n        X_test = adapter.take(X, test_ids)\n        X_test_sel = selector.transform(X_test)\n        model = Pipeline([\n            (\\\"scale\\\", StandardScaler()),\n            (\\\"clf\\\", LogisticRegression())\n        ])\n        model.fit(X_train_sel, y_train)\n        y_pred = model.predict(X_test_sel)\n        adapter.write_predictions(f\\\"fold{k}\\\", test_ids, y_pred)\n\nif __name__ == \\\"__main__\\\":\n    main()\n"
+  }
+}

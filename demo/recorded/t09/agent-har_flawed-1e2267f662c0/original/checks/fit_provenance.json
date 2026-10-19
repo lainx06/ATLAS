@@ -1,0 +1,207 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "fit.state_dependencies_within_fold_train",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "84bad38dec359fca3a287f451197f0fc36d07d1a824e62b99f0ed2f0344f5ddc"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "c1fd9fde0de8af0c97a8823843abfa6cad0ba81c7853d1e986c348bb643b533d"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "fold_inventory_issues": [],
+        "judged_uses": 5,
+        "origins": [
+          {
+            "affected_folds": [
+              "fold0",
+              "fold1",
+              "fold2",
+              "fold3",
+              "fold4"
+            ],
+            "affected_uses": [
+              "fold0:LogisticRegression.predict",
+              "fold1:LogisticRegression.predict",
+              "fold2:LogisticRegression.predict",
+              "fold3:LogisticRegression.predict",
+              "fold4:LogisticRegression.predict"
+            ],
+            "class": "StandardScaler",
+            "contributing_rows": 7352,
+            "fit_scope": "global",
+            "instance": "i2",
+            "labels_supplied": false,
+            "labels_used": false,
+            "rows_outside_train_by_fold": {
+              "fold0": 1471,
+              "fold1": 1471,
+              "fold2": 1470,
+              "fold3": 1470,
+              "fold4": 1470
+            },
+            "version": 1
+          },
+          {
+            "affected_folds": [
+              "fold0",
+              "fold1",
+              "fold2",
+              "fold3",
+              "fold4"
+            ],
+            "affected_uses": [
+              "fold0:LogisticRegression.predict",
+              "fold1:LogisticRegression.predict",
+              "fold2:LogisticRegression.predict",
+              "fold3:LogisticRegression.predict",
+              "fold4:LogisticRegression.predict"
+            ],
+            "class": "SelectKBest",
+            "contributing_rows": 7352,
+            "fit_scope": "global",
+            "instance": "i4",
+            "labels_supplied": true,
+            "labels_used": true,
+            "rows_outside_train_by_fold": {
+              "fold0": 1471,
+              "fold1": 1471,
+              "fold2": 1470,
+              "fold3": 1470,
+              "fold4": 1470
+            },
+            "version": 1
+          }
+        ],
+        "unknown_uses": [],
+        "violating_folds": [
+          "fold0",
+          "fold1",
+          "fold2",
+          "fold3",
+          "fold4"
+        ],
+        "violations": {
+          "fold0": [
+            {
+              "class": "LogisticRegression",
+              "instance": "i8",
+              "method": "predict",
+              "rows_outside_train": 1471,
+              "sample": [
+                "w00006",
+                "w00008",
+                "w00009",
+                "w00012",
+                "w00014"
+              ],
+              "state_fit_fold": "fold0"
+            }
+          ],
+          "fold1": [
+            {
+              "class": "LogisticRegression",
+              "instance": "i13",
+              "method": "predict",
+              "rows_outside_train": 1471,
+              "sample": [
+                "w00001",
+                "w00004",
+                "w00018",
+                "w00030",
+                "w00032"
+              ],
+              "state_fit_fold": "fold1"
+            }
+          ],
+          "fold2": [
+            {
+              "class": "LogisticRegression",
+              "instance": "i18",
+              "method": "predict",
+              "rows_outside_train": 1470,
+              "sample": [
+                "w00002",
+                "w00003",
+                "w00005",
+                "w00010",
+                "w00011"
+              ],
+              "state_fit_fold": "fold2"
+            }
+          ],
+          "fold3": [
+            {
+              "class": "LogisticRegression",
+              "instance": "i23",
+              "method": "predict",
+              "rows_outside_train": 1470,
+              "sample": [
+                "w00013",
+                "w00016",
+                "w00019",
+                "w00026",
+                "w00027"
+              ],
+              "state_fit_fold": "fold3"
+            }
+          ],
+          "fold4": [
+            {
+              "class": "LogisticRegression",
+              "instance": "i28",
+              "method": "predict",
+              "rows_outside_train": 1470,
+              "sample": [
+                "w00000",
+                "w00007",
+                "w00021",
+                "w00024",
+                "w00025"
+              ],
+              "state_fit_fold": "fold4"
+            }
+          ]
+        }
+      },
+      "reason": null,
+      "status": "FAIL"
+    },
+    {
+      "assertion_id": "fit.coverage_complete",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "84bad38dec359fca3a287f451197f0fc36d07d1a824e62b99f0ed2f0344f5ddc"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "c1fd9fde0de8af0c97a8823843abfa6cad0ba81c7853d1e986c348bb643b533d"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [
+        "Coverage is limited to the bounded supported path; the in-process recorder is not tamper-proof.",
+        "Provenance begins at the supplied feature table.",
+        "Fold consistency cannot prove the existence of a fold erased from every source."
+      ],
+      "observed": {
+        "folds": 5,
+        "gaps": {},
+        "supported_classifier_fits": 5
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "fit_provenance",
+  "descriptive": []
+}

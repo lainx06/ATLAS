@@ -1,0 +1,24 @@
+{
+  "approved_at": "2026-10-18T20:34:55.262212+00:00",
+  "base_snapshot_hash": "581648813ffd1ea6c1ab6faa8aa5160455781e6f482c8ed3afdcf621b33107c6",
+  "candidate_hash": "50a783960ca297082468fe558d6520f32e1f0784e48de83f1a769411155dd210",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "entry_point": "evaluate.py",
+  "image_ref": "atlas-runner:t05",
+  "limits": {
+    "cpus": "1",
+    "deadline_s": 60.0,
+    "exec_timeout_s": 30.0,
+    "host_deadline_s": null,
+    "host_grace_s": 30.0,
+    "max_archive_bytes": 34144256,
+    "max_output_files": 256,
+    "max_stderr_bytes": 1048576,
+    "max_stdout_bytes": 34406414,
+    "memory_bytes": 1073741824,
+    "output_bytes": 33554432,
+    "pids": 128,
+    "scratch_bytes": 67108864
+  },
+  "proposed_at": null
+}

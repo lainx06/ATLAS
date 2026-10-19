@@ -1,0 +1,3002 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "split.evaluation_folds_nonempty",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "empty_evaluation_folds": [],
+        "folds": 4
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_row_overlap",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "folds": 4,
+        "overlapping_rows": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_shared_source_observation",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "documented_duplicates_across_partitions": [],
+        "duplicate_candidates": {},
+        "rows_with_unknown_identity": {},
+        "shared_observation_ids": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "split.no_group_overlap",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "column": "subject_id",
+        "folds": 4,
+        "overlapping_groups": {
+          "fold0": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ],
+          "fold1": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ],
+          "fold2": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ],
+          "fold3": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ]
+        },
+        "rows_with_unknown_identity": {}
+      },
+      "reason": null,
+      "status": "FAIL"
+    },
+    {
+      "assertion_id": "split.sampling_unit_disjoint",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "column": "subject_id",
+        "folds": 4,
+        "overlapping_units": {
+          "fold0": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ],
+          "fold1": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ],
+          "fold2": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ],
+          "fold3": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05",
+            "S06",
+            "S07",
+            "S08"
+          ]
+        },
+        "rows_with_unknown_identity": {}
+      },
+      "reason": null,
+      "status": "FAIL"
+    },
+    {
+      "assertion_id": "split.repeated_measures_rule",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "units": [
+          {
+            "column": "subject_id",
+            "complete": true,
+            "mapping_contradictions": [],
+            "participating_rows": 160,
+            "reason": null,
+            "route": "sampling_unit",
+            "rows_with_unknown_identity": {},
+            "status": "FAIL",
+            "witnesses": [
+              {
+                "eval_row_ids": [
+                  "r0007",
+                  "r0008",
+                  "r0016",
+                  "r0019"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0000",
+                  "r0001",
+                  "r0002",
+                  "r0003",
+                  "r0004",
+                  "r0005",
+                  "r0006",
+                  "r0009",
+                  "r0010",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0017",
+                  "r0018"
+                ],
+                "unit_id": "S01"
+              },
+              {
+                "eval_row_ids": [
+                  "r0024",
+                  "r0026",
+                  "r0033",
+                  "r0037"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0020",
+                  "r0021",
+                  "r0022",
+                  "r0023",
+                  "r0025",
+                  "r0027",
+                  "r0028",
+                  "r0029",
+                  "r0030",
+                  "r0031",
+                  "r0032",
+                  "r0034",
+                  "r0035",
+                  "r0036",
+                  "r0038",
+                  "r0039"
+                ],
+                "unit_id": "S02"
+              },
+              {
+                "eval_row_ids": [
+                  "r0044",
+                  "r0045",
+                  "r0051",
+                  "r0054",
+                  "r0056",
+                  "r0059"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0040",
+                  "r0041",
+                  "r0042",
+                  "r0043",
+                  "r0046",
+                  "r0047",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0052",
+                  "r0053",
+                  "r0055",
+                  "r0057",
+                  "r0058"
+                ],
+                "unit_id": "S03"
+              },
+              {
+                "eval_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0066",
+                  "r0074"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0063",
+                  "r0064",
+                  "r0065",
+                  "r0067",
+                  "r0068",
+                  "r0069",
+                  "r0070",
+                  "r0071",
+                  "r0072",
+                  "r0073",
+                  "r0075",
+                  "r0076",
+                  "r0077",
+                  "r0078",
+                  "r0079"
+                ],
+                "unit_id": "S04"
+              },
+              {
+                "eval_row_ids": [
+                  "r0080",
+                  "r0085",
+                  "r0086",
+                  "r0090",
+                  "r0092",
+                  "r0097",
+                  "r0098"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0081",
+                  "r0082",
+                  "r0083",
+                  "r0084",
+                  "r0087",
+                  "r0088",
+                  "r0089",
+                  "r0091",
+                  "r0093",
+                  "r0094",
+                  "r0095",
+                  "r0096",
+                  "r0099"
+                ],
+                "unit_id": "S05"
+              },
+              {
+                "eval_row_ids": [
+                  "r0101",
+                  "r0110",
+                  "r0112",
+                  "r0119"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0100",
+                  "r0102",
+                  "r0103",
+                  "r0104",
+                  "r0105",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0111",
+                  "r0113",
+                  "r0114",
+                  "r0115",
+                  "r0116",
+                  "r0117",
+                  "r0118"
+                ],
+                "unit_id": "S06"
+              },
+              {
+                "eval_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0128",
+                  "r0131",
+                  "r0133",
+                  "r0135"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0123",
+                  "r0124",
+                  "r0125",
+                  "r0126",
+                  "r0127",
+                  "r0129",
+                  "r0130",
+                  "r0132",
+                  "r0134",
+                  "r0136",
+                  "r0137",
+                  "r0138",
+                  "r0139"
+                ],
+                "unit_id": "S07"
+              },
+              {
+                "eval_row_ids": [
+                  "r0143",
+                  "r0146",
+                  "r0147"
+                ],
+                "fold": "fold0",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0140",
+                  "r0141",
+                  "r0142",
+                  "r0144",
+                  "r0145",
+                  "r0148",
+                  "r0149",
+                  "r0150",
+                  "r0151",
+                  "r0152",
+                  "r0153",
+                  "r0154",
+                  "r0155",
+                  "r0156",
+                  "r0157",
+                  "r0158",
+                  "r0159"
+                ],
+                "unit_id": "S08"
+              },
+              {
+                "eval_row_ids": [
+                  "r0002",
+                  "r0010",
+                  "r0018"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0000",
+                  "r0001",
+                  "r0003",
+                  "r0004",
+                  "r0005",
+                  "r0006",
+                  "r0007",
+                  "r0008",
+                  "r0009",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0016",
+                  "r0017",
+                  "r0019"
+                ],
+                "unit_id": "S01"
+              },
+              {
+                "eval_row_ids": [
+                  "r0022",
+                  "r0027",
+                  "r0030"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0020",
+                  "r0021",
+                  "r0023",
+                  "r0024",
+                  "r0025",
+                  "r0026",
+                  "r0028",
+                  "r0029",
+                  "r0031",
+                  "r0032",
+                  "r0033",
+                  "r0034",
+                  "r0035",
+                  "r0036",
+                  "r0037",
+                  "r0038",
+                  "r0039"
+                ],
+                "unit_id": "S02"
+              },
+              {
+                "eval_row_ids": [
+                  "r0040",
+                  "r0043",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0055"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0041",
+                  "r0042",
+                  "r0044",
+                  "r0045",
+                  "r0046",
+                  "r0047",
+                  "r0051",
+                  "r0052",
+                  "r0053",
+                  "r0054",
+                  "r0056",
+                  "r0057",
+                  "r0058",
+                  "r0059"
+                ],
+                "unit_id": "S03"
+              },
+              {
+                "eval_row_ids": [
+                  "r0063",
+                  "r0064",
+                  "r0069",
+                  "r0071",
+                  "r0073"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0065",
+                  "r0066",
+                  "r0067",
+                  "r0068",
+                  "r0070",
+                  "r0072",
+                  "r0074",
+                  "r0075",
+                  "r0076",
+                  "r0077",
+                  "r0078",
+                  "r0079"
+                ],
+                "unit_id": "S04"
+              },
+              {
+                "eval_row_ids": [
+                  "r0083",
+                  "r0089",
+                  "r0094",
+                  "r0095",
+                  "r0096"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0080",
+                  "r0081",
+                  "r0082",
+                  "r0084",
+                  "r0085",
+                  "r0086",
+                  "r0087",
+                  "r0088",
+                  "r0090",
+                  "r0091",
+                  "r0092",
+                  "r0093",
+                  "r0097",
+                  "r0098",
+                  "r0099"
+                ],
+                "unit_id": "S05"
+              },
+              {
+                "eval_row_ids": [
+                  "r0100",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0111",
+                  "r0118"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0101",
+                  "r0102",
+                  "r0103",
+                  "r0104",
+                  "r0105",
+                  "r0110",
+                  "r0112",
+                  "r0113",
+                  "r0114",
+                  "r0115",
+                  "r0116",
+                  "r0117",
+                  "r0119"
+                ],
+                "unit_id": "S06"
+              },
+              {
+                "eval_row_ids": [
+                  "r0124",
+                  "r0132",
+                  "r0136",
+                  "r0139"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0123",
+                  "r0125",
+                  "r0126",
+                  "r0127",
+                  "r0128",
+                  "r0129",
+                  "r0130",
+                  "r0131",
+                  "r0133",
+                  "r0134",
+                  "r0135",
+                  "r0137",
+                  "r0138"
+                ],
+                "unit_id": "S07"
+              },
+              {
+                "eval_row_ids": [
+                  "r0141",
+                  "r0142",
+                  "r0144",
+                  "r0145",
+                  "r0151",
+                  "r0154",
+                  "r0157"
+                ],
+                "fold": "fold1",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0140",
+                  "r0143",
+                  "r0146",
+                  "r0147",
+                  "r0148",
+                  "r0149",
+                  "r0150",
+                  "r0152",
+                  "r0153",
+                  "r0155",
+                  "r0156",
+                  "r0158",
+                  "r0159"
+                ],
+                "unit_id": "S08"
+              },
+              {
+                "eval_row_ids": [
+                  "r0001",
+                  "r0003",
+                  "r0004",
+                  "r0006",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0017"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0000",
+                  "r0002",
+                  "r0005",
+                  "r0007",
+                  "r0008",
+                  "r0009",
+                  "r0010",
+                  "r0016",
+                  "r0018",
+                  "r0019"
+                ],
+                "unit_id": "S01"
+              },
+              {
+                "eval_row_ids": [
+                  "r0020",
+                  "r0023",
+                  "r0035"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0021",
+                  "r0022",
+                  "r0024",
+                  "r0025",
+                  "r0026",
+                  "r0027",
+                  "r0028",
+                  "r0029",
+                  "r0030",
+                  "r0031",
+                  "r0032",
+                  "r0033",
+                  "r0034",
+                  "r0036",
+                  "r0037",
+                  "r0038",
+                  "r0039"
+                ],
+                "unit_id": "S02"
+              },
+              {
+                "eval_row_ids": [
+                  "r0041",
+                  "r0042",
+                  "r0046",
+                  "r0052",
+                  "r0057"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0040",
+                  "r0043",
+                  "r0044",
+                  "r0045",
+                  "r0047",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0051",
+                  "r0053",
+                  "r0054",
+                  "r0055",
+                  "r0056",
+                  "r0058",
+                  "r0059"
+                ],
+                "unit_id": "S03"
+              },
+              {
+                "eval_row_ids": [
+                  "r0065",
+                  "r0068",
+                  "r0075",
+                  "r0076",
+                  "r0078"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0063",
+                  "r0064",
+                  "r0066",
+                  "r0067",
+                  "r0069",
+                  "r0070",
+                  "r0071",
+                  "r0072",
+                  "r0073",
+                  "r0074",
+                  "r0077",
+                  "r0079"
+                ],
+                "unit_id": "S04"
+              },
+              {
+                "eval_row_ids": [
+                  "r0084",
+                  "r0091",
+                  "r0093"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0080",
+                  "r0081",
+                  "r0082",
+                  "r0083",
+                  "r0085",
+                  "r0086",
+                  "r0087",
+                  "r0088",
+                  "r0089",
+                  "r0090",
+                  "r0092",
+                  "r0094",
+                  "r0095",
+                  "r0096",
+                  "r0097",
+                  "r0098",
+                  "r0099"
+                ],
+                "unit_id": "S05"
+              },
+              {
+                "eval_row_ids": [
+                  "r0102",
+                  "r0105",
+                  "r0113",
+                  "r0116"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0100",
+                  "r0101",
+                  "r0103",
+                  "r0104",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0110",
+                  "r0111",
+                  "r0112",
+                  "r0114",
+                  "r0115",
+                  "r0117",
+                  "r0118",
+                  "r0119"
+                ],
+                "unit_id": "S06"
+              },
+              {
+                "eval_row_ids": [
+                  "r0123",
+                  "r0125",
+                  "r0129",
+                  "r0130",
+                  "r0137",
+                  "r0138"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0124",
+                  "r0126",
+                  "r0127",
+                  "r0128",
+                  "r0131",
+                  "r0132",
+                  "r0133",
+                  "r0134",
+                  "r0135",
+                  "r0136",
+                  "r0139"
+                ],
+                "unit_id": "S07"
+              },
+              {
+                "eval_row_ids": [
+                  "r0148",
+                  "r0156",
+                  "r0158",
+                  "r0159"
+                ],
+                "fold": "fold2",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0140",
+                  "r0141",
+                  "r0142",
+                  "r0143",
+                  "r0144",
+                  "r0145",
+                  "r0146",
+                  "r0147",
+                  "r0149",
+                  "r0150",
+                  "r0151",
+                  "r0152",
+                  "r0153",
+                  "r0154",
+                  "r0155",
+                  "r0157"
+                ],
+                "unit_id": "S08"
+              },
+              {
+                "eval_row_ids": [
+                  "r0000",
+                  "r0005",
+                  "r0009"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0001",
+                  "r0002",
+                  "r0003",
+                  "r0004",
+                  "r0006",
+                  "r0007",
+                  "r0008",
+                  "r0010",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0016",
+                  "r0017",
+                  "r0018",
+                  "r0019"
+                ],
+                "unit_id": "S01"
+              },
+              {
+                "eval_row_ids": [
+                  "r0021",
+                  "r0025",
+                  "r0028",
+                  "r0029",
+                  "r0031",
+                  "r0032",
+                  "r0034",
+                  "r0036",
+                  "r0038",
+                  "r0039"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0020",
+                  "r0022",
+                  "r0023",
+                  "r0024",
+                  "r0026",
+                  "r0027",
+                  "r0030",
+                  "r0033",
+                  "r0035",
+                  "r0037"
+                ],
+                "unit_id": "S02"
+              },
+              {
+                "eval_row_ids": [
+                  "r0047",
+                  "r0053",
+                  "r0058"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0040",
+                  "r0041",
+                  "r0042",
+                  "r0043",
+                  "r0044",
+                  "r0045",
+                  "r0046",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0051",
+                  "r0052",
+                  "r0054",
+                  "r0055",
+                  "r0056",
+                  "r0057",
+                  "r0059"
+                ],
+                "unit_id": "S03"
+              },
+              {
+                "eval_row_ids": [
+                  "r0067",
+                  "r0070",
+                  "r0072",
+                  "r0077",
+                  "r0079"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0063",
+                  "r0064",
+                  "r0065",
+                  "r0066",
+                  "r0068",
+                  "r0069",
+                  "r0071",
+                  "r0073",
+                  "r0074",
+                  "r0075",
+                  "r0076",
+                  "r0078"
+                ],
+                "unit_id": "S04"
+              },
+              {
+                "eval_row_ids": [
+                  "r0081",
+                  "r0082",
+                  "r0087",
+                  "r0088",
+                  "r0099"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0080",
+                  "r0083",
+                  "r0084",
+                  "r0085",
+                  "r0086",
+                  "r0089",
+                  "r0090",
+                  "r0091",
+                  "r0092",
+                  "r0093",
+                  "r0094",
+                  "r0095",
+                  "r0096",
+                  "r0097",
+                  "r0098"
+                ],
+                "unit_id": "S05"
+              },
+              {
+                "eval_row_ids": [
+                  "r0103",
+                  "r0104",
+                  "r0114",
+                  "r0115",
+                  "r0117"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0100",
+                  "r0101",
+                  "r0102",
+                  "r0105",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0110",
+                  "r0111",
+                  "r0112",
+                  "r0113",
+                  "r0116",
+                  "r0118",
+                  "r0119"
+                ],
+                "unit_id": "S06"
+              },
+              {
+                "eval_row_ids": [
+                  "r0126",
+                  "r0127",
+                  "r0134"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0123",
+                  "r0124",
+                  "r0125",
+                  "r0128",
+                  "r0129",
+                  "r0130",
+                  "r0131",
+                  "r0132",
+                  "r0133",
+                  "r0135",
+                  "r0136",
+                  "r0137",
+                  "r0138",
+                  "r0139"
+                ],
+                "unit_id": "S07"
+              },
+              {
+                "eval_row_ids": [
+                  "r0140",
+                  "r0149",
+                  "r0150",
+                  "r0152",
+                  "r0153",
+                  "r0155"
+                ],
+                "fold": "fold3",
+                "kind": "sampling_unit_overlap",
+                "train_row_ids": [
+                  "r0141",
+                  "r0142",
+                  "r0143",
+                  "r0144",
+                  "r0145",
+                  "r0146",
+                  "r0147",
+                  "r0148",
+                  "r0151",
+                  "r0154",
+                  "r0156",
+                  "r0157",
+                  "r0158",
+                  "r0159"
+                ],
+                "unit_id": "S08"
+              }
+            ]
+          },
+          {
+            "column": "session_id",
+            "complete": true,
+            "mapping_contradictions": [],
+            "note": "A group-separation witness shows a group crossing partitions; it is not same-unit overlap and not label leakage.",
+            "participating_rows": 160,
+            "reason": null,
+            "route": "contained_group",
+            "rows_missing_group": {},
+            "rows_with_unknown_identity": {},
+            "status": "FAIL",
+            "witnesses": [
+              {
+                "eval_row_ids": [
+                  "r0007",
+                  "r0008",
+                  "r0016",
+                  "r0019"
+                ],
+                "eval_unit_ids": [
+                  "S01-1",
+                  "S01-2"
+                ],
+                "fold": "fold0",
+                "group_id": "S01",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0000",
+                  "r0001",
+                  "r0002",
+                  "r0003",
+                  "r0004",
+                  "r0005",
+                  "r0006",
+                  "r0009",
+                  "r0010",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0017",
+                  "r0018"
+                ],
+                "train_unit_ids": [
+                  "S01-1",
+                  "S01-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0024",
+                  "r0026",
+                  "r0033",
+                  "r0037"
+                ],
+                "eval_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ],
+                "fold": "fold0",
+                "group_id": "S02",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0020",
+                  "r0021",
+                  "r0022",
+                  "r0023",
+                  "r0025",
+                  "r0027",
+                  "r0028",
+                  "r0029",
+                  "r0030",
+                  "r0031",
+                  "r0032",
+                  "r0034",
+                  "r0035",
+                  "r0036",
+                  "r0038",
+                  "r0039"
+                ],
+                "train_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0044",
+                  "r0045",
+                  "r0051",
+                  "r0054",
+                  "r0056",
+                  "r0059"
+                ],
+                "eval_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ],
+                "fold": "fold0",
+                "group_id": "S03",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0040",
+                  "r0041",
+                  "r0042",
+                  "r0043",
+                  "r0046",
+                  "r0047",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0052",
+                  "r0053",
+                  "r0055",
+                  "r0057",
+                  "r0058"
+                ],
+                "train_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0066",
+                  "r0074"
+                ],
+                "eval_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ],
+                "fold": "fold0",
+                "group_id": "S04",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0063",
+                  "r0064",
+                  "r0065",
+                  "r0067",
+                  "r0068",
+                  "r0069",
+                  "r0070",
+                  "r0071",
+                  "r0072",
+                  "r0073",
+                  "r0075",
+                  "r0076",
+                  "r0077",
+                  "r0078",
+                  "r0079"
+                ],
+                "train_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0080",
+                  "r0085",
+                  "r0086",
+                  "r0090",
+                  "r0092",
+                  "r0097",
+                  "r0098"
+                ],
+                "eval_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ],
+                "fold": "fold0",
+                "group_id": "S05",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0081",
+                  "r0082",
+                  "r0083",
+                  "r0084",
+                  "r0087",
+                  "r0088",
+                  "r0089",
+                  "r0091",
+                  "r0093",
+                  "r0094",
+                  "r0095",
+                  "r0096",
+                  "r0099"
+                ],
+                "train_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0101",
+                  "r0110",
+                  "r0112",
+                  "r0119"
+                ],
+                "eval_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ],
+                "fold": "fold0",
+                "group_id": "S06",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0100",
+                  "r0102",
+                  "r0103",
+                  "r0104",
+                  "r0105",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0111",
+                  "r0113",
+                  "r0114",
+                  "r0115",
+                  "r0116",
+                  "r0117",
+                  "r0118"
+                ],
+                "train_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0128",
+                  "r0131",
+                  "r0133",
+                  "r0135"
+                ],
+                "eval_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ],
+                "fold": "fold0",
+                "group_id": "S07",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0123",
+                  "r0124",
+                  "r0125",
+                  "r0126",
+                  "r0127",
+                  "r0129",
+                  "r0130",
+                  "r0132",
+                  "r0134",
+                  "r0136",
+                  "r0137",
+                  "r0138",
+                  "r0139"
+                ],
+                "train_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0143",
+                  "r0146",
+                  "r0147"
+                ],
+                "eval_unit_ids": [
+                  "S08-1"
+                ],
+                "fold": "fold0",
+                "group_id": "S08",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0140",
+                  "r0141",
+                  "r0142",
+                  "r0144",
+                  "r0145",
+                  "r0148",
+                  "r0149",
+                  "r0150",
+                  "r0151",
+                  "r0152",
+                  "r0153",
+                  "r0154",
+                  "r0155",
+                  "r0156",
+                  "r0157",
+                  "r0158",
+                  "r0159"
+                ],
+                "train_unit_ids": [
+                  "S08-1",
+                  "S08-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0002",
+                  "r0010",
+                  "r0018"
+                ],
+                "eval_unit_ids": [
+                  "S01-1",
+                  "S01-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S01",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0000",
+                  "r0001",
+                  "r0003",
+                  "r0004",
+                  "r0005",
+                  "r0006",
+                  "r0007",
+                  "r0008",
+                  "r0009",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0016",
+                  "r0017",
+                  "r0019"
+                ],
+                "train_unit_ids": [
+                  "S01-1",
+                  "S01-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0022",
+                  "r0027",
+                  "r0030"
+                ],
+                "eval_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S02",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0020",
+                  "r0021",
+                  "r0023",
+                  "r0024",
+                  "r0025",
+                  "r0026",
+                  "r0028",
+                  "r0029",
+                  "r0031",
+                  "r0032",
+                  "r0033",
+                  "r0034",
+                  "r0035",
+                  "r0036",
+                  "r0037",
+                  "r0038",
+                  "r0039"
+                ],
+                "train_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0040",
+                  "r0043",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0055"
+                ],
+                "eval_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S03",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0041",
+                  "r0042",
+                  "r0044",
+                  "r0045",
+                  "r0046",
+                  "r0047",
+                  "r0051",
+                  "r0052",
+                  "r0053",
+                  "r0054",
+                  "r0056",
+                  "r0057",
+                  "r0058",
+                  "r0059"
+                ],
+                "train_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0063",
+                  "r0064",
+                  "r0069",
+                  "r0071",
+                  "r0073"
+                ],
+                "eval_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S04",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0065",
+                  "r0066",
+                  "r0067",
+                  "r0068",
+                  "r0070",
+                  "r0072",
+                  "r0074",
+                  "r0075",
+                  "r0076",
+                  "r0077",
+                  "r0078",
+                  "r0079"
+                ],
+                "train_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0083",
+                  "r0089",
+                  "r0094",
+                  "r0095",
+                  "r0096"
+                ],
+                "eval_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S05",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0080",
+                  "r0081",
+                  "r0082",
+                  "r0084",
+                  "r0085",
+                  "r0086",
+                  "r0087",
+                  "r0088",
+                  "r0090",
+                  "r0091",
+                  "r0092",
+                  "r0093",
+                  "r0097",
+                  "r0098",
+                  "r0099"
+                ],
+                "train_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0100",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0111",
+                  "r0118"
+                ],
+                "eval_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S06",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0101",
+                  "r0102",
+                  "r0103",
+                  "r0104",
+                  "r0105",
+                  "r0110",
+                  "r0112",
+                  "r0113",
+                  "r0114",
+                  "r0115",
+                  "r0116",
+                  "r0117",
+                  "r0119"
+                ],
+                "train_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0124",
+                  "r0132",
+                  "r0136",
+                  "r0139"
+                ],
+                "eval_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S07",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0123",
+                  "r0125",
+                  "r0126",
+                  "r0127",
+                  "r0128",
+                  "r0129",
+                  "r0130",
+                  "r0131",
+                  "r0133",
+                  "r0134",
+                  "r0135",
+                  "r0137",
+                  "r0138"
+                ],
+                "train_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0141",
+                  "r0142",
+                  "r0144",
+                  "r0145",
+                  "r0151",
+                  "r0154",
+                  "r0157"
+                ],
+                "eval_unit_ids": [
+                  "S08-1",
+                  "S08-2"
+                ],
+                "fold": "fold1",
+                "group_id": "S08",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0140",
+                  "r0143",
+                  "r0146",
+                  "r0147",
+                  "r0148",
+                  "r0149",
+                  "r0150",
+                  "r0152",
+                  "r0153",
+                  "r0155",
+                  "r0156",
+                  "r0158",
+                  "r0159"
+                ],
+                "train_unit_ids": [
+                  "S08-1",
+                  "S08-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0001",
+                  "r0003",
+                  "r0004",
+                  "r0006",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0017"
+                ],
+                "eval_unit_ids": [
+                  "S01-1",
+                  "S01-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S01",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0000",
+                  "r0002",
+                  "r0005",
+                  "r0007",
+                  "r0008",
+                  "r0009",
+                  "r0010",
+                  "r0016",
+                  "r0018",
+                  "r0019"
+                ],
+                "train_unit_ids": [
+                  "S01-1",
+                  "S01-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0020",
+                  "r0023",
+                  "r0035"
+                ],
+                "eval_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S02",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0021",
+                  "r0022",
+                  "r0024",
+                  "r0025",
+                  "r0026",
+                  "r0027",
+                  "r0028",
+                  "r0029",
+                  "r0030",
+                  "r0031",
+                  "r0032",
+                  "r0033",
+                  "r0034",
+                  "r0036",
+                  "r0037",
+                  "r0038",
+                  "r0039"
+                ],
+                "train_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0041",
+                  "r0042",
+                  "r0046",
+                  "r0052",
+                  "r0057"
+                ],
+                "eval_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S03",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0040",
+                  "r0043",
+                  "r0044",
+                  "r0045",
+                  "r0047",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0051",
+                  "r0053",
+                  "r0054",
+                  "r0055",
+                  "r0056",
+                  "r0058",
+                  "r0059"
+                ],
+                "train_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0065",
+                  "r0068",
+                  "r0075",
+                  "r0076",
+                  "r0078"
+                ],
+                "eval_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S04",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0063",
+                  "r0064",
+                  "r0066",
+                  "r0067",
+                  "r0069",
+                  "r0070",
+                  "r0071",
+                  "r0072",
+                  "r0073",
+                  "r0074",
+                  "r0077",
+                  "r0079"
+                ],
+                "train_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0084",
+                  "r0091",
+                  "r0093"
+                ],
+                "eval_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S05",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0080",
+                  "r0081",
+                  "r0082",
+                  "r0083",
+                  "r0085",
+                  "r0086",
+                  "r0087",
+                  "r0088",
+                  "r0089",
+                  "r0090",
+                  "r0092",
+                  "r0094",
+                  "r0095",
+                  "r0096",
+                  "r0097",
+                  "r0098",
+                  "r0099"
+                ],
+                "train_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0102",
+                  "r0105",
+                  "r0113",
+                  "r0116"
+                ],
+                "eval_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S06",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0100",
+                  "r0101",
+                  "r0103",
+                  "r0104",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0110",
+                  "r0111",
+                  "r0112",
+                  "r0114",
+                  "r0115",
+                  "r0117",
+                  "r0118",
+                  "r0119"
+                ],
+                "train_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0123",
+                  "r0125",
+                  "r0129",
+                  "r0130",
+                  "r0137",
+                  "r0138"
+                ],
+                "eval_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S07",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0124",
+                  "r0126",
+                  "r0127",
+                  "r0128",
+                  "r0131",
+                  "r0132",
+                  "r0133",
+                  "r0134",
+                  "r0135",
+                  "r0136",
+                  "r0139"
+                ],
+                "train_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0148",
+                  "r0156",
+                  "r0158",
+                  "r0159"
+                ],
+                "eval_unit_ids": [
+                  "S08-1",
+                  "S08-2"
+                ],
+                "fold": "fold2",
+                "group_id": "S08",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0140",
+                  "r0141",
+                  "r0142",
+                  "r0143",
+                  "r0144",
+                  "r0145",
+                  "r0146",
+                  "r0147",
+                  "r0149",
+                  "r0150",
+                  "r0151",
+                  "r0152",
+                  "r0153",
+                  "r0154",
+                  "r0155",
+                  "r0157"
+                ],
+                "train_unit_ids": [
+                  "S08-1",
+                  "S08-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0000",
+                  "r0005",
+                  "r0009"
+                ],
+                "eval_unit_ids": [
+                  "S01-1"
+                ],
+                "fold": "fold3",
+                "group_id": "S01",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0001",
+                  "r0002",
+                  "r0003",
+                  "r0004",
+                  "r0006",
+                  "r0007",
+                  "r0008",
+                  "r0010",
+                  "r0011",
+                  "r0012",
+                  "r0013",
+                  "r0014",
+                  "r0015",
+                  "r0016",
+                  "r0017",
+                  "r0018",
+                  "r0019"
+                ],
+                "train_unit_ids": [
+                  "S01-1",
+                  "S01-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0021",
+                  "r0025",
+                  "r0028",
+                  "r0029",
+                  "r0031",
+                  "r0032",
+                  "r0034",
+                  "r0036",
+                  "r0038",
+                  "r0039"
+                ],
+                "eval_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ],
+                "fold": "fold3",
+                "group_id": "S02",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0020",
+                  "r0022",
+                  "r0023",
+                  "r0024",
+                  "r0026",
+                  "r0027",
+                  "r0030",
+                  "r0033",
+                  "r0035",
+                  "r0037"
+                ],
+                "train_unit_ids": [
+                  "S02-1",
+                  "S02-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0047",
+                  "r0053",
+                  "r0058"
+                ],
+                "eval_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ],
+                "fold": "fold3",
+                "group_id": "S03",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0040",
+                  "r0041",
+                  "r0042",
+                  "r0043",
+                  "r0044",
+                  "r0045",
+                  "r0046",
+                  "r0048",
+                  "r0049",
+                  "r0050",
+                  "r0051",
+                  "r0052",
+                  "r0054",
+                  "r0055",
+                  "r0056",
+                  "r0057",
+                  "r0059"
+                ],
+                "train_unit_ids": [
+                  "S03-1",
+                  "S03-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0067",
+                  "r0070",
+                  "r0072",
+                  "r0077",
+                  "r0079"
+                ],
+                "eval_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ],
+                "fold": "fold3",
+                "group_id": "S04",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0060",
+                  "r0061",
+                  "r0062",
+                  "r0063",
+                  "r0064",
+                  "r0065",
+                  "r0066",
+                  "r0068",
+                  "r0069",
+                  "r0071",
+                  "r0073",
+                  "r0074",
+                  "r0075",
+                  "r0076",
+                  "r0078"
+                ],
+                "train_unit_ids": [
+                  "S04-1",
+                  "S04-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0081",
+                  "r0082",
+                  "r0087",
+                  "r0088",
+                  "r0099"
+                ],
+                "eval_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ],
+                "fold": "fold3",
+                "group_id": "S05",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0080",
+                  "r0083",
+                  "r0084",
+                  "r0085",
+                  "r0086",
+                  "r0089",
+                  "r0090",
+                  "r0091",
+                  "r0092",
+                  "r0093",
+                  "r0094",
+                  "r0095",
+                  "r0096",
+                  "r0097",
+                  "r0098"
+                ],
+                "train_unit_ids": [
+                  "S05-1",
+                  "S05-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0103",
+                  "r0104",
+                  "r0114",
+                  "r0115",
+                  "r0117"
+                ],
+                "eval_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ],
+                "fold": "fold3",
+                "group_id": "S06",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0100",
+                  "r0101",
+                  "r0102",
+                  "r0105",
+                  "r0106",
+                  "r0107",
+                  "r0108",
+                  "r0109",
+                  "r0110",
+                  "r0111",
+                  "r0112",
+                  "r0113",
+                  "r0116",
+                  "r0118",
+                  "r0119"
+                ],
+                "train_unit_ids": [
+                  "S06-1",
+                  "S06-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0126",
+                  "r0127",
+                  "r0134"
+                ],
+                "eval_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ],
+                "fold": "fold3",
+                "group_id": "S07",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0120",
+                  "r0121",
+                  "r0122",
+                  "r0123",
+                  "r0124",
+                  "r0125",
+                  "r0128",
+                  "r0129",
+                  "r0130",
+                  "r0131",
+                  "r0132",
+                  "r0133",
+                  "r0135",
+                  "r0136",
+                  "r0137",
+                  "r0138",
+                  "r0139"
+                ],
+                "train_unit_ids": [
+                  "S07-1",
+                  "S07-2"
+                ]
+              },
+              {
+                "eval_row_ids": [
+                  "r0140",
+                  "r0149",
+                  "r0150",
+                  "r0152",
+                  "r0153",
+                  "r0155"
+                ],
+                "eval_unit_ids": [
+                  "S08-1",
+                  "S08-2"
+                ],
+                "fold": "fold3",
+                "group_id": "S08",
+                "kind": "group_separation",
+                "train_row_ids": [
+                  "r0141",
+                  "r0142",
+                  "r0143",
+                  "r0144",
+                  "r0145",
+                  "r0146",
+                  "r0147",
+                  "r0148",
+                  "r0151",
+                  "r0154",
+                  "r0156",
+                  "r0157",
+                  "r0158",
+                  "r0159"
+                ],
+                "train_unit_ids": [
+                  "S08-1",
+                  "S08-2"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "reason": null,
+      "status": "FAIL"
+    },
+    {
+      "assertion_id": "fit.state_dependencies_within_fold_train",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "1db556338dca2e13a27a40efa426e9613e2c931d5ba9b3eda576a6713e8ae99b"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "fold_inventory_issues": [],
+        "judged_uses": 12,
+        "origins": [
+          {
+            "affected_folds": [
+              "fold0",
+              "fold1",
+              "fold2",
+              "fold3"
+            ],
+            "affected_uses": [
+              "fold0:StandardScaler.transform",
+              "fold0:LogisticRegression.predict",
+              "fold1:StandardScaler.transform",
+              "fold1:LogisticRegression.predict",
+              "fold2:StandardScaler.transform",
+              "fold2:LogisticRegression.predict",
+              "fold3:StandardScaler.transform",
+              "fold3:LogisticRegression.predict"
+            ],
+            "class": "SelectKBest",
+            "contributing_rows": 160,
+            "fit_scope": "global",
+            "instance": "i2",
+            "labels_supplied": true,
+            "labels_used": true,
+            "rows_outside_train_by_fold": {
+              "fold0": 40,
+              "fold1": 40,
+              "fold2": 40,
+              "fold3": 40
+            },
+            "version": 1
+          }
+        ],
+        "unknown_uses": [],
+        "violating_folds": [
+          "fold0",
+          "fold1",
+          "fold2",
+          "fold3"
+        ],
+        "violations": {
+          "fold0": [
+            {
+              "class": "StandardScaler",
+              "instance": "i6",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0007",
+                "r0008",
+                "r0016",
+                "r0019",
+                "r0024"
+              ],
+              "state_fit_fold": "fold0"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i6",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0007",
+                "r0008",
+                "r0016",
+                "r0019",
+                "r0024"
+              ],
+              "state_fit_fold": "fold0"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i8",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0007",
+                "r0008",
+                "r0016",
+                "r0019",
+                "r0024"
+              ],
+              "state_fit_fold": "fold0"
+            }
+          ],
+          "fold1": [
+            {
+              "class": "StandardScaler",
+              "instance": "i14",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0002",
+                "r0010",
+                "r0018",
+                "r0022",
+                "r0027"
+              ],
+              "state_fit_fold": "fold1"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i14",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0002",
+                "r0010",
+                "r0018",
+                "r0022",
+                "r0027"
+              ],
+              "state_fit_fold": "fold1"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i16",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0002",
+                "r0010",
+                "r0018",
+                "r0022",
+                "r0027"
+              ],
+              "state_fit_fold": "fold1"
+            }
+          ],
+          "fold2": [
+            {
+              "class": "StandardScaler",
+              "instance": "i22",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0001",
+                "r0003",
+                "r0004",
+                "r0006",
+                "r0011"
+              ],
+              "state_fit_fold": "fold2"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i22",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0001",
+                "r0003",
+                "r0004",
+                "r0006",
+                "r0011"
+              ],
+              "state_fit_fold": "fold2"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i24",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0001",
+                "r0003",
+                "r0004",
+                "r0006",
+                "r0011"
+              ],
+              "state_fit_fold": "fold2"
+            }
+          ],
+          "fold3": [
+            {
+              "class": "StandardScaler",
+              "instance": "i30",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0000",
+                "r0005",
+                "r0009",
+                "r0021",
+                "r0025"
+              ],
+              "state_fit_fold": "fold3"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i30",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0000",
+                "r0005",
+                "r0009",
+                "r0021",
+                "r0025"
+              ],
+              "state_fit_fold": "fold3"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i32",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0000",
+                "r0005",
+                "r0009",
+                "r0021",
+                "r0025"
+              ],
+              "state_fit_fold": "fold3"
+            }
+          ]
+        }
+      },
+      "reason": null,
+      "status": "FAIL"
+    },
+    {
+      "assertion_id": "fit.coverage_complete",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "1db556338dca2e13a27a40efa426e9613e2c931d5ba9b3eda576a6713e8ae99b"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [
+        "Coverage is limited to the bounded supported path; the in-process recorder is not tamper-proof.",
+        "Provenance begins at the supplied feature table.",
+        "Fold consistency cannot prove the existence of a fold erased from every source."
+      ],
+      "observed": {
+        "folds": 4,
+        "gaps": {},
+        "supported_classifier_fits": 4
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "metric.prediction_ids_match_eval_ids",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "folds": 4,
+        "inventory_issues": [],
+        "mismatches": {},
+        "missing_or_invalid_artifacts": [],
+        "unexpected_artifacts": []
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "descriptive": [
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d"
+        }
+      ],
+      "limitations": [
+        "Descriptive only; never part of the outcome."
+      ],
+      "observed": {
+        "aggregates": {
+          "development_eval": {
+            "balanced_accuracy": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 4,
+                "value": 0.6824305080884028
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 160,
+                "rows_counted_more_than_once": 0,
+                "value": 0.6812499999999999
+              }
+            },
+            "macro_f1": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 4,
+                "value": 0.6795854076979999
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 160,
+                "rows_counted_more_than_once": 0,
+                "value": 0.6811379000429838
+              }
+            }
+          }
+        },
+        "per_fold": [
+          {
+            "balanced_accuracy": 0.6565656565656566,
+            "detail": null,
+            "fold": "fold0",
+            "kind": "development_eval",
+            "macro_f1": 0.65,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.6228070175438596,
+            "detail": null,
+            "fold": "fold1",
+            "kind": "development_eval",
+            "macro_f1": 0.6228786926461345,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.7205513784461153,
+            "detail": null,
+            "fold": "fold2",
+            "kind": "development_eval",
+            "macro_f1": 0.7206349206349206,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.7297979797979798,
+            "detail": null,
+            "fold": "fold3",
+            "kind": "development_eval",
+            "macro_f1": 0.7248280175109443,
+            "reason": null,
+            "status": null,
+            "usable": true
+          }
+        ],
+        "primary_metric": "balanced_accuracy"
+      },
+      "reason": null,
+      "result_id": "metric.recomputed_primary"
+    },
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d"
+        }
+      ],
+      "limitations": [
+        "Descriptive only. Beating a baseline is not evidence of usefulness; falling below one is not evidence of leakage."
+      ],
+      "observed": {
+        "dummy": {
+          "aggregates": {
+            "development_eval": {
+              "balanced_accuracy": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 4,
+                  "value": 0.5
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 160,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.4625
+                }
+              },
+              "macro_f1": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 4,
+                  "value": 0.3161893629456458
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 160,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.4625
+                }
+              }
+            }
+          },
+          "per_fold": [
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '1'",
+              "fold": "fold0",
+              "kind": "development_eval",
+              "macro_f1": 0.3103448275862069,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '1'",
+              "fold": "fold1",
+              "kind": "development_eval",
+              "macro_f1": 0.3220338983050847,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '0'",
+              "fold": "fold2",
+              "kind": "development_eval",
+              "macro_f1": 0.3220338983050847,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '0'",
+              "fold": "fold3",
+              "kind": "development_eval",
+              "macro_f1": 0.3103448275862069,
+              "reason": null,
+              "status": null,
+              "usable": true
+            }
+          ],
+          "strategy": "most frequent training class per fold; ties broken by the declared class_map order (not claimed to match scikit-learn's tie rule)"
+        },
+        "linear": {
+          "computed": false,
+          "reason": "deferred (DECISIONS.md, 'T-02 contract dispositions', item 7)"
+        }
+      },
+      "reason": null,
+      "result_id": "metric.baselines"
+    },
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d"
+        }
+      ],
+      "limitations": [
+        "Descriptive: missing class support is never a split violation."
+      ],
+      "observed": {
+        "duplicate_fold_identifiers": [],
+        "folds": [
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 22,
+              "1": 18
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold0",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 58,
+              "1": 62
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 21,
+              "1": 19
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold1",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 59,
+              "1": 61
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 19,
+              "1": 21
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold2",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 61,
+              "1": 59
+            },
+            "train_invalid_labels": 0
+          },
+          {
+            "absent_in_eval": [],
+            "absent_in_train": [],
+            "ambiguous_fold_identifier": false,
+            "eval_counts": {
+              "0": 18,
+              "1": 22
+            },
+            "eval_invalid_labels": 0,
+            "fold": "fold3",
+            "kind": "development_eval",
+            "train_counts": {
+              "0": 62,
+              "1": 58
+            },
+            "train_invalid_labels": 0
+          }
+        ],
+        "splitter_minimum_requirements": "unavailable: not recorded by the recorder (SPEC \u00a74.2)"
+      },
+      "reason": null,
+      "result_id": "split.class_support"
+    }
+  ],
+  "incomplete_coverage": [],
+  "outcome": "VIOLATION_FOUND",
+  "policy_version": "policy-v1.3",
+  "reason": null
+}

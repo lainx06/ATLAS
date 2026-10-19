@@ -1,0 +1,268 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "metric.prediction_ids_match_eval_ids",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "folds": 4,
+        "inventory_issues": [],
+        "mismatches": {},
+        "missing_or_invalid_artifacts": [],
+        "unexpected_artifacts": []
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "independent_metrics",
+  "descriptive": [
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d"
+        }
+      ],
+      "limitations": [
+        "Descriptive only; never part of the outcome."
+      ],
+      "observed": {
+        "aggregates": {
+          "development_eval": {
+            "balanced_accuracy": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 4,
+                "value": 0.6824305080884028
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 160,
+                "rows_counted_more_than_once": 0,
+                "value": 0.6812499999999999
+              }
+            },
+            "macro_f1": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 4,
+                "value": 0.6795854076979999
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 160,
+                "rows_counted_more_than_once": 0,
+                "value": 0.6811379000429838
+              }
+            }
+          }
+        },
+        "per_fold": [
+          {
+            "balanced_accuracy": 0.6565656565656566,
+            "detail": null,
+            "fold": "fold0",
+            "kind": "development_eval",
+            "macro_f1": 0.65,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.6228070175438596,
+            "detail": null,
+            "fold": "fold1",
+            "kind": "development_eval",
+            "macro_f1": 0.6228786926461345,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.7205513784461153,
+            "detail": null,
+            "fold": "fold2",
+            "kind": "development_eval",
+            "macro_f1": 0.7206349206349206,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.7297979797979798,
+            "detail": null,
+            "fold": "fold3",
+            "kind": "development_eval",
+            "macro_f1": 0.7248280175109443,
+            "reason": null,
+            "status": null,
+            "usable": true
+          }
+        ],
+        "primary_metric": "balanced_accuracy"
+      },
+      "reason": null,
+      "result_id": "metric.recomputed_primary"
+    },
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        },
+        {
+          "artifact": "table:table.csv",
+          "sha256": "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d"
+        }
+      ],
+      "limitations": [
+        "Descriptive only. Beating a baseline is not evidence of usefulness; falling below one is not evidence of leakage."
+      ],
+      "observed": {
+        "dummy": {
+          "aggregates": {
+            "development_eval": {
+              "balanced_accuracy": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 4,
+                  "value": 0.5
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 160,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.4625
+                }
+              },
+              "macro_f1": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 4,
+                  "value": 0.3161893629456458
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 160,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.4625
+                }
+              }
+            }
+          },
+          "per_fold": [
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '1'",
+              "fold": "fold0",
+              "kind": "development_eval",
+              "macro_f1": 0.3103448275862069,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '1'",
+              "fold": "fold1",
+              "kind": "development_eval",
+              "macro_f1": 0.3220338983050847,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '0'",
+              "fold": "fold2",
+              "kind": "development_eval",
+              "macro_f1": 0.3220338983050847,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.5,
+              "detail": "predicts '0'",
+              "fold": "fold3",
+              "kind": "development_eval",
+              "macro_f1": 0.3103448275862069,
+              "reason": null,
+              "status": null,
+              "usable": true
+            }
+          ],
+          "strategy": "most frequent training class per fold; ties broken by the declared class_map order (not claimed to match scikit-learn's tie rule)"
+        },
+        "linear": {
+          "computed": false,
+          "reason": "deferred (DECISIONS.md, 'T-02 contract dispositions', item 7)"
+        }
+      },
+      "reason": null,
+      "result_id": "metric.baselines"
+    }
+  ]
+}

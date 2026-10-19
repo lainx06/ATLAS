@@ -1,0 +1,57 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "fit.state_dependencies_within_fold_train",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "789b352b7e49c21d1fda91233526e0231782a331788ac9c496ce86dac4774e6d"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "fold_inventory_issues": [],
+        "judged_uses": 25,
+        "unknown_uses": [],
+        "violations": {}
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "fit.coverage_complete",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "789b352b7e49c21d1fda91233526e0231782a331788ac9c496ce86dac4774e6d"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [
+        "Coverage is limited to the bounded supported path; the in-process recorder is not tamper-proof.",
+        "Provenance begins at the supplied feature table.",
+        "Fold consistency cannot prove the existence of a fold erased from every source."
+      ],
+      "observed": {
+        "folds": 5,
+        "gaps": {},
+        "supported_classifier_fits": 5
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "fit_provenance",
+  "descriptive": []
+}

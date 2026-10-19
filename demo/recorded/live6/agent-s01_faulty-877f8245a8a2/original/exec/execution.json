@@ -1,0 +1,235 @@
+{
+  "approval": {
+    "approved_at": "2026-10-18T20:34:55.262212+00:00",
+    "base_snapshot_hash": "581648813ffd1ea6c1ab6faa8aa5160455781e6f482c8ed3afdcf621b33107c6",
+    "candidate_hash": "50a783960ca297082468fe558d6520f32e1f0784e48de83f1a769411155dd210"
+  },
+  "base_snapshot_hash": "581648813ffd1ea6c1ab6faa8aa5160455781e6f482c8ed3afdcf621b33107c6",
+  "candidate_hash": "50a783960ca297082468fe558d6520f32e1f0784e48de83f1a769411155dd210",
+  "capability": "isolated_available",
+  "cleanup": {
+    "errors": [],
+    "status": "confirmed_absent"
+  },
+  "collection": {
+    "files": [
+      {
+        "path": "provenance.jsonl",
+        "sha256": "1db556338dca2e13a27a40efa426e9613e2c931d5ba9b3eda576a6713e8ae99b",
+        "size": 80107
+      },
+      {
+        "path": "runtime.json",
+        "sha256": "0985973347206347eff5a007472a5404894e4e6ba98b5e488f26cb45545e617c",
+        "size": 487
+      },
+      {
+        "path": "splits.json",
+        "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990",
+        "size": 8174
+      },
+      {
+        "path": "predictions/fold0.parquet",
+        "sha256": "2920b93f7dd32a052a279a3c766636043714eb22156fe5f0facaa46a0ccb847f",
+        "size": 1912
+      },
+      {
+        "path": "predictions/fold1.parquet",
+        "sha256": "e128be6d8cae6ac6a8fc19e4828b82adeff0eb314528c7f884a236213a5f2bf8",
+        "size": 1916
+      },
+      {
+        "path": "predictions/fold2.parquet",
+        "sha256": "b7a259bcf8a5239800dbfc7f3a6ce402afa9e8e608184f2c51164cc9cc5a3931",
+        "size": 1915
+      },
+      {
+        "path": "predictions/fold3.parquet",
+        "sha256": "ec547b89ffba0a5eef850496504d04cf03d51b537ca9ca5702a50c657711408d",
+        "size": 1908
+      }
+    ],
+    "problem": null,
+    "status": "ok"
+  },
+  "container_name": "atlas-t05-9bc687d4db3d",
+  "container_removed": true,
+  "docker": {
+    "context": "desktop-linux",
+    "docker_cli": "C:\\Users\\Lain\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe",
+    "image_id": "sha256:e13f91a3c9baa52e2314b91a0b17c2437033acd98cbb396a104b9c3545b5f625",
+    "image_ref": "atlas-runner:t05",
+    "reason": null,
+    "recipe_sha256": "f67fd121afc1a2aa8cab009b85ddf49da09a377e0397800d4b45bc60712f0b4a",
+    "server_os": "linux",
+    "server_version": "29.8.2",
+    "state": "isolated_available"
+  },
+  "docker_args": [
+    "run",
+    "--name",
+    "atlas-t05-9bc687d4db3d",
+    "--label",
+    "atlas.runner=t05",
+    "--label",
+    "atlas.run=exec",
+    "--pull",
+    "never",
+    "--network",
+    "none",
+    "--read-only",
+    "--user",
+    "10001:10001",
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges=true",
+    "--memory",
+    "1073741824",
+    "--memory-swap",
+    "1073741824",
+    "--cpus",
+    "1",
+    "--pids-limit",
+    "128",
+    "--ulimit",
+    "core=0",
+    "--ulimit",
+    "nofile=1024:1024",
+    "--ipc",
+    "none",
+    "--hostname",
+    "atlas-runner",
+    "--log-driver",
+    "none",
+    "--tmpfs",
+    "/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777",
+    "--tmpfs",
+    "/work/out:rw,noexec,nosuid,nodev,size=33554432,mode=1777",
+    "--mount",
+    "type=bind,source=C:\\Users\\Lain\\source\\atlas\\runs\\live6\\agent-s01_faulty-877f8245a8a2\\original\\exec\\stage\\project,target=/work/project,readonly",
+    "--mount",
+    "type=bind,source=C:\\Users\\Lain\\source\\atlas\\runs\\live6\\agent-s01_faulty-877f8245a8a2\\original\\exec\\stage\\code,target=/opt/atlas,readonly",
+    "--workdir",
+    "/work/project",
+    "--entrypoint",
+    "/usr/local/bin/python",
+    "sha256:e13f91a3c9baa52e2314b91a0b17c2437033acd98cbb396a104b9c3545b5f625",
+    "-I",
+    "-B",
+    "/opt/atlas/atlas_runner_entry.py",
+    "supervise",
+    "30.0",
+    "256",
+    "33554432"
+  ],
+  "docker_cli_returncode": 0,
+  "docker_state": {
+    "Dead": false,
+    "Error": "",
+    "ExitCode": 0,
+    "FinishedAt": "2026-10-18T20:34:57.671408684Z",
+    "OOMKilled": false,
+    "Paused": false,
+    "Pid": 0,
+    "Restarting": false,
+    "Running": false,
+    "StartedAt": "2026-10-18T20:34:55.604920904Z",
+    "Status": "exited"
+  },
+  "elapsed_s": 2.594,
+  "full_reevaluation": "not performed by the runner (T-06 schedules the required set)",
+  "host_timed_out": false,
+  "io_problems": [],
+  "limits": {
+    "cpus": "1",
+    "deadline_s": 60.0,
+    "exec_timeout_s": 30.0,
+    "host_deadline_s": null,
+    "host_grace_s": 30.0,
+    "max_archive_bytes": 34144256,
+    "max_output_files": 256,
+    "max_stderr_bytes": 1048576,
+    "max_stdout_bytes": 34406414,
+    "memory_bytes": 1073741824,
+    "output_bytes": 33554432,
+    "pids": 128,
+    "scratch_bytes": 67108864
+  },
+  "mounted_code": [
+    [
+      "atlas/__init__.py",
+      "da19d0bc84eb016648a3c94c7db6a0b54b65181cc70f096258e5a38aff453872"
+    ],
+    [
+      "atlas/adapter.py",
+      "82eb7ced6cd76bd08d9c23d47281b4a87906c151700f5e64c5b16b9d5e016619"
+    ],
+    [
+      "atlas/recorder.py",
+      "5c201b73a7edcf2481e6a89e264c7fc004e44223f1cfdd6fb2d5e54cd9a5bc37"
+    ],
+    [
+      "atlas/reports.py",
+      "62f01bd8eb90299fc5c6e4c7d540db6e1b7d40c362cca7dbcfbd8b5ec4ad288b"
+    ],
+    [
+      "atlas/tables.py",
+      "fdd2026dbc42ed1568dca715dbfdd4a7a86f54010dae393accc87c5963de8b17"
+    ],
+    [
+      "atlas_runner_entry.py",
+      "a95544f7b026770dfd3944b033715d69b996af6a456631f3bce64ee9bc1f3b96"
+    ]
+  ],
+  "reason": null,
+  "runner": "docker_isolated",
+  "staged_project": [
+    [
+      "atlas_manifest.json",
+      "7c2ce3ae5cefe8be2c2269d893284a37fde40b111fa90f627b48b5e6721242df"
+    ],
+    [
+      "evaluate.py",
+      "05092261058702ea1c3a73a0deb5417530a1930c7d54399e8fd8510eabc14bae"
+    ],
+    [
+      "table.csv",
+      "6bba58dcb0ed661e41a423d50147b2fe9464c9b3852fb94cd4182ed9dc474a1e"
+    ]
+  ],
+  "started_utc": "2026-10-18T20:34:55.262212+00:00",
+  "status": "completed",
+  "stderr_bytes": 0,
+  "stderr_tail": "",
+  "stdout_bytes": 103154,
+  "supervisor": {
+    "archive_bytes": 102400,
+    "archive_error": null,
+    "archive_sha256": "141500c121b2ca7f4274352d38616433754100b09ead00de03bffaeef83c55e6",
+    "candidate_output_bytes": 231,
+    "candidate_output_tail": "/usr/local/lib/python3.11/site-packages/joblib/_multiprocessing_helpers.py:44: UserWarning: [Errno 2] No such file or directory.  joblib will operate in serial mode\n  warnings.warn(\"%s.  joblib will operate in serial mode\" % (e,))\n",
+    "cgroup": {
+      "memory_events": {
+        "high": 0,
+        "low": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_group_kill": 0,
+        "oom_kill": 0
+      },
+      "pids_events": {
+        "max": 0
+      }
+    },
+    "child_elapsed_s": 1.818,
+    "child_returncode": 0,
+    "expanded_bytes": 96419,
+    "files": 7,
+    "nondumpable": true,
+    "skipped": [],
+    "skipped_count": 0,
+    "timed_out": false,
+    "version": 1
+  }
+}

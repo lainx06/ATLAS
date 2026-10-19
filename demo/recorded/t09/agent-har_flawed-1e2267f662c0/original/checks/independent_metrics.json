@@ -1,0 +1,366 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "metric.prediction_ids_match_eval_ids",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "c1fd9fde0de8af0c97a8823843abfa6cad0ba81c7853d1e986c348bb643b533d"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "4b4251d6a4072e3ad65707db79bf584277c114e51d7a3294543f3c8ae5ebb1ec"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "eb1d587138eaaff7fddf02b036fd2763ad720e281f963a01f50fd8e7a49e17f7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "bbf9156e83e45ecd4064ee15301bae8607b26f6292dae3dfe49115ea6f261740"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "72a87f61954521cf8073f206c158457428f8e9e24bd362d20b83d85aff8157a3"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "944f08a2bd4976dca538fb578cac89995a422918ffa0f9d58364248623155196"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "folds": 5,
+        "inventory_issues": [],
+        "mismatches": {},
+        "missing_or_invalid_artifacts": [],
+        "unexpected_artifacts": []
+      },
+      "reason": null,
+      "status": "PASS"
+    },
+    {
+      "assertion_id": "metric.reported_matches_recomputed",
+      "depends_on": [
+        "metric.prediction_ids_match_eval_ids"
+      ],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "c1fd9fde0de8af0c97a8823843abfa6cad0ba81c7853d1e986c348bb643b533d"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "4b4251d6a4072e3ad65707db79bf584277c114e51d7a3294543f3c8ae5ebb1ec"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "eb1d587138eaaff7fddf02b036fd2763ad720e281f963a01f50fd8e7a49e17f7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "bbf9156e83e45ecd4064ee15301bae8607b26f6292dae3dfe49115ea6f261740"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "72a87f61954521cf8073f206c158457428f8e9e24bd362d20b83d85aff8157a3"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "944f08a2bd4976dca538fb578cac89995a422918ffa0f9d58364248623155196"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [
+        "Reported values are compared at full precision; a value rounded for display (e.g. to 4 decimals) generally differs by more than 1e-6."
+      ],
+      "observed": {
+        "duplicate_fold_identifiers": [],
+        "entries": [
+          {
+            "abs_difference": 0.0,
+            "entry": {
+              "aggregation": "mean_over_folds",
+              "fold": "all",
+              "metric_definition": "balanced_accuracy",
+              "partition": "development_eval",
+              "value": 0.906396437268804
+            },
+            "reason": null,
+            "recomputed": {
+              "complete": true,
+              "folds": 5,
+              "value": 0.906396437268804
+            },
+            "status": "PASS"
+          }
+        ],
+        "rule": "abs(reported - recomputed) <= 1e-6 in float64; no relative tolerance, rounding or extra epsilon",
+        "tolerance": 1e-06
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "independent_metrics",
+  "descriptive": [
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "c1fd9fde0de8af0c97a8823843abfa6cad0ba81c7853d1e986c348bb643b533d"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "4b4251d6a4072e3ad65707db79bf584277c114e51d7a3294543f3c8ae5ebb1ec"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "eb1d587138eaaff7fddf02b036fd2763ad720e281f963a01f50fd8e7a49e17f7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "bbf9156e83e45ecd4064ee15301bae8607b26f6292dae3dfe49115ea6f261740"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "72a87f61954521cf8073f206c158457428f8e9e24bd362d20b83d85aff8157a3"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "944f08a2bd4976dca538fb578cac89995a422918ffa0f9d58364248623155196"
+        }
+      ],
+      "limitations": [
+        "Descriptive only; never part of the outcome."
+      ],
+      "observed": {
+        "aggregates": {
+          "development_eval": {
+            "balanced_accuracy": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 5,
+                "value": 0.906396437268804
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 7352,
+                "rows_counted_more_than_once": 0,
+                "value": 0.9063346841153898
+              }
+            },
+            "macro_f1": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 5,
+                "value": 0.9062382401463435
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 7352,
+                "rows_counted_more_than_once": 0,
+                "value": 0.9063535951408657
+              }
+            }
+          }
+        },
+        "per_fold": [
+          {
+            "balanced_accuracy": 0.913592851289584,
+            "detail": null,
+            "fold": "fold0",
+            "kind": "development_eval",
+            "macro_f1": 0.9134990794448856,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.9068360766051243,
+            "detail": null,
+            "fold": "fold1",
+            "kind": "development_eval",
+            "macro_f1": 0.9062745382708406,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.8983963719971187,
+            "detail": null,
+            "fold": "fold2",
+            "kind": "development_eval",
+            "macro_f1": 0.8981156458591107,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.9131980662946214,
+            "detail": null,
+            "fold": "fold3",
+            "kind": "development_eval",
+            "macro_f1": 0.9129993156418256,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.8999588201575719,
+            "detail": null,
+            "fold": "fold4",
+            "kind": "development_eval",
+            "macro_f1": 0.9003026215150545,
+            "reason": null,
+            "status": null,
+            "usable": true
+          }
+        ],
+        "primary_metric": "balanced_accuracy"
+      },
+      "reason": null,
+      "result_id": "metric.recomputed_primary"
+    },
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "c1fd9fde0de8af0c97a8823843abfa6cad0ba81c7853d1e986c348bb643b533d"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "4b4251d6a4072e3ad65707db79bf584277c114e51d7a3294543f3c8ae5ebb1ec"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "eb1d587138eaaff7fddf02b036fd2763ad720e281f963a01f50fd8e7a49e17f7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "bbf9156e83e45ecd4064ee15301bae8607b26f6292dae3dfe49115ea6f261740"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "72a87f61954521cf8073f206c158457428f8e9e24bd362d20b83d85aff8157a3"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "944f08a2bd4976dca538fb578cac89995a422918ffa0f9d58364248623155196"
+        }
+      ],
+      "limitations": [
+        "Descriptive only. Beating a baseline is not evidence of usefulness; falling below one is not evidence of leakage."
+      ],
+      "observed": {
+        "dummy": {
+          "aggregates": {
+            "development_eval": {
+              "balanced_accuracy": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 5,
+                  "value": 0.16666666666666666
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 7352,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.15747654946312314
+                }
+              },
+              "macro_f1": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 5,
+                  "value": 0.05062824485190291
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 7352,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.08577296574701042
+                }
+              }
+            }
+          },
+          "per_fold": [
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold0",
+              "kind": "development_eval",
+              "macro_f1": 0.0541002277904328,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '5'",
+              "fold": "fold1",
+              "kind": "development_eval",
+              "macro_f1": 0.04957561728395062,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold2",
+              "kind": "development_eval",
+              "macro_f1": 0.050423402617398,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '5'",
+              "fold": "fold3",
+              "kind": "development_eval",
+              "macro_f1": 0.05009633911368016,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold4",
+              "kind": "development_eval",
+              "macro_f1": 0.048945637454053004,
+              "reason": null,
+              "status": null,
+              "usable": true
+            }
+          ],
+          "strategy": "most frequent training class per fold; ties broken by the declared class_map order (not claimed to match scikit-learn's tie rule)"
+        },
+        "linear": {
+          "computed": false,
+          "reason": "deferred (DECISIONS.md, 'T-02 contract dispositions', item 7)"
+        }
+      },
+      "reason": null,
+      "result_id": "metric.baselines"
+    }
+  ]
+}

@@ -4,3 +4,4 @@ tests/fixtures/** -text
 *.jpg binary
 *.parquet binary
 *.zip binary
+demo/recorded/** -text

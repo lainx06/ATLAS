@@ -1,0 +1,48 @@
+{
+  "collisions": [],
+  "exec_dir": "exec",
+  "mapped": [
+    {
+      "from": "predictions/fold0.parquet",
+      "sha256": "24f0b1c3a5ba36d17d77afdfe98ecaf003b11bfe922cac724e86b85927e1fc63",
+      "to": "predictions/fold0.parquet"
+    },
+    {
+      "from": "predictions/fold1.parquet",
+      "sha256": "23e1992e89e2de3d2fa0976f2b4dd4a0f51055692953565f7cd6755e54cecdb7",
+      "to": "predictions/fold1.parquet"
+    },
+    {
+      "from": "predictions/fold2.parquet",
+      "sha256": "ceae1aa8baa555c443c4cc7df0b666e0d1d9c914b19065af769594ad41c8b850",
+      "to": "predictions/fold2.parquet"
+    },
+    {
+      "from": "predictions/fold3.parquet",
+      "sha256": "5f0967711bccbfd26e2d9d4d0eae3f1a8bc1887a328c58a7cdc9cda6bce37eb6",
+      "to": "predictions/fold3.parquet"
+    },
+    {
+      "from": "predictions/fold4.parquet",
+      "sha256": "080bf20224861cd25fc4a682a33f31fcb6c3e0f2aca74285ba7cb90b114af9e6",
+      "to": "predictions/fold4.parquet"
+    },
+    {
+      "from": "provenance.jsonl",
+      "sha256": "789b352b7e49c21d1fda91233526e0231782a331788ac9c496ce86dac4774e6d",
+      "to": "provenance.jsonl"
+    },
+    {
+      "from": "runtime.json",
+      "sha256": "0985973347206347eff5a007472a5404894e4e6ba98b5e488f26cb45545e617c",
+      "to": "runtime.json"
+    },
+    {
+      "from": "splits.json",
+      "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8",
+      "to": "splits.json"
+    }
+  ],
+  "problems": [],
+  "unmapped": []
+}

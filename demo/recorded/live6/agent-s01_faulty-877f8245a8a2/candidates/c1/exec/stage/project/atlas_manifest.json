@@ -1,0 +1,60 @@
+{
+  "claim": {
+    "dependence": [
+      {
+        "column": "subject_id",
+        "kind": "repeated_measures",
+        "text": null
+      },
+      {
+        "column": "session_id",
+        "kind": "repeated_measures",
+        "text": null
+      }
+    ],
+    "sampling_unit": "subject",
+    "statement": "The activity classifier works on people absent from training.",
+    "type": "unseen_group"
+  },
+  "columns": {
+    "class_map": {
+      "0": "rest",
+      "1": "move"
+    },
+    "features": [
+      "f0",
+      "f1",
+      "f2",
+      "f3",
+      "f4",
+      "f5"
+    ],
+    "group_id": "subject_id",
+    "observation_id": "observation_id",
+    "prediction_time": null,
+    "row_id": "row_id",
+    "stream_id": null,
+    "target": "activity",
+    "unit_id": "subject_id",
+    "window_end": null,
+    "window_start": null
+  },
+  "development_seeds": [
+    0
+  ],
+  "entry_point": "evaluate.py",
+  "feature_availability": null,
+  "known_duplicates": [],
+  "label_availability": null,
+  "primary_metric": "balanced_accuracy",
+  "reported_metrics": [],
+  "schema_version": "0.2",
+  "separation_rule": null,
+  "table": {
+    "format": "csv",
+    "path": "table.csv"
+  },
+  "temporal_gap": null,
+  "time_basis": null,
+  "window_containment": null
+}

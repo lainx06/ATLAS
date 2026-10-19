@@ -1,0 +1,300 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "metric.prediction_ids_match_eval_ids",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "24f0b1c3a5ba36d17d77afdfe98ecaf003b11bfe922cac724e86b85927e1fc63"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "23e1992e89e2de3d2fa0976f2b4dd4a0f51055692953565f7cd6755e54cecdb7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "ceae1aa8baa555c443c4cc7df0b666e0d1d9c914b19065af769594ad41c8b850"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "5f0967711bccbfd26e2d9d4d0eae3f1a8bc1887a328c58a7cdc9cda6bce37eb6"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "080bf20224861cd25fc4a682a33f31fcb6c3e0f2aca74285ba7cb90b114af9e6"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "folds": 5,
+        "inventory_issues": [],
+        "mismatches": {},
+        "missing_or_invalid_artifacts": [],
+        "unexpected_artifacts": []
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "independent_metrics",
+  "descriptive": [
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "24f0b1c3a5ba36d17d77afdfe98ecaf003b11bfe922cac724e86b85927e1fc63"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "23e1992e89e2de3d2fa0976f2b4dd4a0f51055692953565f7cd6755e54cecdb7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "ceae1aa8baa555c443c4cc7df0b666e0d1d9c914b19065af769594ad41c8b850"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "5f0967711bccbfd26e2d9d4d0eae3f1a8bc1887a328c58a7cdc9cda6bce37eb6"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "080bf20224861cd25fc4a682a33f31fcb6c3e0f2aca74285ba7cb90b114af9e6"
+        }
+      ],
+      "limitations": [
+        "Descriptive only; never part of the outcome."
+      ],
+      "observed": {
+        "aggregates": {
+          "development_eval": {
+            "balanced_accuracy": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 5,
+                "value": 0.8751879948782422
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 7352,
+                "rows_counted_more_than_once": 0,
+                "value": 0.8746352443024089
+              }
+            },
+            "macro_f1": {
+              "mean_over_folds": {
+                "complete": true,
+                "folds": 5,
+                "value": 0.8749692388952528
+              },
+              "pooled": {
+                "complete": true,
+                "observations": 7352,
+                "rows_counted_more_than_once": 0,
+                "value": 0.8745345109369755
+              }
+            }
+          }
+        },
+        "per_fold": [
+          {
+            "balanced_accuracy": 0.8265292225444524,
+            "detail": null,
+            "fold": "fold0",
+            "kind": "development_eval",
+            "macro_f1": 0.825907308635727,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.8606971528050787,
+            "detail": null,
+            "fold": "fold1",
+            "kind": "development_eval",
+            "macro_f1": 0.8588494159579465,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.9265164097016306,
+            "detail": null,
+            "fold": "fold2",
+            "kind": "development_eval",
+            "macro_f1": 0.926358736956726,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.9022336396054915,
+            "detail": null,
+            "fold": "fold3",
+            "kind": "development_eval",
+            "macro_f1": 0.9028069769204871,
+            "reason": null,
+            "status": null,
+            "usable": true
+          },
+          {
+            "balanced_accuracy": 0.859963549734558,
+            "detail": null,
+            "fold": "fold4",
+            "kind": "development_eval",
+            "macro_f1": 0.8609237560053778,
+            "reason": null,
+            "status": null,
+            "usable": true
+          }
+        ],
+        "primary_metric": "balanced_accuracy"
+      },
+      "reason": null,
+      "result_id": "metric.recomputed_primary"
+    },
+    {
+      "available": true,
+      "evidence": [
+        {
+          "artifact": "splits.json",
+          "sha256": "a5d057b1aac5c94144b3b9337cec62d64f77d623c3e3258cf5b9a2cc9aff26b8"
+        },
+        {
+          "artifact": "table:table.parquet",
+          "sha256": "cc31bdb1e20f734e1866ee3547b824fbd66b23ee6e097d9ef4287073188bd02a"
+        },
+        {
+          "artifact": "predictions/fold0.parquet",
+          "sha256": "24f0b1c3a5ba36d17d77afdfe98ecaf003b11bfe922cac724e86b85927e1fc63"
+        },
+        {
+          "artifact": "predictions/fold1.parquet",
+          "sha256": "23e1992e89e2de3d2fa0976f2b4dd4a0f51055692953565f7cd6755e54cecdb7"
+        },
+        {
+          "artifact": "predictions/fold2.parquet",
+          "sha256": "ceae1aa8baa555c443c4cc7df0b666e0d1d9c914b19065af769594ad41c8b850"
+        },
+        {
+          "artifact": "predictions/fold3.parquet",
+          "sha256": "5f0967711bccbfd26e2d9d4d0eae3f1a8bc1887a328c58a7cdc9cda6bce37eb6"
+        },
+        {
+          "artifact": "predictions/fold4.parquet",
+          "sha256": "080bf20224861cd25fc4a682a33f31fcb6c3e0f2aca74285ba7cb90b114af9e6"
+        }
+      ],
+      "limitations": [
+        "Descriptive only. Beating a baseline is not evidence of usefulness; falling below one is not evidence of leakage."
+      ],
+      "observed": {
+        "dummy": {
+          "aggregates": {
+            "development_eval": {
+              "balanced_accuracy": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 5,
+                  "value": 0.16666666666666666
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 7352,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.16666666666666666
+                }
+              },
+              "macro_f1": {
+                "mean_over_folds": {
+                  "complete": true,
+                  "folds": 5,
+                  "value": 0.053483183187006386
+                },
+                "pooled": {
+                  "complete": true,
+                  "observations": 7352,
+                  "rows_counted_more_than_once": 0,
+                  "value": 0.05354492521977394
+                }
+              }
+            }
+          },
+          "per_fold": [
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold0",
+              "kind": "development_eval",
+              "macro_f1": 0.05473808122424956,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold1",
+              "kind": "development_eval",
+              "macro_f1": 0.05636824653793642,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold2",
+              "kind": "development_eval",
+              "macro_f1": 0.05268369974252327,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold3",
+              "kind": "development_eval",
+              "macro_f1": 0.04917372027408303,
+              "reason": null,
+              "status": null,
+              "usable": true
+            },
+            {
+              "balanced_accuracy": 0.16666666666666666,
+              "detail": "predicts '6'",
+              "fold": "fold4",
+              "kind": "development_eval",
+              "macro_f1": 0.054452168156239655,
+              "reason": null,
+              "status": null,
+              "usable": true
+            }
+          ],
+          "strategy": "most frequent training class per fold; ties broken by the declared class_map order (not claimed to match scikit-learn's tie rule)"
+        },
+        "linear": {
+          "computed": false,
+          "reason": "deferred (DECISIONS.md, 'T-02 contract dispositions', item 7)"
+        }
+      },
+      "reason": null,
+      "result_id": "metric.baselines"
+    }
+  ]
+}

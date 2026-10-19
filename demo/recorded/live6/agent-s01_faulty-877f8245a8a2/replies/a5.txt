@@ -1,0 +1,9 @@
+
+
+{
+  "action": {
+    "tool": "propose_patch",
+    "rationale": "Replace global feature selection and random split with group-based split by subject_id, performing feature selection inside each training fold to avoid leakage and satisfy repeated measures and unseen group claim.",
+    "new_source": "\"\"\"s01 fixed: group-based split, feature selection within training folds.\"\"\"\n\nfrom sklearn.feature_selection import SelectKBest, f_classif\n\nfrom sklearn.linear_model import LogisticRegression\n\nfrom sklearn.model_selection import GroupKFold\n\nfrom sklearn.pipeline import Pipeline\n\nfrom sklearn.preprocessing import StandardScaler\n\n\nfrom atlas import adapter\n\n\nX, y = adapter.load_table()\n\nmetadata = adapter.load_metadata()\n\ngroups = metadata['subject_id'].values\n\n\npipeline = Pipeline([\n    ('select', SelectKBest(f_classif, k=3)),\n    ('scale', StandardScaler()),\n    ('clf', LogisticRegression())\n])\n\n\nfor k, (train_idx, test_idx) in enumerate(GroupKFold(n_splits=4).split(X, y, groups)):\n    train_ids = list(X.index[train_idx])\n    eval_ids = list(X.index[test_idx])\n    adapter.declare_split(f\\\"fold{k}\\\", train_ids, eval_ids)\n    X_train = adapter.take(X, train_ids)\n    y_train = adapter.take(y, train_ids)\n    X_test = adapter.take(X, eval_ids)\n    pipeline.fit(X_train, y_train)\n    y_pred = pipeline.predict(X_test)\n    adapter.write_predictions(f\\\"fold{k}\\\", eval_ids, y_pred)\n\n"
+  }
+}

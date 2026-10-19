@@ -1,0 +1,273 @@
+{
+  "assertions": [
+    {
+      "assertion_id": "fit.state_dependencies_within_fold_train",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "1db556338dca2e13a27a40efa426e9613e2c931d5ba9b3eda576a6713e8ae99b"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [],
+      "observed": {
+        "fold_inventory_issues": [],
+        "judged_uses": 12,
+        "origins": [
+          {
+            "affected_folds": [
+              "fold0",
+              "fold1",
+              "fold2",
+              "fold3"
+            ],
+            "affected_uses": [
+              "fold0:StandardScaler.transform",
+              "fold0:LogisticRegression.predict",
+              "fold1:StandardScaler.transform",
+              "fold1:LogisticRegression.predict",
+              "fold2:StandardScaler.transform",
+              "fold2:LogisticRegression.predict",
+              "fold3:StandardScaler.transform",
+              "fold3:LogisticRegression.predict"
+            ],
+            "class": "SelectKBest",
+            "contributing_rows": 160,
+            "fit_scope": "global",
+            "instance": "i2",
+            "labels_supplied": true,
+            "labels_used": true,
+            "rows_outside_train_by_fold": {
+              "fold0": 40,
+              "fold1": 40,
+              "fold2": 40,
+              "fold3": 40
+            },
+            "version": 1
+          }
+        ],
+        "unknown_uses": [],
+        "violating_folds": [
+          "fold0",
+          "fold1",
+          "fold2",
+          "fold3"
+        ],
+        "violations": {
+          "fold0": [
+            {
+              "class": "StandardScaler",
+              "instance": "i6",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0007",
+                "r0008",
+                "r0016",
+                "r0019",
+                "r0024"
+              ],
+              "state_fit_fold": "fold0"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i6",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0007",
+                "r0008",
+                "r0016",
+                "r0019",
+                "r0024"
+              ],
+              "state_fit_fold": "fold0"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i8",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0007",
+                "r0008",
+                "r0016",
+                "r0019",
+                "r0024"
+              ],
+              "state_fit_fold": "fold0"
+            }
+          ],
+          "fold1": [
+            {
+              "class": "StandardScaler",
+              "instance": "i14",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0002",
+                "r0010",
+                "r0018",
+                "r0022",
+                "r0027"
+              ],
+              "state_fit_fold": "fold1"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i14",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0002",
+                "r0010",
+                "r0018",
+                "r0022",
+                "r0027"
+              ],
+              "state_fit_fold": "fold1"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i16",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0002",
+                "r0010",
+                "r0018",
+                "r0022",
+                "r0027"
+              ],
+              "state_fit_fold": "fold1"
+            }
+          ],
+          "fold2": [
+            {
+              "class": "StandardScaler",
+              "instance": "i22",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0001",
+                "r0003",
+                "r0004",
+                "r0006",
+                "r0011"
+              ],
+              "state_fit_fold": "fold2"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i22",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0001",
+                "r0003",
+                "r0004",
+                "r0006",
+                "r0011"
+              ],
+              "state_fit_fold": "fold2"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i24",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0001",
+                "r0003",
+                "r0004",
+                "r0006",
+                "r0011"
+              ],
+              "state_fit_fold": "fold2"
+            }
+          ],
+          "fold3": [
+            {
+              "class": "StandardScaler",
+              "instance": "i30",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0000",
+                "r0005",
+                "r0009",
+                "r0021",
+                "r0025"
+              ],
+              "state_fit_fold": "fold3"
+            },
+            {
+              "class": "StandardScaler",
+              "instance": "i30",
+              "method": "transform",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0000",
+                "r0005",
+                "r0009",
+                "r0021",
+                "r0025"
+              ],
+              "state_fit_fold": "fold3"
+            },
+            {
+              "class": "LogisticRegression",
+              "instance": "i32",
+              "method": "predict",
+              "rows_outside_train": 40,
+              "sample": [
+                "r0000",
+                "r0005",
+                "r0009",
+                "r0021",
+                "r0025"
+              ],
+              "state_fit_fold": "fold3"
+            }
+          ]
+        }
+      },
+      "reason": null,
+      "status": "FAIL"
+    },
+    {
+      "assertion_id": "fit.coverage_complete",
+      "depends_on": [],
+      "evidence": [
+        {
+          "artifact": "provenance.jsonl",
+          "sha256": "1db556338dca2e13a27a40efa426e9613e2c931d5ba9b3eda576a6713e8ae99b"
+        },
+        {
+          "artifact": "splits.json",
+          "sha256": "a849eff6f949ab24c11edf45dfb09b2527dfcc6f16fdf4ee802c77b914d6f990"
+        }
+      ],
+      "evidence_valid": true,
+      "limitations": [
+        "Coverage is limited to the bounded supported path; the in-process recorder is not tamper-proof.",
+        "Provenance begins at the supplied feature table.",
+        "Fold consistency cannot prove the existence of a fold erased from every source."
+      ],
+      "observed": {
+        "folds": 4,
+        "gaps": {},
+        "supported_classifier_fits": 4
+      },
+      "reason": null,
+      "status": "PASS"
+    }
+  ],
+  "check_id": "fit_provenance",
+  "descriptive": []
+}

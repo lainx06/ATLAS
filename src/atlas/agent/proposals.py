@@ -76,7 +76,11 @@ def summary_line(records: list[dict]) -> str:
     )
     if count["unavailable"]:
         line += f", {count['unavailable']} unavailable (no approval possible)"
+    if count[NOT_EXECUTED_HERE]:  # hosted mode only (T-12)
+        line += f", {count[NOT_EXECUTED_HERE]} passed ATLAS validation and not executed here"
     return line
 
 
-OUTCOMES = ("rejected", "declined", "unavailable", "executed")
+# Hosted mode (T-12, SPEC §13): a validated proposal is recorded, never approved or executed.
+NOT_EXECUTED_HERE = "not_executed_here"
+OUTCOMES = ("rejected", "declined", "unavailable", "executed", NOT_EXECUTED_HERE)

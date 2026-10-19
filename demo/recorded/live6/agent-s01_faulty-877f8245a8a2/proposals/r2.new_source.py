@@ -1,0 +1,35 @@
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import KFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+from atlas import adapter
+
+def main():
+    X, y = adapter.load_table()
+    meta = adapter.load_metadata()
+    subject_ids = meta['subject_id'].unique()
+    kf = KFold(n_splits=4, shuffle=True, random_state=0)
+    for k, (train_subj_idx, test_subj_idx) in enumerate(kf.split(subject_ids)):
+        train_subjects = subject_ids[train_subj_idx]
+        test_subjects = subject_ids[test_subj_idx]
+        train_ids = list(meta.index[meta['subject_id'].isin(train_subjects)])
+        test_ids = list(meta.index[meta['subject_id'].isin(test_subjects)])
+        adapter.declare_split(f\"fold{k}\", train_ids, test_ids, kind=\"development_eval\")
+        X_train = adapter.take(X, train_ids)
+        y_train = adapter.take(y, train_ids)
+        selector = SelectKBest(f_classif, k=3)
+        X_train_sel = selector.fit_transform(X_train, y_train)
+        X_test = adapter.take(X, test_ids)
+        X_test_sel = selector.transform(X_test)
+        model = Pipeline([
+            (\"scale\", StandardScaler()),
+            (\"clf\", LogisticRegression())
+        ])
+        model.fit(X_train_sel, y_train)
+        y_pred = model.predict(X_test_sel)
+        adapter.write_predictions(f\"fold{k}\", test_ids, y_pred)
+
+if __name__ == \"__main__\":
+    main()

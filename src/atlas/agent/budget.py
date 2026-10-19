@@ -76,6 +76,22 @@ class SpendRefused(LiveModeUnavailable):
     """A live run whose spending limits do not cover its worst case (nothing runs)."""
 
 
+class ReservationRefused(Exception):
+    """Hosted mode (T-12): the server-side budget store refused a request's reservation
+    because a cap would be exceeded. `code` is a fixed identifier chosen by the store (for
+    example `public_daily` or `session_requests`); nothing was reserved and nothing is sent.
+
+    The store a hosted run passes to `run_agent(reservations=...)` provides, per request:
+    `reserve(attempt, amount_usd) -> handle` (raises this, or any other exception for a store
+    failure), `dispatched(handle)` (committed before sending), `settle(handle, known_usd)`,
+    `hold(handle)` (unknown usage stays held at the reserved ceiling) and `release(handle)`
+    (only for a request that was never dispatched)."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
 @dataclass(frozen=True)
 class SpendLimits:
     """Run-level spending limits for a live run; the values are the lead's decision."""

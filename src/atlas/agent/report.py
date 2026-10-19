@@ -28,6 +28,13 @@ DOCKER_PARTIAL_BASIS = (
     "The original executed in the isolated Docker runner; {ran} of {total} candidates executed "
     "there and the others were not executed (see each candidate's execution status)."
 )
+# Hosted mode (T-12, SPEC §13): the original's findings come from a recorded run, and no
+# candidate is executed here.
+RECORDED_BASIS = (
+    "Hosted mode: the original was not executed here. Its findings were computed by ATLAS's "
+    "trusted evaluation functions in a recorded run (re-verified by hash before use). No "
+    "candidate is executed here, so there is no candidate evaluation to compare."
+)
 ORIGINAL_NOT_EXECUTED_BASIS = (
     "The original was not executed (execution status: {status}): it ran neither in the Docker "
     "runner nor on the host, so there is no executed baseline to compare against."
@@ -123,13 +130,19 @@ def comparison_report(
     candidates: list[CandidateResult],
     *,
     model: str | None = None,
+    recorded: dict | None = None,
 ) -> dict:
     """`model` names the client that produced the replies (the agent loop passes it); None
-    means there was no model client at all."""
+    means there was no model client at all. `recorded` (hosted mode, T-12) describes the
+    recorded run the original's findings come from; it is reported with the original."""
     original_run_dir = Path(original_run_dir)
     original_execution = _execution(original_run_dir)
     original_runner = original_execution.get("runner")
-    basis = _basis(original_execution, candidates)
+    basis = (
+        RECORDED_BASIS
+        if recorded is not None
+        else _basis(original_execution, candidates)
+    )
     original_status = {a.assertion_id: a.status for a in original.assertions}
     entries = []
     for c in candidates:
@@ -164,25 +177,28 @@ def comparison_report(
                 "evidence_sha256": _evidence(c.candidate_dir),
             }
         )
+    original_entry = {
+        "runner": original_runner,
+        "executed": bool(original_execution)
+        and original_execution.get("status") not in NOT_RUN,
+        "execution_status": original_execution.get("status"),
+        "capability": original_execution.get("capability"),
+        "scientific_outcome": original.outcome,
+        "outcome_reason": original.reason,
+        "required_set": _assertions(original),
+        "incomplete_coverage": original.incomplete_coverage,
+        "limitations": _limitations(original_run_dir),
+        "run_dir": str(original_run_dir),
+        "evidence_sha256": _evidence(original_run_dir),
+    }
+    if recorded is not None:
+        original_entry["recorded"] = dict(recorded)
     return {
         "report": "t06-slice1-candidate-reevaluation",
         "policy_version": POLICY_VERSION,
         "model": NO_MODEL if model is None else model,
         "comparison_basis": basis,
         "reading_guide": READING_GUIDE,
-        "original": {
-            "runner": original_runner,
-            "executed": bool(original_execution)
-            and original_execution.get("status") not in NOT_RUN,
-            "execution_status": original_execution.get("status"),
-            "capability": original_execution.get("capability"),
-            "scientific_outcome": original.outcome,
-            "outcome_reason": original.reason,
-            "required_set": _assertions(original),
-            "incomplete_coverage": original.incomplete_coverage,
-            "limitations": _limitations(original_run_dir),
-            "run_dir": str(original_run_dir),
-            "evidence_sha256": _evidence(original_run_dir),
-        },
+        "original": original_entry,
         "candidates": entries,
     }

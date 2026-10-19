@@ -1,0 +1,23 @@
+{
+  "python": "3.11.17",
+  "isolated": 1,
+  "safe_path": true,
+  "uid": 10001,
+  "gid": 10001,
+  "cwd": "/work/project",
+  "sys_path": [
+    "/opt/atlas",
+    "/usr/local/lib/python311.zip",
+    "/usr/local/lib/python3.11",
+    "/usr/local/lib/python3.11/lib-dynload",
+    "/usr/local/lib/python3.11/site-packages"
+  ],
+  "atlas_origin": "/opt/atlas/atlas/__init__.py",
+  "atlas_modules": [
+    "__init__.py",
+    "adapter.py",
+    "recorder.py",
+    "reports.py",
+    "tables.py"
+  ]
+}
