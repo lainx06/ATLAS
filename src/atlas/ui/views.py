@@ -619,6 +619,7 @@ def proposal(view: A.ProposalView, index: int) -> None:
         "rejected": "red",
         "declined": "orange",
         "unavailable": "orange",
+        "not_executed_here": "violet",  # hosted mode (T-12)
     }
     with st.container(key=f"proposal-{index}", border=True):
         st.markdown(
@@ -626,6 +627,12 @@ def proposal(view: A.ProposalView, index: int) -> None:
             f" source `{r.get('source_kind')}`"
             + (f", code `{r.get('code')}`" if r.get("code") else "")
         )
+        if outcome == "not_executed_here":
+            with st.container(key=f"proposal-hosted-{index}"):
+                st.markdown(
+                    "Passes ATLAS validation; **not executed here**. The hosted demo runs "
+                    "no candidate code, so nothing here validates this diff beyond that."
+                )
         if r.get("detail"):
             st.caption(r.get("detail_label", "validator message; may quote model text"))
             with st.container(key=f"model-detail-{index}"):

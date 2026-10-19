@@ -215,3 +215,69 @@ def local_fixture_run(tmp_path):
         original=local_original, env={},
     )  # fmt: skip
     return result.report
+
+
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+class NonLoopbackDenied(OSError):
+    pass
+
+
+def loopback_only():
+    """A context manager: Python networking in this process may reach loopback addresses
+    only (Streamlit's in-process event loop and the local test database); anything else
+    raises NonLoopbackDenied and is recorded in `.attempts`. An in-process test safeguard,
+    not a sandbox."""
+    import contextlib
+    import socket
+
+    attempts = []
+
+    def host_of(address):
+        return address[0] if isinstance(address, tuple) and address else address
+
+    def guard(original):
+        def wrapper(self_or_addr, *args, **kwargs):
+            address = args[0] if args else kwargs.get("address")
+            if isinstance(self_or_addr, socket.socket):
+                target = host_of(address)
+            else:  # create_connection(address, ...)
+                target = host_of(self_or_addr)
+            if target not in LOOPBACK:
+                attempts.append(str(target))
+                raise NonLoopbackDenied(f"non-loopback connection to {target!r} denied")
+            return original(self_or_addr, *args, **kwargs)
+
+        return wrapper
+
+    def resolver(original):
+        def wrapper(host, *args, **kwargs):
+            if host not in LOOPBACK and host is not None:
+                attempts.append(str(host))
+                raise NonLoopbackDenied(f"resolution of {host!r} denied")
+            return original(host, *args, **kwargs)
+
+        return wrapper
+
+    @contextlib.contextmanager
+    def manager():
+        saved = {
+            "connect": socket.socket.connect,
+            "connect_ex": socket.socket.connect_ex,
+            "create_connection": socket.create_connection,
+            "getaddrinfo": socket.getaddrinfo,
+        }
+        socket.socket.connect = guard(saved["connect"])
+        socket.socket.connect_ex = guard(saved["connect_ex"])
+        socket.create_connection = guard(saved["create_connection"])
+        socket.getaddrinfo = resolver(saved["getaddrinfo"])
+        try:
+            yield attempts
+        finally:
+            socket.socket.connect = saved["connect"]
+            socket.socket.connect_ex = saved["connect_ex"]
+            socket.create_connection = saved["create_connection"]
+            socket.getaddrinfo = saved["getaddrinfo"]
+
+    return manager()

@@ -6,6 +6,7 @@ and how far to trust it (docs/UI_SPEC.md §2). Every result shown is read from t
 
 import streamlit as st
 
+from atlas import hosted
 from atlas.ui import artifacts as A
 from atlas.ui import recorded as RR
 from atlas.ui import results as R
@@ -25,6 +26,14 @@ RECORDED_VIEW = "recorded"
 
 st.set_page_config(page_title="ATLAS", page_icon=":material/fact_check:", layout="wide")
 V.inject_css()
+
+# Hosted mode (T-12), selected only by ATLAS_HOSTED=1: recorded runs plus one live session per
+# visitor session; nothing below (local runs, Docker, approvals) is reached.
+if hosted.enabled():
+    from atlas.hosted import page as hosted_page
+
+    hosted_page.main()
+    st.stop()
 
 REG = registry()
 handle = REG.current()

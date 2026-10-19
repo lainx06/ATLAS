@@ -69,9 +69,12 @@ def finished_run(
     notes: tuple[str, ...] = (),
     compare: tuple | None = None,
     on_restart: Callable[[], None] | None = None,
+    original_title: str = "Original, trusted evaluator",
 ) -> None:
     """`compare` is (this fixture, the related fixture) for the descriptive protocol
-    comparison; `on_restart` is None where nothing may be started (a recorded run)."""
+    comparison; `on_restart` is None where nothing may be started (a recorded run).
+    `original_title` labels the original's headline (the hosted page names the recorded
+    trusted evaluation, SPEC §13)."""
     terminal = report.get("terminal_state") if report else None
     terminal_reason = report.get("terminal_reason") if report else None
     comp = (report or {}).get("comparison") or {}
@@ -158,9 +161,7 @@ def finished_run(
                     "No findings yet: the original was not evaluated in this run."
                 )
             else:
-                V.outcome_headline(
-                    code, "headline-original", "Original, trusted evaluator"
-                )
+                V.outcome_headline(code, "headline-original", original_title)
                 if original and not original.get("executed"):
                     st.warning(
                         f"The original was not executed. {comp.get('comparison_basis', '')}",
