@@ -161,6 +161,6 @@ Copied from `docs/SPEC.md` §15 and the acceptance records; not softened.
 
 ## License, data and acknowledgements
 
-- Code: MIT, see `LICENSE` (2026 Adnan Hossain). Dependencies and vendored skills: `THIRD_PARTY_NOTICES.md`.
+- Code: Apache-2.0, see LICENSE and NOTICE (2026 Adnan Hossain). Dependencies and vendored skills: `THIRD_PARTY_NOTICES.md`.
 - **UCI HAR** data: Reyes-Ortiz, J., Anguita, D., Ghio, A., Oneto, L., & Parra, X. (2013). Human Activity Recognition Using Smartphones [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C54S4K. The dataset page grants **CC BY 4.0**; the archive's own 2012 `README.txt` adds "Any commercial use is prohibited." No data is redistributed here: the demo shows precomputed results only. Changes and attribution: `benchmarks/real_sensor/ATTRIBUTION.md`; `demo/README.md`.
 - Built for the Nebius x NVIDIA Global AI Hackathon, Coding and Agentic Engineering track (PROJECT_BRIEF.md). Thanks to NVIDIA for the Nemotron open models and to Nebius for Token Factory. Agent skills by Matt Pocock and Addy Osmani (MIT) and Anthropic (Apache-2.0) are vendored as development tooling (`THIRD_PARTY_NOTICES.md`). Code review and verification by Codex; scientific review by Gemini (STATUS.md).

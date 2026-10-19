@@ -1,6 +1,6 @@
 # Third-party notices
 
-ATLAS itself is MIT-licensed (see `LICENSE`). It depends on the packages below and ships vendored agent skills and cites one dataset. This file is a first draft for the release check (T-13); it is not legal advice.
+ATLAS itself is Apache-2.0-licensed (see `LICENSE` and `NOTICE`). It depends on the packages below and ships vendored agent skills and cites one dataset. This file is a first draft for the release check (T-13); it is not legal advice.
 
 How the licenses were read: the runtime list is the 56 pinned lines of `requirements.txt` (`uv export --frozen --no-dev --no-hashes` of `uv.lock`; `docs/HOSTED_OPERATIONS.md` §9). Versions are those pins. Licenses come from each package's installed metadata (`importlib.metadata`, offline, from the Python 3.11 environment), in this order: the `License-Expression` field, else the `License` field, else the license classifier. Where a package gave none of them, the cell says `[TODO]`. A license text that the metadata only names, and that was not read in full, is not reproduced here.
 
