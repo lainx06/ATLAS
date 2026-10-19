@@ -1,8 +1,8 @@
 # ATLAS status
 
-WRITER: Claude Code (T-06 acceptance record, `main`)
+WRITER: Claude Code (T-12 offline build, branch `t12-hosted`)
 MODEL: Claude Opus 5.5 high
-CURRENT STEP: **T-06 accepted by the lead within its documented scope (2026-10-18)** at `199a173` on `main` (DECISIONS.md item 16; TASKS.md T-06 "ACCEPTANCE (lead, 2026-10-18)"). Combined review 1 (`runs/cr1/review.md`, COMBINED FAIL, three P2) is resolved: the re-verification (`runs/cr2/review.md`) closed F2 and F3; F1 is closed by the lead re-running the reviewer's probes after the end-of-line redaction fix (`199a173`). `fix-cr1` was merged by fast-forward (`bc2ef58..199a173`). Full suite with Docker required: **1398 passed, 1 skipped**. No Nebius call, no `.env` read, no live run. **Next: T-12 (hosted demo) planning; the HAR license decision is open (the user's).**
+CURRENT STEP: **T-12 built offline, awaiting review and deployment (2026-10-18)** on branch `t12-hosted` from `main` `f059554` (TASKS.md T-12 "RESULT"; DECISIONS.md "T-12 decisions (user, 2026-10-18)" and builder choices B1-B6; `docs/HOSTED_OPERATIONS.md`). Commits `625987b` (step 1, engine), `75d709c` (step 2, Neon budget store), `3d7a597` (step 3, publication check), `9cb5e47` and `40027b9` (step 4, page, secrets, requirements). Full suite with Docker required: **1485 passed, 1 skipped** (`runs/t12/full.log`); ruff clean. Publication check findings for the lead: host paths and the user name (46 each) in the bundled run records; 12 key-shaped false positives; nothing rewritten. No Nebius call, no `.env` read, no live call, no Neon connection, no deployment. **Next: the Codex T-12 security-and-spend review; then the user's deployment steps (secrets, stage B, stage C, kill switch on), each with its own approval.** Earlier: T-06 accepted by the lead within its documented scope at `199a173` (DECISIONS.md item 16).
 - **Live run 6 was the first complete live end-to-end success** (violation found -> model-proposed fix -> human approval -> isolated execution -> trusted re-evaluation NO_VIOLATION_FOUND). **Slice 4h** (`b900373`) adds finish-after-success guidance and a recorded-run viewer; it is on `main` at `bc2ef58`.
 - **Total estimated live spend, runs 1 to 6: about $0.058 ($0.0580317)** (0.0087333 + 0.0025863 + 0 + 0.0094995 + 0.0166986 + 0.0014256 + 0.0190884; provider-reported usage at listed prices, not billing).
 - **Key checks** (the user's literal-key search): **0 for all runs** (runs 1 to 6).
@@ -69,7 +69,7 @@ CURRENT STEP: **T-06 accepted by the lead within its documented scope (2026-10-1
   - scope and priority are delegated to the lead; spending, anything public and the submission stay with the user;
   - T-08 cut; T-10 reduced to at most 3 cases; model routing cut; Tavily out of scope;
   - Codex is limited to five gates.
-- **OPEN, a user decision before T-12: the HAR license terms.** The UCI page grants CC BY 4.0; the archive's 2012 README prohibits commercial use. Lead recommendation: no data redistribution, precomputed HAR results in the hosted demo, both terms cited in the README (DECISIONS.md item 8).
+- **HAR license terms: decided by the user (2026-10-18).** Precomputed HAR results only, no dataset download or redistribution, CC BY 4.0 and the archive's non-commercial note cited (DECISIONS.md "T-12 decisions (user, 2026-10-18)" item 1; `demo/README.md`; the root README in T-13 must carry the same).
 - **Live values stay as decided** (DECISIONS.md "T-06 slice 4 live-run decisions (lead)" and the Gate 3 dispositions):
   - model `nvidia/nemotron-3-super-120b-a12b`;
   - ceilings 12,000 input / 8,000 output;
@@ -153,7 +153,7 @@ CURRENT STEP: **T-06 accepted by the lead within its documented scope (2026-10-1
   - adds a beginner section, "Time, windows and honest metrics": label availability, half-open windows, local versus global clocks, documented versus verified containment, incomplete aggregates, and floating-point boundaries.
 
   The untracked copy at the repository root is the user's and is left alone.
-CHECKPOINT: `main` at **`199a173`**, "Redact host paths to end of line, keeping traceback frame tails", a fast-forward of `fix-cr1`; the T-06 acceptance record follows as a docs-only commit. The builder verified `199a173`: 1398 passed, 1 skipped with Docker required (`runs/fixcr1c/full.log`); ruff clean; 0 tracked `w/crlf`.
+CHECKPOINT: branch `t12-hosted` at **`40027b9`** plus the T-12 docs commit (TASKS, DECISIONS, STATUS, SPEC §13, learning guide); `main` unchanged at `f059554`. The builder verified `40027b9`: 1485 passed, 1 skipped with Docker required (`runs/t12/full.log`); ruff check and format clean. Earlier checkpoint: `main` at `199a173` (T-06 acceptance), 1398 passed, 1 skipped.
 - The last independently verified code is still **`f327565`** (Gate 3 PASS, `runs/g3y/review.md`).
 - Gate 4 reviewed live run 1's evidence at `d870275`: FAIL.
 - Slice 4c, T-07 and T-09 await the combined Codex review.

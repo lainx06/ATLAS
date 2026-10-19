@@ -45,7 +45,8 @@ ATLAS cannot prove that a model is universally valid, that its data represent re
 | Spending controls, prompt budget, live entry point (slice 4) | **Controls verified by Codex (Gate 1 PASS at `8c79e5a`). The lead's values are decided (Gate 2). The live entry point and pre-run model check are implemented and self-tested offline, awaiting Codex's Gate 3 review. No pre-run call or live run has been made or authorized.** A live run needs `--live`, `ATLAS_MODEL_MODE=live` and the exact authorized amount. It refuses before touching anything otherwise, and aborts if the provider's listing differs from the configuration | Mocked-transport tests only. The owner also ran the NON-LIVE fixture CLI demonstration once on s01 (REPORT; four FAILs became PASS) |
 | T-02 time, window and metric checks | Implemented at `487664e`. Codex verified the repairs of its first review's four defects (`0cf955d`) and of a split-evidence decoding defect (`bb9bac8`). Codex then verified the provenance and run-index decoding repairs (pass 3), and the structural checks of that evidence (passes 4 and 5). **Accepted by the lead at `75a98f4`** within its documented trusted-fixture scope. The limitations stand | The builder's tests pass on trusted synthetic fixtures. Not independently verified yet |
 | T-03 hosting and isolated-worker probe | **Accepted by the lead at `51d3dd8`** within its research-and-feasibility scope (16 October 2026). It chose limited hosted mode for V1 (curated examples and trusted evaluation functions; generated diffs are shown as "not executed here"), with full Docker execution in the local build. It also selected Neon Postgres as the future budget store | A recommendation with dated sources, and small owner-run probes: a minimal Streamlit build, a secret canary, one sleep/wake cycle, and the budget-store scenarios on Neon. It does **not** establish production readiness, guaranteed availability, promotional-credit eligibility or isolation on any remote worker. The budget caps are planned, not built, so they are not a spending ceiling |
-| Memory comparison, real-data study, UI and hosted demo | Planned. The hosted demo must still test Nebius connectivity and the full locked build on the host before it can be called ready (T-12) | Do not describe these as shipped |
+| Hosted demo (T-12) | **Built offline on branch `t12-hosted` (18 October 2026); unreviewed and not deployed.** With `ATLAS_HOSTED=1` the app shows the bundled recorded runs (hash-verified) and offers one live Nemotron session per visitor. Proposals are checked by `validate_diff` and labelled "not executed here". The original's findings come from live run 6's recorded trusted evaluation. A Neon Postgres budget store enforces every cap before each request (section 6, "A budget that a database enforces") | Offline tests only: a mocked model provider and a disposable local PostgreSQL. No live call, no Neon run and no deployment. Before it can be called ready: Codex's review, then Nebius connectivity and the full locked build tested on the host |
+| Memory comparison | Planned | Do not describe it as shipped |
 
 The initial runtime model is `nvidia/nemotron-3-super-120b-a12b` served through Nebius Token Factory. Claude and Codex help develop ATLAS; they are distinct from the NVIDIA model that ATLAS will call at runtime.
 
@@ -296,6 +297,22 @@ For the recorded rates, a response with 47 prompt tokens and 52 completion token
 `47 × $0.30 / 1,000,000 + 52 × $0.90 / 1,000,000 = $0.0000609`
 
 The response reported reasoning tokens inside completion tokens; adding them again would double-count them. These rates are a historical checkpoint, not a permanent price promise. Token caps limit a request; application call budgets limit an execution path; neither guarantees an account-wide spending cap.
+
+### A budget that a database enforces (T-12, built; not reviewed)
+
+A public demo needs a spending limit that holds even when many visitors press the button at once, so the hosted build keeps its counters in Postgres, not in Python memory (`src/atlas/hosted/budget_store.py`). Each cap is a row with `cap_usd`, `reserved_usd` and `spent_usd`. Before a request is sent, one transaction reserves its worst-case cost (the $0.0108 ceiling) on every row it uses:
+
+```sql
+UPDATE atlas_cap SET reserved_usd = reserved_usd + 0.0108
+WHERE cap_key = 'public' AND reserved_usd + spent_usd + 0.0108 <= cap_usd;
+-- 0 rows updated means "no budget left": the whole transaction is rolled back
+```
+
+- **Why not "read, then write"?** Two visitors could both read "enough left" and both spend. A single conditional `UPDATE` makes the check and the write one step. The database re-checks the condition when a waiting transaction gets the row.
+- **Why sorted keys?** Two transactions that lock the same rows in opposite orders can deadlock. Always locking in sorted order prevents that.
+- **Why keep a dispatched request "held"?** After a request is sent, its cost is unknown until usage comes back. A timeout must not give the money back, so only exact known usage (`settle`) or an operator's reconciliation resolves it.
+
+C++ connection: it is the same idea as acquiring two mutexes in a fixed global order, and as a compare-and-swap that only commits if the value is still what you checked.
 
 ## 7. Why Docker matters—and what it does not prove
 

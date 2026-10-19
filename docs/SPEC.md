@@ -400,8 +400,27 @@ Keys never reach the browser, prompts, fixtures, Git or candidate containers. Th
 
 **Decided (2026-10-16, DECISIONS.md "T-03 hosting decisions"):**
 - V1 is limited hosted plus full local Docker execution; full hosted is a stretch goal.
-- The budget store is Neon Postgres. The server-side controls above are planned, not yet built.
+- The budget store is Neon Postgres.
 - The hosted app is not "ready" until Nebius connectivity from the host and the full locked-environment build on the host are tested (T-12).
+
+**Status (2026-10-18): built, awaiting review and deployment** (T-12, branch `t12-hosted`; DECISIONS.md "T-12 decisions (user, 2026-10-18)"; operations: `docs/HOSTED_OPERATIONS.md`).
+
+- **Selection.** Hosted mode is selected only by `ATLAS_HOSTED=1`; the local build is unchanged.
+- **Recorded runs.** The bundled runs (`demo/recorded/`, byte-exact copies) are shown in the hash-verifying viewer, disclosed as replay. This is not a fallback for live sessions.
+- **One live session per visitor session** (`run_agent(..., hosted=True)`):
+  - the agent loop is unchanged;
+  - the original is not executed: its findings come from a bundled recorded run, re-verified by hash and bound to the project's snapshot, labelled "computed by ATLAS's trusted evaluation functions (recorded <date>)";
+  - the executor is `NotExecutedHere`: each proposal that passes `validate_diff` is recorded "not executed here", no approval is asked, and nothing presents the diff as validated beyond "passes ATLAS validation".
+- **Server-side controls (built; tested only on a local PostgreSQL container):**
+  - pools: public $3.00 (daily $1.00) and judge $5.00, which public traffic cannot reach;
+  - per session: $0.0648 and 6 requests;
+  - each request is reserved before it is sent, in one transaction in sorted lock order;
+  - known usage is settled exactly; unknown usage is held; release only if never sent; no timeout release;
+  - the kill switch `HOSTED_LIVE_ENABLED` must be exactly "true", and is read again before each request;
+  - any store error sends nothing;
+  - exhaustion shows "Live demo budget reached for today; recorded runs remain available";
+  - an events table holds time, route, event code and amount only.
+- **Not yet done** (each needs its own approval): stage B (`GET /models` from the deployed host), stage C (the full locked build on the host), the Codex security-and-spend review, and deployment.
 
 ## 14 Step 8 dispositions and remaining gated questions
 

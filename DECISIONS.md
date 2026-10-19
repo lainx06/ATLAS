@@ -317,7 +317,7 @@ Recorded after live run 1 (`runs/live1/agent-s01_faulty-3f18e12af383/`), Codex's
      - clean control (subject-grouped folds): **0.875**.
    - The reported-metric check correctly PASSes, because ATLAS recomputes the metric from the flawed project's own predictions.
    - Source: `docs/T09_CONTAINMENT.md` §6.
-8. **OPEN, a user decision needed before T-12: the HAR license terms.**
+8. **The HAR license terms** (resolved by the user on 2026-10-18: "T-12 decisions (user, 2026-10-18)" item 1 below).
    - The UCI dataset page grants CC BY 4.0.
    - The archive's 2012 `README.txt` adds "Any commercial use is prohibited."
    - Lead recommendation:
@@ -334,3 +334,46 @@ Recorded after live run 1 (`runs/live1/agent-s01_faulty-3f18e12af383/`), Codex's
 16. **T-06 accepted by the lead within documented scope (2026-10-18).** At `199a173` on `main` (`fix-cr1` merged by fast-forward), after the end-of-line redaction rule (a host path redacted from its start to the end of its line; a traceback frame keeps its tail). Basis, scope and limitations: TASKS.md T-06 "ACCEPTANCE (lead, 2026-10-18)".
 
 **Not authorized by this record:** live run 2 or any other spending, and anything public.
+
+## T-12 decisions (user, 2026-10-18)
+
+Recorded at the user's direction for T-12 (SPEC §13). They resolve "Lead decisions, 2026-10-17" item 8.
+
+1. **HAR data.**
+   - The hosted demo shows precomputed HAR results only.
+   - No dataset download and no redistribution.
+   - The README cites CC BY 4.0 and the archive README's non-commercial note.
+2. **Hosted mode (SPEC §13, limited hosted).**
+   - Recorded runs are shown in the hash-verifying viewer, plus **one** live Nemotron session per visitor session.
+   - The model inspects and proposes. Every proposal passes `validate_diff`, and nothing executes on the host ("not executed here").
+   - The original's findings shown in a hosted session come from a recorded, hash-verified trusted evaluation, labelled as such.
+3. **Spending (authorized by the user).**
+   - Total **$8.00**: a public pool of **$3.00** (daily cap **$1.00**) and a judge pool of **$5.00** behind a private access code.
+   - Per session: the decided estimate cap **$0.0648** and at most **6 requests**.
+   - A kill switch secret, `HOSTED_LIVE_ENABLED`: false when absent.
+   - All caps are enforced server-side in Neon Postgres and fail closed.
+4. **Approved for later (not in T-12's offline build):**
+   - one `GET /models` from the deployed host (stage B);
+   - the full locked build on the host (stage C).
+
+**Builder's implementation choices** (T-12 build, for the Codex security-and-spend review and the lead; not user decisions):
+
+- **B1. The HAR feature table is left out of the bundle** (`table.parquet`, two copies per HAR run), per item 1.
+  - Each left-out file is listed with its size and SHA-256 in `demo/recorded/BUNDLE.json`.
+  - The viewer does not verify the table, so the copies stay intact.
+  - Kept as precomputed results: row and subject identifiers in split and check records, predicted classes, check results and per-fold class counts. No feature values and no per-row labels.
+- **B2. Each hosted live session runs the decided pre-run check** (one free authenticated `GET /models`) before its first completion, as the CLI live path does (2026-10-16, decision 4). If it does not pass, no completion is sent. This is a `GET /models` from the host in every session; whether to keep it is the lead's call.
+- **B3. Reservation ordering.**
+  - The store reserves before the in-memory attempt is counted, so a refusal or store failure is not an attempt and nothing is sent.
+  - `dispatched` is committed before sending.
+  - A request the client itself refused before sending (dispatched=False) is settled at $0, mirroring the in-memory ledger.
+  - Known usage above the reservation is charged exactly (a cap can be overrun by that excess; later requests are then refused).
+  - A store failure after a request was sent (settle or hold) is recorded in the run log, and the amount stays held at the ceiling. The next reservation fails closed if the store is still down.
+- **B4. The judge code allows one attempt per visitor session** (one live session each). Failed attempts are events with time only. A wrong code falls back to the public route.
+- **B5. Dependencies and configuration.**
+  - `psycopg[binary]` 3.3.6 was added (`uv.lock` resolved from PyPI).
+  - `requirements.txt` is `uv export --frozen --no-dev --no-hashes` (`-e .` rules out hash pinning).
+  - Hosted session runs go to a temporary directory on the host (ephemeral; `ATLAS_HOSTED_RUNS_DIR` overrides it).
+- **B6. The bundle is byte-exact and is not edited.** `scripts/check_recorded.py` reports host paths and the local user name in the recorded run records (46 each). Its key-shaped findings (12) are only provenance `token =` variables in the copied ATLAS sources. The lead decides whether to publish as is or to re-record.
+
+**Not authorized by this record:** any live call, deployment, stage B or C run, or cap change beyond the values above.

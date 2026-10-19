@@ -21,7 +21,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 | T-09 | 11 | **Built** (`5e4c22f`…`f5d76c9`, on `main` 2026-10-17): `har_flawed` VIOLATION_FOUND, `har_clean` NO_VIOLATION_FOUND, both in Docker; in the UI with typed approval (2 scenarios passed). License terms OPEN (user decision before T-12). Awaiting the combined Codex review | Real-data example, clean control, robustness reporting |
 | T-10 | 11 | **REDUCED** (lead, 2026-10-17): at most 3 unfamiliar cases | Held-out cases (Codex, outside repo) and predeclared campaign |
 | T-11 | 11 | Proposed | Three-way comparison pilot |
-| T-12 | 11 | Proposed | Limited hosted demo and judge access |
+| T-12 | 11 | **Built offline** (`625987b`…`40027b9`, branch `t12-hosted`, 2026-10-18): hosted mode in the engine, Neon budget store, recorded bundle, hosted page; full suite 1485 passed, 1 skipped. Unreviewed, not deployed. Next: Codex security-and-spend review, then the user's deployment steps | Limited hosted demo and judge access |
 | T-13 | 13–14 | Proposed | Release package and submission evidence |
 
 ## Implementation tasks
@@ -2102,6 +2102,58 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **EVIDENCE:** URL, test output, cost log.
 - **HANDOFF:** lead approval before any paid usage.
 - **RECOVERY:** the tested local build stays the fallback.
+- **RESULT (2026-10-18): built offline on branch `t12-hosted` (from `main` `f059554`); unreviewed, not deployed.** User decisions: DECISIONS.md "T-12 decisions (user, 2026-10-18)"; builder choices B1-B6 there. Operations: `docs/HOSTED_OPERATIONS.md`.
+  - **Commits:**
+    - `625987b` step 1, hosted mode in the engine (and the recorded bundle it depends on);
+    - `75d709c` step 2, the Neon budget store and the hosted live session;
+    - `3d7a597` step 3, the publication check;
+    - `9cb5e47` step 4, the hosted page, server-side secrets and Community Cloud requirements;
+    - `40027b9` step 4 follow-up (doc formatting; a test no longer writes a stray file).
+  - **Step 1, engine** (`run_agent(..., hosted=True)`). The loop, exact reply validation, corrections, the 6-request budget, the in-memory reservation, `validate_diff` and the request body are unchanged.
+    - The original is not executed. `hosted/bundle.recorded_original` re-verifies the bundled live run 6 by hash (49 items) and checks that its recorded code and snapshot hashes equal this project's. It then copies `original/` into the session's run and re-checks the copy. Any mismatch ends the run ERROR before any request.
+    - `NotExecutedHere`: a validated proposal is recorded `not_executed_here` ("passes ATLAS validation"); no approval is asked and nothing runs.
+    - The report carries SPEC §13's labels: banner, a `hosted` section, `original_source`, comparison basis and limitations.
+    - Hosted arguments are refused outside hosted mode, so the local paths are unchanged.
+  - **Step 2, budget store** (`hosted/budget_store.py`, from the stage D design, exact `Decimal`/`numeric`).
+    - Caps: public $3.00, daily $1.00 per UTC date, judge $5.00, and per session $0.0648 and 6 requests.
+    - Reserve in one transaction in sorted lock order; `dispatched` before sending; exact settle, idempotent per request ID; hold for unknown usage; release only if never sent; no timeout release; prune only resolved rows.
+    - Events: time, route, event code, amount.
+    - `hosted/session.py`: kill switch exactly "true", configuration, store, route (constant-time judge code; a wrong code falls back to public and is logged without text), caps, pre-run check; the kill switch is read again before each request.
+    - Any store error sends nothing.
+  - **Step 3, bundle** (`demo/recorded/`). Byte-exact copies of live run 6 and the HAR audit runs `agent-har_flawed-1e2267f662c0` and `agent-har_clean-ac63eaecd7a8`, without the HAR feature table (listed in `BUNDLE.json`).
+    - `-text` in `.gitattributes`, excluded from ruff. The viewer verifies all three (49, 21 and 21 items).
+    - Live run 6's `preflight.json` keeps its recorded CRLF.
+  - **Publication check** (`scripts/check_recorded.py`; reported, nothing rewritten; the lead decides; `runs/t12/check_recorded.txt` and `.json`, git-ignored):
+    - copy fidelity: 0 problems; viewer: all intact;
+    - `host_path` 46 and `username` 46: the same `C:\Users\<name>\...` paths, in `agent_report.json` (`agent_log.path`, run directories), `agent_log.jsonl` (`run_dir`) and the `docker_cli` path in each `execution.json`, `exec/execution.json` and `report.json`;
+    - `key_shaped` 12: all provenance `token =` assignments in the copied ATLAS sources (`exec/stage/code/atlas/adapter.py` lines 78 and 108, `recorder.py` line 129), false positives;
+    - no e-mail, no `.env` reference, no secret marker.
+  - **Step 4, app and secrets.**
+    - `app.py` runs `hosted/page.py` only with `ATLAS_HOSTED=1`.
+    - Recorded runs are the default view, disclosed as replay, with the HAR citation.
+    - One live session per visitor session runs in a background thread. The judge code is entered in a form that clears on submit.
+    - `hosted/secrets.py` reads the four secrets from `st.secrets` or the environment only.
+    - `requirements.txt` = `uv export --frozen --no-dev --no-hashes` of `uv.lock` (56 pinned packages plus `-e .`); stage C stays deferred to deployment.
+    - `demo/README.md` cites CC BY 4.0 and the archive's non-commercial note. The root README (T-13) must carry the same.
+  - **Tests (offline; mocked Token Factory; disposable `postgres:17-alpine`, digest `b0f9560a…552b24`):** 87 new tests in `tests/hosted/`:
+    - engine: happy path; request body; tampered or mismatched recorded original; store refusal, failure and ordering; unknown usage; timeouts; argument checks; local labels unchanged;
+    - store: the race for the last dollars (one admitted, 10 rounds); refusal without partial change; daily reset by date; session caps; judge pool survives public exhaustion; judge route; idempotent settle; held dispatched usage; prune;
+    - session: kill switch (9 values); missing configuration; unreachable store; judge route; exhaustion; kill switch mid-session; failed pre-run check;
+    - bundle: viewer intact; one-byte tamper shows "evidence changed"; table excluded; check script;
+    - page (AppTest): kill switch absent or wrong (no request, recorded runs render); live labels; judge route;
+    - browser (Playwright): no secret marker, or any 10 characters of one, in the page source, HTTP responses, WebSocket frames, server log, run files, budget store or bundle.
+  - **Controls:** three deliberate store defects were each caught (no cap condition: 3 failed; releasing a dispatched row; non-idempotent settle). A deliberate partial-key leak on the page was caught by the browser test, after the check was strengthened from whole markers to 10-character fragments.
+  - **Verification:**
+    - `uv run ruff check .` and `uv run ruff format --check .`: clean;
+    - `$env:ATLAS_REQUIRE_DOCKER='1'; uv run --locked pytest tests -q -p no:cacheprovider --basetemp=runs/t12/t -rs` → **1485 passed, 1 skipped in 896.28 s**, exit 0; the skip is the existing `tests/unit/test_candidates.py:116` (symlinks not permitted on this host) (`runs/t12/full.log`);
+    - LF line endings, except the byte-exact bundle.
+  - **No Nebius call, no `.env` read, no live call, no deployment, no Neon connection.** PyPI was used to lock psycopg and Docker Hub to pull `postgres:17-alpine`.
+  - **Not established:**
+    - behavior on Neon, on Community Cloud or from the host;
+    - stage B and stage C;
+    - real-model behavior in hosted mode;
+    - the Codex review.
+  - **Next:** the Codex T-12 security-and-spend review (the third of the five Codex reviews), then the user's deployment steps (secrets; stage B; stage C; the kill switch on).
 
 ### T-13 Release package (Start Here Steps 13–14)
 - **OWNER:** Claude Code (writer); Codex checks release blockers; Gemini critiques the video.
