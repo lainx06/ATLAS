@@ -130,7 +130,7 @@ Command: `uv run --locked python -m atlas.cli evaluate --suite comparison [--fix
 
 ## Results (live, 2026-10-19)
 
-Run folder `runs/t11/20261019T203928975437Z` (git-ignored), seed 2937182895; `results.md`, `scores.json` and `suite.json` copied unchanged into `evaluation/results/t11-live-20261019/` (SHA-256 in its README). The tables below are as in `results.md`.
+Run folder `runs/t11/20261019T203928975437Z` (git-ignored), seed 2937182895; `results.md`, `scores.json` and `suite.json` copied unchanged into `evaluation/results/t11-live-20261019/` (SHA-256 in its README). The tables below reproduce the Totals and Leg (b) tables from results.md (see results.md for the Leg (a) and Leg (c) tables). Leg (a) evaluated 4 of 4 cases (3 from recorded runs, 1 Docker re-run) and left 1 expected ID NOT_ASSESSED (counted as a coverage gap, not an FN); Leg (b) scheduled 12 trials (9 valid, 3 unscored INVALID_REPLY).
 
 ### Totals
 
@@ -163,7 +163,11 @@ Run folder `runs/t11/20261019T203928975437Z` (git-ignored), seed 2937182895; `re
 ### Findings (descriptive)
 
 - On these four development cases, Nemotron alone, reading the same files with no executable checks, named 19 of the 23 predeclared violations across its 9 valid trials (recall 0.83), with 2 false positives (fit.coverage_complete, twice, on har_flawed) and no false violation on either clean control (0 in 4 valid clean trials).
-- ATLAS's deterministic audit found all 8 assessable predeclared violations with no false positive and no false violation on the clean controls. It left split.no_window_overlap NOT_ASSESSED on har_flawed (missing window metadata), a coverage gap; Nemotron alone did not name it in any of its 3 valid har_flawed trials.
-- Nemotron alone varied between repetitions (s01_faulty: 4 of 4, then 3 of 4) and 3 of its 12 replies were invalid (rationale over 600 characters) and unscored; ATLAS's results are deterministic and rest on executed evidence.
-- har_flawed reports balanced accuracy 0.9064, which ATLAS's recomputation reproduces (0.9064); the clean control recomputes 0.8752. The gap is a descriptive protocol comparison.
-- These are development cases on which ATLAS's checks were built: not held-out, small in number, and not evidence of generalization. The comparison does not test repair, which needs execution (live run 6 is the repair evidence).
+- ATLAS's deterministic audit found all 8 assessable predeclared violations with no false positive and no false violation on the clean controls. It left split.no_window_overlap NOT_ASSESSED on har_flawed (missing window metadata), which the scoring rules exclude from leg (a)'s FN (8/8 = 1.0000 recall on assessable violations, or 8/9 = 0.8889 against all 9 expected violations), whereas leg (b) counts it as 3 of its 4 FNs (19/23 = 0.8261 overall, or 19/20 = 0.9500 on the 8 ATLAS-assessable violations). Nemotron alone did not name it in any of its 3 valid har_flawed trials.
+- Nemotron alone varied between repetitions (s01_faulty: 4 of 4, then 3 of 4) and 3 of its 12 replies (including 2 of the 6 clean-control trials) were invalid (rationale_too_long, over 600 characters) and excluded from scoring, which could change leg (b)'s rates; ATLAS's checks are deterministic by design (evaluated once per case here: 3 recorded runs, 1 re-run) and rest on executed evidence.
+- har_flawed reports balanced accuracy 0.9064, which ATLAS reproduces for the mean over folds (0.9064; pooled 0.9063) against har_clean's 0.8752 (pooled 0.8746); for s01_faulty (no metric reported), ATLAS recomputes 0.6824 (pooled 0.6812) against s02_clean's 0.6688 (pooled 0.6687). The gaps are descriptive protocol comparisons.
+- These are development cases on which ATLAS's checks were built: not held-out, small in number, and not evidence of generalization. The comparison evaluates violation detection only and does not test repair; repair evidence is reported separately (TASKS.md T-06, live run 6).
+- Two asymmetries the reader needs: the files given to leg (b) describe the project's deliberate flaws in plain text (s01_faulty: `benchmarks/t01/s01_faulty/evaluate.py:1`, and the comment at line 12; har_flawed: `benchmarks/real_sensor/har_flawed/evaluate.py:4`, and `benchmarks/real_sensor/har_flawed/atlas_manifest.json:586`), which leg (b) can read and which leg (a)'s executed checks do not use, so leg (b)'s detection on those cases may be helped by that text; and leg (a) executes the evaluation against the data in Docker, whereas leg (b) reads only the manifest and source, without the data table.
+- Amendment 1 (leg (b) input ceiling 40,000, made before any live trial) prevented the two HAR cases from being refused before dispatch; leg (b) receives the files in one prompt, whereas the agent reads them through bounded tools.
+
+Claims review: Gemini Argon (high effort), 2026-10-19, SUPPORTED WITH CHANGES; changes applied.
