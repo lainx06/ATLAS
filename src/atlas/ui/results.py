@@ -82,6 +82,7 @@ def recorded_page(
             hud=hud,
             played=played,
             preamble=lambda: _recorded_preamble(run, checks, hud is not None),
+            briefing=briefing(run.path, report, checks, run.label),
         )
     played_runs.add(run.label)
 
@@ -112,9 +113,27 @@ def finished_verified(
     else:
         preamble = lambda: V.unverified(checks)
     finished_run(
-        run_dir, report, mode, hud=hud, played=played, preamble=preamble, **kwargs
+        run_dir,
+        report,
+        mode,
+        hud=hud,
+        played=played,
+        preamble=preamble,
+        briefing=briefing(run_dir, report if mode == AGENT else None, checks, run_id)
+        if ok
+        else None,
+        **kwargs,
     )
     played_runs.add(run_id)
+
+
+def briefing(
+    run_dir: Path, report: dict | None, checks: list, run_id: str
+) -> str | None:
+    """The deterministic briefing's markup (`atlas.ui.hud.briefing_lines`: the run's verified
+    files and the policy's frozen definitions only); None unless the run is intact."""
+    lines = H.briefing_lines(run_dir, report, checks, H.load_definitions())
+    return H.briefing(lines, H.Ids(H.run_hash(run_id))) if lines else None
 
 
 def _ring_phrase(bundled: bool) -> str:
@@ -164,6 +183,7 @@ def finished_run(
     hud: H.Hud | None = None,
     played: bool = True,
     preamble: Callable[[], None] | None = None,
+    briefing: str | None = None,
 ) -> None:
     """`compare` is (this fixture, the related fixture) for the descriptive protocol
     comparison; `on_restart` is None where nothing may be started (a recorded run).
@@ -171,6 +191,8 @@ def finished_run(
     trusted evaluation, SPEC §13). `hud` (a recorded run's verified HUD values) draws the hero
     and the evidence block first, with first-load motion unless `played`; `preamble` draws
     what sits between them and the cards (the recorded run's integrity record and claim).
+    `briefing` (the deterministic briefing's markup, built only for an intact run) comes
+    before everything else.
 
     All or nothing: a rendering failure clears every card drawn so far and shows only the
     fixed RENDER_FAILED error (no exception text). Streamlit's stop and rerun signals are not
@@ -190,6 +212,7 @@ def finished_run(
                 hud=hud,
                 played=played,
                 preamble=preamble,
+                briefing=briefing,
             )
     except Exception:  # noqa: BLE001 - never a partial result; the record is unchanged
         slot.empty()
@@ -210,7 +233,11 @@ def _cards(
     hud: H.Hud | None,
     played: bool,
     preamble: Callable[[], None] | None,
+    briefing: str | None,
 ) -> None:
+    if briefing is not None:
+        with st.container(key="hud-briefing"):
+            st.markdown(briefing, unsafe_allow_html=True)
     if hud is not None:
         with st.container(key="hud-hero"):
             st.markdown(H.hero(hud, played=played), unsafe_allow_html=True)

@@ -110,16 +110,16 @@ def test_the_hero_fills_the_first_viewport_with_the_runs_own_values(app, page, s
         read(run / "candidates/c1/outcome.json"),
     )
 
-    # Ring, both reticles, both leak maps and both flows sit inside the first viewport.
-    for selector, count in (
-        (".hud-ring svg", 1),
-        (".hud-ret", 2),
-        (".hud-leak", 2),
-        (".hud-flow", 2),
-    ):
+    # The briefing, the ring and both reticles sit inside the first viewport (phase 2: the
+    # briefing leads the run, so the leak maps and flows follow directly below the hero).
+    for selector, count in ((".hud-brief", 1), (".hud-ring svg", 1), (".hud-ret", 2)):
         boxes = in_viewport(page, selector)
         assert len(boxes) == count, selector
         assert all(0 <= top and bottom <= h for top, bottom in boxes), (selector, boxes)
+    hero_bottom = max(b for _, b in in_viewport(page, ".hud-ret"))
+    for selector in (".hud-leak", ".hud-flow"):
+        boxes = in_viewport(page, selector)
+        assert len(boxes) == 2 and all(top >= hero_bottom for top, _ in boxes), selector
 
     hero = page.locator(".st-key-hud-hero").inner_text()
     assert "49/49" in hero and "INTACT" in hero

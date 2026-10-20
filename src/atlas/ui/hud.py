@@ -14,12 +14,14 @@ state is its final state; animations only start from a blank or unlit frame.
 
 import hashlib
 import math
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from atlas.ui import artifacts as A
 from atlas.ui import recorded as R
+from atlas.ui.catalogue import ROOT
 
 # -- tokens (docs/UI_DESIGN_HUD.md §2.1; .streamlit/config.toml uses the same values) ------------
 BG = "#0A0F14"
@@ -1223,6 +1225,188 @@ def state_panel(tone: str, code: str, reason: str, action: str | None) -> str:
 MODEL_BADGE_MARKDOWN = f":orange-badge[{MODEL_BADGE}]"
 
 
+# -- 9. mission briefing (deterministic, text only) -----------------------------------------------
+# The briefing is built only from a run's verified files and the policy's frozen definitions
+# (evaluation/assertion_definitions.json). It never reads model text, a rationale, a proposal's
+# text, a diff, a complete file or a reply: from the report it takes only the proposals'
+# outcome codes, which the engine sets.
+DEFINITIONS = ROOT / "evaluation" / "assertion_definitions.json"
+BRIEF_FAILS = 4  # failing assertions listed by name, then "and <k> more"
+PROPOSALS_NOT_EXECUTED = (
+    "Proposals were checked by ATLAS validation and not executed here."
+)
+_SENTENCE_END = re.compile(r"\.\s+(?=[A-Z*`(])")
+_MARKUP = re.compile(r"[*`]")
+
+
+def load_definitions(path: Path = DEFINITIONS) -> dict[str, str]:
+    """The policy's frozen definitions, by assertion ID; {} when the file is unreadable."""
+    data = A.read_json(path)
+    defs = (data or {}).get("definitions") if isinstance(data, dict) else None
+    return {k: v for k, v in (defs or {}).items() if isinstance(v, str)}
+
+
+def plain_definition(text: str) -> str:
+    """A definition's first sentence, without its Markdown emphasis and code marks."""
+    first = _SENTENCE_END.split(text.strip(), maxsplit=1)[0].strip()
+    first = _MARKUP.sub("", first)
+    return first if first.endswith(".") else first + "."
+
+
+@dataclass(frozen=True)
+class BriefLine:
+    text: str
+    source: str
+    kind: str = "line"  # "line", "fail" (a failing assertion) or "caveat"
+
+
+def briefing_lines(
+    run_dir: Path,
+    report: dict | None,
+    checks: list[R.Check],
+    definitions: dict[str, str],
+) -> list[BriefLine] | None:
+    """The briefing of a finished or recorded run, in order; each line only when its data is
+    recorded. None unless the run is intact (changed evidence gets no briefing). `report` is
+    None for a deterministic audit run (its outcome.json is at the run's root)."""
+    if not checks or not R.intact(checks):
+        return None
+    run_dir = Path(run_dir)
+    verified = verified_paths(checks)
+    base = "original/" if report is not None else ""
+    lines: list[BriefLine] = []
+    hashes = [
+        c for c in checks if ":" not in c.item
+    ]  # report-key checks are not hashes
+    if hashes:
+        lines.append(
+            BriefLine(
+                f"Evidence intact: {len(hashes)} of {len(hashes)} recorded hashes verified "
+                "now.",
+                "recomputed now from the run's files (each recorded sha256)",
+            )
+        )
+    outcome = _json(run_dir, f"{base}outcome.json", verified)
+    if isinstance(outcome, dict) and outcome.get("outcome"):
+        statuses = _statuses(outcome)
+        counts = {s: sum(1 for _, x in statuses if x == s) for s in A.STATUS_ORDER}
+        lines.append(
+            BriefLine(
+                f"Original outcome: {outcome['outcome']}. Required checks: "
+                f"{counts['FAIL']} FAIL, {counts['NOT_ASSESSED']} NOT_ASSESSED, "
+                f"{counts['ERROR']} ERROR (of {len(statuses)}).",
+                f"{base}outcome.json · outcome, assertions[].status",
+            )
+        )
+        failing = [aid for aid, status in statuses if status == "FAIL"]
+        for aid in failing[:BRIEF_FAILS]:
+            words = definitions.get(aid)
+            lines.append(
+                BriefLine(
+                    f"FAIL {aid}: "
+                    + (
+                        plain_definition(words)
+                        if words
+                        else f"definition {NOT_RECORDED}."
+                    ),
+                    "evaluation/assertion_definitions.json · definitions."
+                    + aid
+                    + " (first sentence)",
+                    "fail",
+                )
+            )
+        if len(failing) > BRIEF_FAILS:
+            lines.append(
+                BriefLine(
+                    f"and {len(failing) - BRIEF_FAILS} more",
+                    f"{base}outcome.json · assertions[].status",
+                    "fail",
+                )
+            )
+    cand_outcome = None
+    if report is not None:
+        chosen = executed_candidate(run_dir, report, verified)
+        if chosen is not None:
+            sub = chosen[0]
+            cand_outcome = _json(run_dir, f"{sub}/outcome.json", verified) or {}
+            before = dict(_statuses(outcome or {}))
+            fixed = sum(
+                1
+                for aid, status in _statuses(cand_outcome)
+                if status == "PASS" and before.get(aid) == "FAIL"
+            )
+            lines.append(
+                BriefLine(
+                    f"Revision {sub}, executed and verified: {cand_outcome['outcome']}; "
+                    f"{fixed} FAIL → PASS.",
+                    f"{sub}/execution.json · status; {sub}/outcome.json · outcome, "
+                    "assertions[].status",
+                )
+            )
+        if any(
+            isinstance(p, dict) and p.get("outcome") == "not_executed_here"
+            for p in report.get("proposals") or []
+        ):
+            lines.append(
+                BriefLine(
+                    PROPOSALS_NOT_EXECUTED,
+                    "agent_report.json · proposals[].outcome (the engine's code only)",
+                )
+            )
+    m_orig = A.primary_metric(outcome) if isinstance(outcome, dict) else None
+    if m_orig is not None and m_orig.pooled is not None:
+        name = (m_orig.name or "metric").replace("_", " ").capitalize()
+        text = (
+            f"{name} (pooled), descriptive only: original {A.fmt_metric(m_orig.pooled)}"
+        )
+        m_cand = A.primary_metric(cand_outcome) if cand_outcome else None
+        if (
+            m_cand is not None
+            and m_cand.pooled is not None
+            and m_cand.name == m_orig.name
+        ):
+            text += f", candidate {A.fmt_metric(m_cand.pooled)}"
+        lines.append(
+            BriefLine(
+                text + ".",
+                "outcome.json · descriptive[metric.recomputed_primary] (pooled)",
+            )
+        )
+    lines.append(BriefLine(A.CAVEAT, "the fixed caveat (UI_SPEC §1.1)", "caveat"))
+    return lines
+
+
+def briefing(lines: list[BriefLine], ids: Ids) -> str:
+    """The briefing panel: each line as plain, escaped text with its source in a title."""
+    label = ids("brief", "label")
+    items = []
+    for line in lines:
+        if line.kind == "fail" and line.text.startswith("FAIL "):
+            aid, _, words = line.text[5:].partition(": ")
+            body = (
+                f'{_code("FAIL")} <span class="hud-brief-aid">{esc(aid)}</span>'
+                f'<span class="hud-brief-def">{esc(words)}</span>'
+            )
+        else:
+            body = esc(line.text)
+        items.append(
+            f'<li class="hud-brief-{line.kind}" title="{esc(line.source)}">{body}</li>'
+        )
+    return (
+        f'<section class="hud hud-brief" aria-labelledby="{label}">'
+        f'<div class="hud-ph"><span class="hud-lbl" id="{label}">Briefing</span></div>'
+        f'<ul class="hud-brief-lines">{"".join(items)}</ul>'
+        '<div class="hud-src">from the run&#39;s verified files and '
+        "evaluation/assertion&#95;definitions.json only; no model-written text</div>"
+        "</section>"
+    )
+
+
+def briefing_text(lines: list[BriefLine]) -> list[str]:
+    """The briefing as plain text lines (what the panel shows, in order)."""
+    return [line.text for line in lines]
+
+
 # -- CSS ----------------------------------------------------------------------------------------------------------
 _KEYFRAMES = """
 @keyframes hud-fade{from{opacity:0}}
@@ -1424,6 +1608,17 @@ CSS = (
     "margin:4px 0}"
     ".hud-bar{grid-column:1/-1;display:block;height:6px;background:#1E2A36;border-radius:1px;"
     "overflow:hidden}.hud-bar span{display:block;height:100%;background:#E2E8F0}"
+    # the briefing
+    ".hud-brief{background:#0F1720;border:1px solid #1E2A36;border-radius:4px;"
+    "padding:10px 16px 8px}"
+    ".hud ul.hud-brief-lines{list-style:none;margin:4px 0 2px;padding:0;display:grid;gap:3px}"
+    ".hud ul.hud-brief-lines li{margin:0;font-size:14px;line-height:1.45;color:#E2E8F0}"
+    ".hud li.hud-brief-fail{display:grid;grid-template-columns:3.4em auto minmax(0,1fr);"
+    "gap:0 10px;align-items:baseline;padding-left:12px}"
+    ".hud-brief-aid{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#E2E8F0}"
+    ".hud li.hud-brief-caveat{font-size:13px;color:#94A3B8}"
+    "@container hud (max-width:759px){.hud li.hud-brief-fail{grid-template-columns:3.4em "
+    "minmax(0,1fr);padding-left:0}.hud-brief-def{grid-column:2}}"
     # full hashes, field labels and HUD state panels
     ".hud.hud-flabel{margin:0 0 -8px}"
     ".hud.hud-hash{font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.5;"

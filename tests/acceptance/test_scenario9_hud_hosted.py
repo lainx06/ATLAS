@@ -66,7 +66,7 @@ def test_the_hosted_header_with_live_unavailable_and_the_live6_hero(app, page, s
         sidebar = page.get_by_test_id("stSidebar").inner_text()
         assert "Live: unavailable" in sidebar and "Hosted demo: limited" in sidebar
         assert "Recorded run" in sidebar
-        for selector in (".hud-ret", ".hud-leak", ".hud-flow"):
+        for selector in (".hud-brief", ".hud-ret"):  # phase 2: the briefing leads
             boxes = page.locator(selector).evaluate_all(
                 "els => els.map(e => e.getBoundingClientRect().bottom)"
             )
