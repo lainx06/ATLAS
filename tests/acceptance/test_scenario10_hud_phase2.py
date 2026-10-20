@@ -66,7 +66,7 @@ def save_keyboard() -> None:
 
 
 def open_recorded(page, app, label: str) -> None:
-    page.goto(app.url)
+    page.goto(app.url + "/try_it_live")  # Try It Live
     page.get_by_role("button", name="Confirm & run").wait_for(timeout=60_000)
     page.get_by_test_id("stSidebar").get_by_text(
         "Open a recorded run", exact=True

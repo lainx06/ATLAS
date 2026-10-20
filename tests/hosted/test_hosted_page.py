@@ -65,7 +65,7 @@ def texts(at) -> str:
 
 
 def switch_to_live(at):
-    at.sidebar.radio[0].set_value("live")
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     with H.loopback_only():
         at.run()
     return at
@@ -86,12 +86,12 @@ def test_without_the_kill_switch_nothing_is_sent_and_recorded_runs_render(
     assert "Live: unavailable" in shown
     assert at.get("stContainer") is not None
     # Each bundled run renders intact.
-    for label in [
-        "live6/agent-s01_faulty-877f8245a8a2",
-        "t09/agent-har_flawed-1e2267f662c0",
-        "t09/agent-har_clean-ac63eaecd7a8",
+    for label, case in [
+        ("live6/agent-s01_faulty-877f8245a8a2", "live6"),
+        ("t09/agent-har_flawed-1e2267f662c0", "harflawed"),
+        ("t09/agent-har_clean-ac63eaecd7a8", "harclean"),
     ]:
-        at.selectbox(key="hosted_recorded_run").set_value(label)
+        at.button(key=f"case-btn-{case}").click()  # the case card (Overview & Cases)
         with H.loopback_only():
             at.run()
         assert not at.exception
@@ -102,7 +102,7 @@ def test_without_the_kill_switch_nothing_is_sent_and_recorded_runs_render(
             shown,
         ), label
         assert "matches the files on disk" in shown, label
-        assert "Recorded run, finished" in shown
+        assert "finished 2026-10-1" in shown and "not re-run here" in shown
         if "har_" in label:
             assert "CC BY 4.0" in shown and "Any commercial use is prohibited" in shown
     at = switch_to_live(at)
@@ -120,6 +120,7 @@ def test_the_local_page_is_unchanged_without_atlas_hosted(monkeypatch):
         dr, "probe", lambda: dr.Capability("isolated_unavailable", "test")
     )
     at = AppTest.from_file(APP, default_timeout=60)
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     at.run()
     assert not at.exception
     assert [o for o in at.sidebar.radio[0].options] == [

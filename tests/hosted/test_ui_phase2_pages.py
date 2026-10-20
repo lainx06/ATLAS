@@ -21,7 +21,6 @@ from test_render_failure import (  # noqa: F401 - pytest fixtures
     shown,
 )
 
-from atlas.hosted import page
 from atlas.hosted import session as hs
 from atlas.ui import artifacts as A
 from atlas.ui import hud as H
@@ -73,7 +72,7 @@ def hosted_live(monkeypatch, tmp_path) -> AppTest:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HOSTED_LIVE_ENABLED", "false")
     at = AppTest.from_file(APP, default_timeout=60)
-    at.session_state["hosted_view"] = page.LIVE_VIEW
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     with Hh.loopback_only():
         at.run()
     return at
@@ -92,11 +91,12 @@ def test_the_live_view_shows_the_recorded_original_with_ring_and_reticle(
     text = shown(at)
     assert ":gray-badge[LIVE UNAVAILABLE] " + hs.UNAVAILABLE_MESSAGE in text
     assert "**Next action:**" in text and not at.button
-    # The ring, its caption and the page's own line carry the one integrity count.
+    # The ring's title and the page's own line carry the one integrity count (its
+    # caption has no breakdown since story slice 1).
     count = (
         "49 of 49 recorded items verified now (46 file hashes, 3 outcome comparisons)"
     )
-    assert hud.count(count) == 2 and f"{count}. The original is not executed" in text
+    assert hud.count(count) == 1 and f"{count}. The original is not executed" in text
 
 
 def test_the_finished_session_shows_route_hud_and_framed_proposals(hosted_run):  # noqa: F811

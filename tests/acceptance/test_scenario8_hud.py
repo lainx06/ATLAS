@@ -62,7 +62,7 @@ def outside_requests(page) -> list[str]:
 
 
 def open_recorded(page, app, label: str) -> None:
-    page.goto(app.url)
+    page.goto(app.url + "/try_it_live")  # Try It Live
     page.get_by_role("button", name="Confirm & run").wait_for(timeout=60_000)
     width = (page.viewport_size or {}).get("width", 1440)
     if width < 600:
@@ -217,9 +217,9 @@ def test_the_phone_layout_and_its_toggle(app, page):
         and region.get_attribute("tabindex") == "0"
     )
     assert page.locator(".hud-pane-orig .hud-legend").is_visible()
-    assert (
-        page.locator(".hud-pane-orig td.hud-both .hud-short").first.inner_text() == "B"
-    )
+    cell = page.locator(".hud-pane-orig td.hud-both").first
+    assert cell.locator(".hud-sq").count() == 1 and cell.inner_text() == ""
+    assert cell.get_attribute("aria-label").endswith(": on both sides")
     folder = os.environ.get("ATLAS_UI_SCREENS")
     if folder:
         settle(page)
@@ -244,7 +244,7 @@ def test_motion_plays_once_and_never_under_reduced_motion(app, browser):
     video = {"record_video_dir": str(Path(folder) / "video")} if folder else {}
     context = browser.new_context(viewport={"width": 1440, "height": 900}, **video)
     page = context.new_page()
-    page.goto(app.url)
+    page.goto(app.url + "/try_it_live")  # Try It Live
     page.get_by_role("button", name="Confirm & run").wait_for(timeout=60_000)
     page.get_by_test_id("stSidebar").get_by_text(
         "Open a recorded run", exact=True

@@ -22,6 +22,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from atlas.ui import artifacts as A
+from atlas.ui import copy as C
 from atlas.ui import recorded as R
 from atlas.ui.catalogue import ROOT
 
@@ -148,6 +149,11 @@ def _json(run_dir: Path, rel: str, verified: frozenset[str]):
     return A.read_json(Path(run_dir) / rel)
 
 
+def verified_json(run_dir: Path, rel: str, verified: frozenset[str]):
+    """A run file's JSON, only when `rel` is in the verified set (else None)."""
+    return _json(run_dir, rel, verified)
+
+
 def _assertion(doc, assertion_id: str) -> dict | None:
     if not isinstance(doc, dict):
         return None
@@ -172,6 +178,7 @@ class Leak:
     column: str | None
     groups: dict[str, list[str]] | None  # observed.overlapping_groups; None when absent
     folds: list[str] | None  # splits.json[].fold; None when absent
+    observed: dict | None = None  # the assertion's observed object (reason sentences)
 
     @property
     def source(self) -> str:
@@ -221,6 +228,7 @@ def leak(run_dir: Path, base: str, verified: frozenset[str]) -> Leak:
         column=_str_or_none(observed.get("column")),
         groups=groups,
         folds=folds,
+        observed=observed if a is not None else None,
     )
 
 
@@ -248,6 +256,10 @@ class Flow:
     violating_folds: int | None  # number of folds in observed.violations
     folds: int | None = None  # number of folds in <base>/splits.json
     violation_entries: int | None = None  # entries listed across observed.violations
+    observed: dict | None = None  # the assertion's observed object (reason sentences)
+    # (fold, [class, ...]) from <base>/provenance.jsonl fit events, in recorded order: only
+    # when the assertion PASSes with no origins and every fit event records its fold.
+    fold_fits: list[tuple[str, list[str]]] | None = None
 
     @property
     def source(self) -> str:
@@ -287,6 +299,209 @@ def flow(run_dir: Path, base: str, verified: frozenset[str]) -> Flow:
         )
         if isinstance(violations, dict)
         else None,
+        observed=observed if a is not None else None,
+        fold_fits=fold_fits(run_dir, base, verified)
+        if base.startswith("candidates/")
+        and a is not None
+        and a.get("status") == "PASS"
+        and not origins
+        else None,
+    )
+
+
+def fold_fits(
+    run_dir: Path, base: str, verified: frozenset[str]
+) -> list[tuple[str, list[str]]] | None:
+    """Each fold's fits, from the recorded fit events' own `fold` and `class` fields in the
+    verified `<base>/provenance.jsonl`. None (nothing is drawn) when the file is not verified
+    or unreadable, has no fit event, or any fit event lacks a recorded fold or class: the fold
+    is never derived from row sets."""
+    rel = f"{base}/provenance.jsonl"
+    if rel not in verified:
+        return None
+    try:
+        lines = (Path(run_dir) / rel).read_text(encoding="utf-8").splitlines()
+        events = [json.loads(line) for line in lines if line.strip()]
+    except (OSError, ValueError):
+        return None
+    lanes: dict[str, list[str]] = {}
+    for e in events:
+        if not isinstance(e, dict) or e.get("type") != "fit":
+            continue
+        fold, cls = e.get("fold"), e.get("class")
+        if not isinstance(fold, str) or not isinstance(cls, str):
+            return None
+        lanes.setdefault(fold, []).append(cls)
+    return list(lanes.items()) or None
+
+
+# -- reason sentences (copy.REASONS, filled from one assertion's own observed object) ------------
+def _int(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _listed(by_fold) -> tuple[int, int] | None:
+    """A {fold: [ids]} map: (distinct ids listed, folds with at least one id)."""
+    if not isinstance(by_fold, dict) or not all(
+        isinstance(v, list) for v in by_fold.values()
+    ):
+        return None
+    ids = {str(x) for v in by_fold.values() for x in v}
+    return len(ids), sum(1 for v in by_fold.values() if v)
+
+
+def _reason_fields(assertion_id: str, o: dict) -> list[tuple[str, dict]]:
+    """(template key, fields) pairs; empty when a needed field is not recorded."""
+    folds = _int(o.get("folds"))
+    if assertion_id == "split.evaluation_folds_nonempty":
+        empty = o.get("empty_evaluation_folds")
+        if isinstance(empty, list) and folds is not None:
+            return [(assertion_id, {"empty": len(empty), "folds": folds})]
+    elif assertion_id in (
+        "split.no_row_overlap",
+        "split.no_group_overlap",
+        "split.sampling_unit_disjoint",
+    ):
+        field = {
+            "split.no_row_overlap": "overlapping_rows",
+            "split.no_group_overlap": "overlapping_groups",
+            "split.sampling_unit_disjoint": "overlapping_units",
+        }[assertion_id]
+        listed = _listed(o.get(field))
+        column = o.get("column")
+        needs_column = assertion_id != "split.no_row_overlap"
+        if (
+            listed is not None
+            and folds is not None
+            and (isinstance(column, str) or not needs_column)
+        ):
+            k, m = listed
+            return [(assertion_id, {"k": k, "m": m, "n": folds, "column": column})]
+    elif assertion_id == "split.no_shared_source_observation":
+        listed = _listed(o.get("shared_observation_ids"))
+        if listed is not None:
+            return [(assertion_id, {"k": listed[0], "m": listed[1]})]
+    elif assertion_id == "split.repeated_measures_rule":
+        out = []
+        for unit in o.get("units") or [] if isinstance(o.get("units"), list) else []:
+            if not isinstance(unit, dict) or unit.get("route") != "sampling_unit":
+                continue  # only same-unit overlap is described by this template
+            witnesses = unit.get("witnesses")
+            column = unit.get("column")
+            if not isinstance(witnesses, list) or not isinstance(column, str):
+                continue
+            shown = [w for w in witnesses if isinstance(w, dict)]
+            units = {str(w.get("unit_id")) for w in shown if "unit_id" in w}
+            in_folds = {str(w.get("fold")) for w in shown if "fold" in w}
+            if len(shown) == len(witnesses) and all(
+                "unit_id" in w and "fold" in w for w in shown
+            ):
+                out.append(
+                    (
+                        assertion_id,
+                        {"k": len(units), "m": len(in_folds), "column": column},
+                    )
+                )
+        return out
+    elif assertion_id == "fit.state_dependencies_within_fold_train":
+        origins = o.get("origins")
+        if isinstance(origins, list) and origins:
+            out = []
+            for origin in origins:
+                if not isinstance(origin, dict):
+                    continue
+                cls, rows = origin.get("class"), _int(origin.get("contributing_rows"))
+                scope, affected = origin.get("fit_scope"), origin.get("affected_folds")
+                if (
+                    isinstance(cls, str)
+                    and rows is not None
+                    and isinstance(scope, str)
+                    and isinstance(affected, list)
+                ):
+                    out.append(
+                        (
+                            assertion_id,
+                            {
+                                "cls": cls,
+                                "rows": rows,
+                                "scope": scope,
+                                "folds": len(affected),
+                            },
+                        )
+                    )
+            return out
+        judged, violations = _int(o.get("judged_uses")), o.get("violations")
+        if judged is not None and isinstance(violations, dict) and not origins:
+            v = sum(len(x) if isinstance(x, list) else 1 for x in violations.values())
+            return [(f"{assertion_id}.pass", {"judged": judged, "v": v})]
+    elif assertion_id == "fit.coverage_complete":
+        fits, gaps = _int(o.get("supported_classifier_fits")), o.get("gaps")
+        if fits is not None and folds is not None and isinstance(gaps, dict):
+            return [(assertion_id, {"fits": fits, "folds": folds, "gaps": len(gaps)})]
+    elif assertion_id == "metric.prediction_ids_match_eval_ids":
+        mismatches = o.get("mismatches")
+        if folds is not None and isinstance(mismatches, dict):
+            return [(assertion_id, {"m": len(mismatches), "folds": folds})]
+    elif assertion_id == "metric.reported_matches_recomputed":
+        tol, out = o.get("tolerance"), []
+        for e in o.get("entries") or [] if isinstance(o.get("entries"), list) else []:
+            if not isinstance(e, dict):
+                continue
+            entry, recomputed = e.get("entry"), e.get("recomputed")
+            reported = entry.get("value") if isinstance(entry, dict) else None
+            again = recomputed.get("value") if isinstance(recomputed, dict) else None
+            diff = e.get("abs_difference")
+            if all(_number(x) for x in (reported, again, diff, tol)):
+                out.append(
+                    (
+                        assertion_id,
+                        {
+                            "reported": _scalar(reported),
+                            "recomputed": _scalar(again),
+                            "diff": _scalar(diff),
+                            "tol": _scalar(tol),
+                        },
+                    )
+                )
+        return out
+    elif assertion_id in (
+        "split.temporal_separation",
+        "temporal.cutoff_precedes_evaluation",
+        "temporal.training_labels_available_by_cutoff",
+        "temporal.features_available_when_used",
+    ):
+        w = _int(o.get("witness_count"))
+        group = o.get(
+            "features"
+            if assertion_id == "temporal.features_available_when_used"
+            else "folds"
+        )
+        if w is not None and isinstance(group, list | dict):
+            return [(assertion_id, {"w": w, "f": len(group)})]
+    return []
+
+
+def _number(value) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def reasons(assertion_id: str, observed) -> list[str]:
+    """The fixed reason sentences (copy.REASONS) for one assertion, filled only from its
+    recorded observed fields; [] when the assertion has no template or a needed field is not
+    recorded (never a sentence with "null" or an absent field in it)."""
+    if not isinstance(observed, dict):
+        return []
+    return [
+        C.REASONS[key].format(**fields)
+        for key, fields in _reason_fields(assertion_id, observed)
+        if key in C.REASONS
+    ]
+
+
+def _reason_html(assertion_id: str, observed) -> str:
+    return "".join(
+        f'<span class="hud-reason">{esc(s)}</span>'
+        for s in reasons(assertion_id, observed)
     )
 
 
@@ -444,8 +659,15 @@ def record_body(item: Inspect) -> str:
         for key, val in observed_rows(a.get("observed") if "observed" in a else None)
     )
     source = f"{item.source} · assertions[assertion_id={item.assertion_id}]"
+    said = reasons(item.assertion_id, a.get("observed"))
+    reason = (
+        f'<span class="hud-lbl">{esc(C.REASON_LABEL)}</span>'
+        + "".join(f'<p class="hud-insp-def">{esc(x)}</p>' for x in said)
+        if said
+        else ""
+    )
     return (
-        f'<dl class="hud-insp-kv">{kv}</dl>'
+        f'<dl class="hud-insp-kv">{kv}</dl>{reason}'
         f"{definition_block(item.assertion_id)}"
         f'<span class="hud-lbl">Limitations</span>{limitations}'
         f'<span class="hud-lbl">Evidence · artifact, sha256</span>{evidence}'
@@ -483,6 +705,7 @@ class Outcome:
     detail_source: str
     execution: str | None = None
     execution_source: str | None = None
+    plain_heading: str | None = None  # the heading without a run path (plain mode)
 
 
 @dataclass(frozen=True)
@@ -513,6 +736,9 @@ class Hud:
     matrix: list[MatrixRow]
     inspect_orig: dict[str, Inspect] = field(default_factory=dict)
     inspect_cand: dict[str, Inspect] = field(default_factory=dict)
+    # Each assertion's observed object, from the evaluated run's verified outcome.json.
+    observed_orig: dict[str, dict] = field(default_factory=dict)
+    observed_cand: dict[str, dict] = field(default_factory=dict)
 
 
 def _statuses(outcome) -> list[tuple[str, str | None]]:
@@ -521,6 +747,28 @@ def _statuses(outcome) -> list[tuple[str, str | None]]:
         for a in (outcome or {}).get("assertions") or []
         if isinstance(a, dict) and a.get("assertion_id")
     ]
+
+
+def _observed(outcome) -> dict[str, dict]:
+    return {
+        str(a.get("assertion_id")): a.get("observed")
+        for a in (outcome or {}).get("assertions") or []
+        if isinstance(a, dict) and isinstance(a.get("observed"), dict)
+    }
+
+
+def conditional(
+    observed: dict[str, dict], statuses: dict[str, str | None]
+) -> list[str]:
+    """PASS assertions that rest on a documented, unverified declaration (route C:
+    `observed.established_by` lists documented_containment)."""
+    out = []
+    for aid, o in observed.items():
+        basis = o.get("established_by")
+        values = basis.values() if isinstance(basis, dict) else [basis]
+        if statuses.get(aid) == "PASS" and "documented_containment" in values:
+            out.append(aid)
+    return out
 
 
 def _counts_line(statuses: list[tuple[str, str | None]]) -> str:
@@ -599,6 +847,7 @@ def build(
     original = Outcome(
         scope="orig",
         heading="Before · original",
+        plain_heading=C.HEAD_BEFORE,
         code=_str_or_none(orig_outcome.get("outcome")),
         source="original/outcome.json · outcome",
         detail=_counts_line(orig_statuses),
@@ -607,6 +856,7 @@ def build(
     chosen = executed_candidate(run_dir, report, verified) if with_candidate else None
     candidate = cand_base = leak_cand = flow_cand = None
     inspect_cand: dict[str, Inspect] = {}
+    observed_cand: dict[str, dict] = {}
     matrix = [MatrixRow(aid, status, None) for aid, status in orig_statuses]
     if chosen is not None:
         cand_base, _entry = chosen
@@ -643,6 +893,7 @@ def build(
         candidate = Outcome(
             scope="cand",
             heading=f"Verified revision · {cand_base}",
+            plain_heading=C.HEAD_AFTER,
             code=_str_or_none(cand_outcome.get("outcome")),
             source=f"{cand_base}/outcome.json · outcome",
             detail=_changes_line(matrix),
@@ -660,9 +911,16 @@ def build(
         inspect_cand = inspect_records(
             run_dir, cand_base, list(cand_status.items()), verified
         )
+        observed_cand = _observed(cand_outcome)
     else:
         # Nothing executed comes after it, so it is not headed "before".
-        original = Outcome(**{**original.__dict__, "heading": "Original"})
+        original = Outcome(
+            **{
+                **original.__dict__,
+                "heading": "Original",
+                "plain_heading": C.HEAD_ORIGINAL,
+            }
+        )
     leak_orig = leak(run_dir, "original", verified)
     return Hud(
         run_id=run_id,
@@ -680,6 +938,8 @@ def build(
         matrix=matrix,
         inspect_orig=inspect_records(run_dir, "original", orig_statuses, verified),
         inspect_cand=inspect_cand,
+        observed_orig=_observed(orig_outcome),
+        observed_cand=observed_cand,
     )
 
 
@@ -743,9 +1003,13 @@ def _arc(cx: float, cy: float, r: float, a0: float, a1: float) -> str:
     return f"M{x0:.2f} {y0:.2f}A{r} {r} 0 {large} 1 {x1:.2f} {y1:.2f}"
 
 
-def ring(checks: list[R.Check], ids: Ids, *, played: bool, phrase: str) -> str:
+def ring(
+    checks: list[R.Check], ids: Ids, *, played: bool, phrase: str, plain: bool = False
+) -> str:
     """One segment per recorded item `verify` checked; lit when it matches. A changed run's
-    differing segments are red and the centre reads EVIDENCE CHANGED (no outcome here)."""
+    differing segments are red and the centre reads EVIDENCE CHANGED (no outcome here). The
+    caption carries no breakdown (that is in the evidence panel and the ring's title); plain
+    mode leaves out where the hashes were read from."""
     n = len(checks)
     count = integrity_count(checks)
     bad = [c for c in checks if not c.ok]
@@ -773,7 +1037,8 @@ def ring(checks: list[R.Check], ids: Ids, *, played: bool, phrase: str) -> str:
             style = ""
         segs.append(
             f'<path class="hud-seg {cls}{anim}"{style} d="{_arc(64, 64, 52, a0, a1)}">'
-            f"<title>{esc(c.item)}: {esc(c.status)}</title></path>"
+            + ("" if plain else f"<title>{esc(c.item)}: {esc(c.status)}</title>")
+            + "</path>"
         )
     if ok:
         centre = (
@@ -786,10 +1051,12 @@ def ring(checks: list[R.Check], ids: Ids, *, played: bool, phrase: str) -> str:
             '<text x="64" y="76" text-anchor="middle" class="hud-ring-x">CHANGED</text>'
         )
     group = f'<g class="hud-ring-g{_a(played or ok, "hud-a-shake")}">'
+    where = "" if plain else f'<span class="hud-src">{esc(phrase)}</span>'
     caption = (
-        f'<span class="hud-code">{esc(count.verified)}</span>'
+        (f'<span class="hud-src">{esc(C.RING_PLAIN)}</span>' if plain else where)
         if ok
-        else f'<span class="hud-c-red hud-code">{esc(count.differing)}</span>'
+        else '<span class="hud-c-red hud-code">'
+        f"{esc(C.RING_DIFFER.format(d=count.differ, t=count.total))}</span>{where}"
     )
     return (
         f'<div class="hud hud-ring{_anim(played)}">'
@@ -798,14 +1065,17 @@ def ring(checks: list[R.Check], ids: Ids, *, played: bool, phrase: str) -> str:
         f'<title id="{title_id}">{esc(title)}</title><desc id="{desc_id}">{esc(desc)}</desc>'
         f'{group}<circle cx="64" cy="64" r="52" class="hud-ring-track"/>{"".join(segs)}</g>'
         f"{centre}</svg>"
-        f'<div class="hud-ring-cap">{caption}<span class="hud-src">{esc(phrase)}</span></div>'
+        f'<div class="hud-ring-cap">{caption}</div>'
         "</div>"
     )
 
 
 # -- 2. outcome reticle ----------------------------------------------------------------------------
-def reticle(o: Outcome, *, played: bool) -> str:
+def reticle(o: Outcome, *, played: bool, plain: bool = False) -> str:
+    """An evaluated run's outcome. Plain mode: the heading without a run path, and no
+    source caption or source titles."""
     tone = _tone(o.code) if o.code else "stone"
+    heading = (o.plain_heading or o.heading) if plain else o.heading
     brackets = "".join(
         f'<span class="hud-br hud-br-{c}{_a(played, "hud-a-lock-" + c)}" aria-hidden="true">'
         "</span>"
@@ -818,24 +1088,29 @@ def reticle(o: Outcome, *, played: bool) -> str:
         else f'<div class="hud-ret-none">outcome: {NOT_RECORDED}</div>'
     )
     label = A.OUTCOME_LABELS.get(o.code or "", "")
+
+    def title(source) -> str:
+        return "" if plain or not source else f' title="{esc(source)}"'
+
     execution = (
-        f'<div class="hud-ret-exec" title="{esc(o.execution_source)}">{esc(o.execution)}</div>'
+        f'<div class="hud-ret-exec"{title(o.execution_source)}>{esc(o.execution)}</div>'
         if o.execution
         else ""
     )
     return (
         f'<section class="hud-ret hud-ret-{o.scope} hud-t-{tone}" '
-        f'aria-label="{esc(o.heading)} outcome">{brackets}'
-        f'<div class="hud-lbl">{esc(o.heading)}</div>{code}'
-        f'<div class="hud-ret-detail" title="{esc(o.detail_source)}">{esc(o.detail)}</div>'
+        f'aria-label="{esc(heading)} outcome">{brackets}'
+        f'<div class="hud-lbl">{esc(heading)}</div>{code}'
+        f'<div class="hud-ret-detail"{title(o.detail_source)}>{esc(o.detail)}</div>'
         f"{execution}"
         f'<div class="hud-ret-label">{esc(label)}</div>'
         f'<div class="hud-ret-caveat">{esc(A.CAVEAT)}</div>'
-        f'<div class="hud-src">{esc(o.source)}</div></section>'
+        + ("" if plain else f'<div class="hud-src">{esc(o.source)}</div>')
+        + "</section>"
     )
 
 
-def hero(h: Hud, *, played: bool, head: str | None = None) -> str:
+def hero(h: Hud, *, played: bool, head: str | None = None, plain: bool = False) -> str:
     """The ring and the reticles: the first row of the hero. `head` is its accessible name
     when the default ("before → verified revision", or "no executed revision in this run")
     does not describe it."""
@@ -854,61 +1129,95 @@ def hero(h: Hud, *, played: bool, head: str | None = None) -> str:
         if h.candidate is not None
         else ""
     )
-    cand = reticle(h.candidate, played=played) if h.candidate is not None else ""
+    cand = (
+        reticle(h.candidate, played=played, plain=plain)
+        if h.candidate is not None
+        else ""
+    )
     single = "" if h.candidate is not None else " hud-hero-single"
+    ring_html = ring(h.checks, h.ids, played=played, phrase=phrase, plain=plain)
     return (
         f'<section class="hud hud-hero{single}{_anim(played)}" aria-label="{esc(head)}">'
-        f'<div class="hud-hero-ring">{ring(h.checks, h.ids, played=played, phrase=phrase)}</div>'
-        f"{reticle(h.original, played=played)}{arrow}{cand}</section>"
+        f'<div class="hud-hero-ring">{ring_html}</div>'
+        f"{reticle(h.original, played=played, plain=plain)}{arrow}{cand}</section>"
     )
 
 
 # -- 7. leak map ---------------------------------------------------------------------------------------
-def leak_map(data: Leak, rows: list[str], ids: Ids, scope: str, *, played: bool) -> str:
-    title = "Leak map · " + ("original" if scope == "orig" else data.base)
+def _side(data, scope: str, plain: bool) -> str:
+    if scope == "orig":
+        return C.SIDE_ORIGINAL
+    return C.PANE_REVISION if plain else data.base
+
+
+def _legend() -> str:
+    return (
+        '<p class="hud-legend"><span class="hud-lg">'
+        '<span class="hud-sw hud-sw-on" aria-hidden="true"></span>'
+        f"{esc(C.LEAK_LEGEND_BOTH)}</span>"
+        '<span class="hud-lg"><span class="hud-sw hud-sw-off" aria-hidden="true"></span>'
+        f"{esc(C.LEAK_LEGEND_NONE)}</span></p>"
+    )
+
+
+def leak_map(
+    data: Leak,
+    rows: list[str],
+    ids: Ids,
+    scope: str,
+    *,
+    played: bool,
+    plain: bool = False,
+) -> str:
+    """Groups by fold as compact squares: filled red when the group is listed on both sides
+    for that fold in this evaluation's own file, a dotted outline otherwise; the full cell
+    text is each cell's title and accessible name. Plain mode: no field names or sources."""
+    title = C.LEAK_TITLE.format(side=_side(data, scope, plain))
     cap = f"{data.source} · {LEAK_ASSERTION} · observed.overlapping_groups"
     status = _code(data.status) if data.recorded else ""
     head = (
         f'<div class="hud-ph"><span class="hud-lbl">{esc(title)}</span>{status}</div>'
     )
-    foot = f'<div class="hud-src">{esc(cap)}</div>'
+    foot = "" if plain else f'<div class="hud-src">{esc(cap)}</div>'
     if not data.recorded:
-        body = f'<p class="hud-nr">{esc(LEAK_ASSERTION)} in {esc(data.source)}: {NOT_RECORDED}</p>'
+        what = "" if plain else f"{esc(LEAK_ASSERTION)} in {esc(data.source)}: "
+        body = f'<p class="hud-nr">{what}{NOT_RECORDED}</p>'
         return f'<div class="hud-panel hud-leak">{head}{body}{foot}</div>'
     if data.groups is None:
-        body = f'<p class="hud-nr">observed.overlapping_groups: {NOT_RECORDED}</p>'
+        what = "" if plain else "observed.overlapping_groups: "
+        body = f'<p class="hud-nr">{what}{NOT_RECORDED}</p>'
         return f'<div class="hud-panel hud-leak">{head}{body}{foot}</div>'
     cols = data.columns()
     fold_note = (
         f'<p class="hud-nr">{esc(data.folds_source)}: {NOT_RECORDED}</p>'
-        if data.folds is None
+        if data.folds is None and not plain
         else ""
     )
     step = BEAT3[1] / max(len(cols), 1)
-    header = "".join(
-        f'<th scope="col" title="{esc(data.folds_source)} · fold">{esc(f)}</th>'
-        for f in cols
-    )
+    fold_title = "" if plain else f' title="{esc(data.folds_source)} · fold"'
+    header = "".join(f'<th scope="col"{fold_title}>{esc(f)}</th>' for f in cols)
     column = data.column or f"column {NOT_RECORDED}"
     body_rows = []
     for g in rows:
         cells = []
         for k, fold in enumerate(cols):
             both = data.both(g, fold)
-            text, short = (BOTH, "B") if both else (NONE_SHARED, "0")
-            full = f"{g}, {fold}: {text}"
+            full = f"{g}, {fold}: {BOTH if both else NONE_SHARED}"
             cls = "hud-both" + _a(played, "hud-a-light") if both else "hud-none"
             style = _delay(played, BEAT3[0] + k * step, step) if both else ""
             cells.append(
                 f'<td class="{cls}"{style} title="{esc(full)}" aria-label="{esc(full)}">'
-                f'<span class="hud-full" aria-hidden="true">{text}</span>'
-                f'<span class="hud-short" aria-hidden="true">{short}</span></td>'
+                '<span class="hud-sq" aria-hidden="true"></span></td>'
             )
         body_rows.append(f'<tr><th scope="row">{esc(g)}</th>{"".join(cells)}</tr>')
     if not rows:
+        empty = (
+            C.LEAK_NONE_LISTED
+            if plain
+            else "No group is listed in observed.overlapping_groups for any fold."
+        )
         body_rows.append(
-            f'<tr><td class="hud-empty" colspan="{len(cols) + 1}">No group is listed in '
-            "observed.overlapping_groups for any fold.</td></tr>"
+            f'<tr><td class="hud-empty" colspan="{len(cols) + 1}">{esc(empty)}</td></tr>'
         )
     extra = sorted(
         {g for listed in (data.groups or {}).values() for g in listed} - set(rows)
@@ -920,17 +1229,18 @@ def leak_map(data: Leak, rows: list[str], ids: Ids, scope: str, *, played: bool)
         else ""
     )
     region = ids("leak", "region", scope)
+    y_label = C.LEAK_Y_PLAIN if plain else LEAK_Y_LABEL
     table = (
         f'<div class="hud-scroll" tabindex="0" role="region" id="{region}" '
         f'aria-label="{esc(title)}: groups by fold">'
-        f'<table class="hud-lm"><caption class="hud-axis">{esc(LEAK_Y_LABEL)}</caption>'
+        f'<table class="hud-lm"><caption class="hud-axis">{esc(y_label)}</caption>'
         f'<thead><tr><th scope="col" class="hud-lm-col">{esc(column)}</th>{header}</tr></thead>'
         f"<tbody>{''.join(body_rows)}</tbody></table></div>"
     )
-    legend = '<p class="hud-legend">B = on both sides (listed for that fold) · 0 = 0 shared</p>'
+    reason = _reason_html(LEAK_ASSERTION, data.observed)
     return (
-        f'<div class="hud-panel hud-leak{_anim(played)}">{head}{table}{legend}'
-        f"{fold_note}{extra_note}{foot}</div>"
+        f'<div class="hud-panel hud-leak{_anim(played)}">{head}{table}{_legend()}'
+        f"{reason}{fold_note}{extra_note}{foot}</div>"
     )
 
 
@@ -996,28 +1306,44 @@ def flow_summary(data: Flow) -> tuple[str, str]:
     return " · ".join(parts), fields
 
 
-def fit_flow(data: Flow, ids: Ids, scope: str, *, played: bool) -> str:
-    title = "Fit-scope flow · " + ("original" if scope == "orig" else data.base)
+def fit_flow(
+    data: Flow, ids: Ids, scope: str, *, played: bool, plain: bool = False
+) -> str:
+    """The fit-scope schematic: one lane per recorded origin (red on a FAIL); with no
+    origins, one green lane per fold drawn from the recorded fit events' own `fold` fields
+    when every one records it (`fold_fits`), else the PASS summary. Plain mode: no field
+    names or sources; the reason sentences in both modes."""
+    title = C.FLOW_TITLE.format(side=_side(data, scope, plain))
     status = _code(data.status) if data.recorded else ""
     head = (
         f'<div class="hud-ph"><span class="hud-lbl">{esc(title)}</span>{status}</div>'
     )
+
+    def foot(fields: str) -> str:
+        return "" if plain else f'<div class="hud-src">{esc(fields)}</div>'
+
     if not data.recorded:
-        foot = f'<div class="hud-src">{esc(data.source)} · {esc(FIT_ASSERTION)}</div>'
-        body = f'<p class="hud-nr">{esc(FIT_ASSERTION)} in {esc(data.source)}: {NOT_RECORDED}</p>'
-        return f'<div class="hud-panel hud-flow">{head}{body}{foot}</div>'
+        what = "" if plain else f"{esc(FIT_ASSERTION)} in {esc(data.source)}: "
+        body = f'<p class="hud-nr">{what}{NOT_RECORDED}</p>'
+        missing = foot(f"{data.source} · {FIT_ASSERTION}")
+        return f'<div class="hud-panel hud-flow">{head}{body}{missing}</div>'
+    reason = _reason_html(FIT_ASSERTION, data.observed)
     if not data.origins:
+        if data.fold_fits:
+            svg = _fold_lanes(data, ids, scope, played=played, plain=plain)
+            src = (
+                C.FOLD_LANES_SOURCE.format(base=data.base)
+                + f"; status: {data.source} · {FIT_ASSERTION}"
+            )
+            return (
+                f'<div class="hud-panel hud-flow{_anim(played)}">{head}{svg}{reason}'
+                f"{foot(src)}</div>"
+            )
         line, fields = flow_summary(data)
-        foot = (
-            f'<div class="hud-src">{esc(data.source)} · {esc(FIT_ASSERTION)} · '
-            f"{esc(fields)}</div>"
-        )
-        body = f'<p class="hud-flow-sum">{esc(line)}</p>'
-        return f'<div class="hud-panel hud-flow">{head}{body}{foot}</div>'
-    foot = (
-        f'<div class="hud-src">{esc(data.source)} · {esc(FIT_ASSERTION)} · '
-        "observed.origins</div>"
-    )
+        body = "" if plain else f'<p class="hud-flow-sum">{esc(line)}</p>'
+        summary = foot(f"{data.source} · {FIT_ASSERTION} · {fields}")
+        return f'<div class="hud-panel hud-flow">{head}{body}{reason}{summary}</div>'
+    foot_html = foot(f"{data.source} · {FIT_ASSERTION} · observed.origins")
 
     # One lane per origin: the origin box on the left, its own recorded targets (grouped by
     # fold) on the right, a line to each of them. A target that several origins affect is
@@ -1093,17 +1419,111 @@ def fit_flow(data: Flow, ids: Ids, scope: str, *, played: bool) -> str:
         f'markerHeight="6" orient="auto"><path d="M0 0L6 3L0 6z" class="hud-fh-{tone}'
         f'{_a(played, "hud-a-head")}"/></marker></defs>'
     )
+    named = title if plain else f"{title}: {FIT_ASSERTION}"
     svg = (
         f'<svg class="hud-flow-svg" viewBox="0 0 {width} {height:.0f}" '
         f'style="max-width:{width}px" role="img" aria-labelledby="{title_id} {desc_id}">'
-        f'<title id="{title_id}">{esc(title)}: {esc(FIT_ASSERTION)} {esc(data.status)}</title>'
+        f'<title id="{title_id}">{esc(named)} {esc(data.status)}</title>'
         f'<desc id="{desc_id}">{esc(". ".join(desc))}</desc>'
         f"{marker}{rules}{''.join(lines)}{''.join(parts)}{''.join(labels)}</svg>"
     )
-    return f'<div class="hud-panel hud-flow{_anim(played)}">{head}{svg}{foot}</div>'
+    return (
+        f'<div class="hud-panel hud-flow{_anim(played)}">{head}{svg}{reason}'
+        f"{foot_html}</div>"
+    )
+
+
+def _fold_lanes(data: Flow, ids: Ids, scope: str, *, played: bool, plain: bool) -> str:
+    """One green lane per fold: the fold's box on the left and a line to each fit that the
+    recorded events attribute to that fold (`provenance.jsonl`: type fit, fold, class)."""
+    row_h, box_h, lane_gap, pad = 14, 36, 12, 6
+    ox, ow, tx = 4, 124, 214
+    arrow = ids("flow", "arrow", scope)
+    title_id, desc_id = ids("flow", "title", scope), ids("flow", "desc", scope)
+    parts, lines, labels, desc, seps = [], [], [], [], []
+    longest, y = 10, pad
+    for k, (fold, classes) in enumerate(data.fold_fits or []):
+        nodes_h = max(len(classes) * row_h, row_h)
+        lane_h = max(box_h, nodes_h)
+        top = y + (lane_h - box_h) / 2
+        mid = top + box_h / 2
+        n0 = y + (lane_h - nodes_h) / 2 + 10
+        desc.append(f"{fold}: {', '.join(classes)}")
+        if k:
+            seps.append(y - lane_gap / 2)
+        parts.append(
+            f'<rect x="{ox}" y="{top:.1f}" width="{ow}" height="{box_h}" rx="2" '
+            'class="hud-fo hud-fo-green"/>'
+            f'<text x="{ox + 8}" y="{top + 14:.1f}" class="hud-ft">{esc(fold)}</text>'
+            f'<text x="{ox + 8}" y="{top + 28:.1f}" class="hud-ft-m">'
+            f"{esc(C.FOLD_LANE)}</text>"
+        )
+        for i, cls in enumerate(classes):
+            name = f"{cls}.fit"
+            longest = max(longest, len(name))
+            ny = n0 + i * row_h
+            labels.append(
+                f'<text x="{tx}" y="{ny:.1f}" class="hud-ft">{esc(name)}</text>'
+            )
+            x0, x1, y1 = ox + ow, tx - 8, ny - 4
+            c = (x0 + x1) / 2
+            lines.append(
+                f'<path class="hud-fl hud-fl-green{_a(played, "hud-a-draw")}" '
+                f'pathLength="1" data-lane="{k}" data-fold="{esc(fold)}" '
+                f'd="M{x0} {mid:.1f}C{c:.1f} {mid:.1f} {c:.1f} {y1:.1f} {x1} {y1:.1f}" '
+                f'marker-end="url(#{arrow})"><title>{esc(fold)} → {esc(name)}</title>'
+                "</path>"
+            )
+        y += lane_h + lane_gap
+    height = y - lane_gap + pad
+    width = int(tx + longest * 6.7 + 8)
+    rules = "".join(
+        f'<line x1="0" x2="{width}" y1="{sep:.1f}" y2="{sep:.1f}" class="hud-lane"/>'
+        for sep in seps
+    )
+    marker = (
+        f'<defs><marker id="{arrow}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" '
+        f'markerHeight="6" orient="auto"><path d="M0 0L6 3L0 6z" class="hud-fh-green'
+        f'{_a(played, "hud-a-head")}"/></marker></defs>'
+    )
+    named = C.FLOW_TITLE.format(side=_side(data, scope, plain))
+    return (
+        f'<svg class="hud-flow-svg" viewBox="0 0 {width} {height:.0f}" '
+        f'style="max-width:{width}px" role="img" aria-labelledby="{title_id} {desc_id}">'
+        f'<title id="{title_id}">{esc(named)} {esc(data.status)}</title>'
+        f'<desc id="{desc_id}">{esc(". ".join(desc))}</desc>'
+        f"{marker}{rules}{''.join(lines)}{''.join(parts)}{''.join(labels)}</svg>"
+    )
 
 
 # -- 3. check matrix ------------------------------------------------------------------------------------------
+def _tile_main(
+    aid: str,
+    status: str | None,
+    *,
+    plain: bool,
+    observed: dict | None,
+    conditional: bool,
+) -> str:
+    """The tile's body: the assertion's description (with its ID first in Expert view), its
+    failure label on a FAIL, the reason sentences from its observed fields, and the
+    documented-declaration note on a conditional PASS."""
+    failures, descriptions = _frozen_copy()
+    description = descriptions.get(aid)
+    parts = [] if plain else [f'<span class="hud-aid">{esc(aid)}</span>']
+    if description:
+        parts.append(f'<span class="hud-desc">{esc(description)}</span>')
+    elif plain:
+        parts.append(f'<span class="hud-desc">{esc(aid)}</span>')
+    if status == "FAIL" and failures.get(aid):
+        found = C.TILE_FAILED.format(label=failures[aid])
+        parts.append(f'<span class="hud-fail">{esc(found)}</span>')
+    parts.append(_reason_html(aid, observed))
+    if conditional:
+        parts.append(f'<span class="hud-cond">{esc(C.CONDITIONAL_PASS)}</span>')
+    return f'<span class="hud-tile-main">{"".join(parts)}</span>'
+
+
 def matrix_column(
     rows: list[MatrixRow],
     side: str,
@@ -1113,10 +1533,16 @@ def matrix_column(
     paired: bool = False,
     inspect: dict[str, Inspect] | None = None,
     ids: Ids | None = None,
+    plain: bool = False,
+    observed: dict[str, dict] | None = None,
+    conditional: tuple[str, ...] | list[str] = (),
+    title: str | None = None,
 ) -> str:
-    """One column of assertion tiles (status code + assertion ID); `side` is "orig" or "cand".
-    A changed candidate tile states its direction. A FAIL, NOT_ASSESSED or ERROR tile whose
-    record is in `inspect` opens its inspection frame (needs `ids`)."""
+    """One column of assertion tiles; `side` is "orig" or "cand". Each tile leads with its
+    status code and the assertion's fixed description (Expert view adds the assertion ID),
+    then its failure label on a FAIL and its reason sentences. A changed candidate tile
+    states its direction. In Expert view a FAIL, NOT_ASSESSED or ERROR tile whose record is
+    in `inspect` opens its inspection frame (needs `ids`); plain mode has no drill-down."""
     tiles = []
     for k, r in enumerate(rows):
         status = r.original if side == "orig" else r.candidate
@@ -1127,9 +1553,16 @@ def matrix_column(
             else ('<span class="hud-move" aria-hidden="true"></span>' if paired else "")
         )
         anim = _a(played, "hud-a-flip") if changed else ""
-        head = f'{_code(status)}<span class="hud-aid">{esc(r.assertion_id)}</span>'
+        main = _tile_main(
+            r.assertion_id,
+            status,
+            plain=plain,
+            observed=(observed or {}).get(r.assertion_id),
+            conditional=r.assertion_id in conditional,
+        )
+        head = f"{_code(status)}{main}"
         item = (inspect or {}).get(r.assertion_id) if status in INSPECTED else None
-        if item is not None and ids is not None:
+        if item is not None and ids is not None and not plain:
             # The direction and the "Inspect" cue share the tile's end slot.
             cue = '<span class="hud-insp-cue" aria-hidden="true"></span>'
             end = f'<span class="hud-tile-end">{move}{cue}</span>'
@@ -1141,56 +1574,85 @@ def matrix_column(
         tiles.append(
             f'<li class="hud-tile{" hud-changed" if changed else ""}{anim}">{head}{move}</li>'
         )
-    label = "Required checks · " + (
-        "original" if side == "orig" else source.split("/outcome")[0]
+    where = source.split("/outcome")[0]
+    label = title or C.TILES_TITLE.format(
+        side=C.SIDE_ORIGINAL
+        if side == "orig"
+        else (C.PANE_REVISION if plain else where)
+    )
+    foot = (
+        ""
+        if plain
+        else f'<div class="hud-src">{esc(source)} · assertions[].status</div>'
     )
     return (
         f'<div class="hud-panel hud-mx{_anim(played)}"><div class="hud-ph">'
         f'<span class="hud-lbl">{esc(label)}</span></div>'
         f'<ol class="hud-tiles{" hud-tiles-pair" if paired else ""}" aria-label="{esc(label)}">{"".join(tiles)}</ol>'
-        f'<div class="hud-src">{esc(source)} · assertions[].status</div></div>'
+        f"{foot}</div>"
     )
 
 
 # -- the evidence block (pairs and the narrow-screen toggle) ---------------------------------------------------
-def evidence(h: Hud, *, played: bool) -> str:
-    """Leak maps, fit-scope flows and the check matrix: original and candidate side by side at
-    when the recorded page is 760 px wide or more (a CSS container query on st-key-hud-page:
-    1280 px with the sidebar open, for example); narrower, a CSS-only toggle (hidden radio
-    inputs) cross-fades between them."""
-    ids = h.ids
-    orig_parts = [
-        leak_map(h.leak_orig, h.rows, ids, "orig", played=played),
-        fit_flow(h.flow_orig, ids, "orig", played=played),
-        matrix_column(
-            h.matrix,
-            "orig",
-            "original/outcome.json",
-            played=played,
-            paired=h.candidate is not None,
-            inspect=h.inspect_orig,
-            ids=ids,
-        ),
-    ]
-    if h.candidate is None:
-        return (
-            '<div class="hud hud-ev hud-ev-single"><div class="hud-panes">'
-            f'<section class="hud-pane hud-pane-orig" aria-label="Original">'
-            f"{''.join(orig_parts)}</section></div></div>"
+EVIDENCE_PARTS = ("leak", "flow", "matrix")
+
+
+def evidence(
+    h: Hud,
+    *,
+    played: bool,
+    plain: bool = False,
+    parts: tuple[str, ...] = EVIDENCE_PARTS,
+    ids: Ids | None = None,
+) -> str:
+    """Leak maps, fit-scope flows and the check matrix (or the `parts` named): original and
+    candidate side by side when the page is 760 px wide or more (a CSS container query on
+    st-key-hud-page: 1280 px with the sidebar open, for example); narrower, a CSS-only
+    toggle (hidden radio inputs) cross-fades between them. `ids` (default the HUD's own)
+    lets a second evidence block on the same page keep its IDs unique."""
+    ids = ids or h.ids
+    paired = h.candidate is not None
+
+    def side(scope: str) -> list[str]:
+        leak_data = h.leak_orig if scope == "orig" else h.leak_cand
+        flow_data = h.flow_orig if scope == "orig" else h.flow_cand
+        source = (
+            "original/outcome.json"
+            if scope == "orig"
+            else f"{h.cand_base}/outcome.json"
         )
-    cand_parts = [
-        leak_map(h.leak_cand, h.rows, ids, "cand", played=played),
-        fit_flow(h.flow_cand, ids, "cand", played=played),
-        matrix_column(
-            h.matrix,
-            "cand",
-            f"{h.cand_base}/outcome.json",
-            played=played,
-            paired=True,
-            inspect=h.inspect_cand,
-            ids=ids,
-        ),
-    ]
+        observed = h.observed_orig if scope == "orig" else h.observed_cand
+        statuses = {
+            r.assertion_id: (r.original if scope == "orig" else r.candidate)
+            for r in h.matrix
+        }
+        built = {
+            "leak": lambda: leak_map(
+                leak_data, h.rows, ids, scope, played=played, plain=plain
+            ),
+            "flow": lambda: fit_flow(flow_data, ids, scope, played=played, plain=plain),
+            "matrix": lambda: matrix_column(
+                h.matrix,
+                scope,
+                source,
+                played=played,
+                paired=paired,
+                inspect=h.inspect_orig if scope == "orig" else h.inspect_cand,
+                ids=ids,
+                plain=plain,
+                observed=observed,
+                conditional=conditional(observed, statuses),
+            ),
+        }
+        return [built[part]() for part in parts]
+
+    rows = f" hud-panes-{len(parts)}"
+    if not paired:
+        return (
+            f'<div class="hud hud-ev hud-ev-single"><div class="hud-panes{rows}">'
+            f'<section class="hud-pane hud-pane-orig" aria-label="Original">'
+            f"{''.join(side('orig'))}</section></div></div>"
+        )
     name = ids("toggle", "group")
     in_o, in_c = ids("toggle", "input", "orig"), ids("toggle", "input", "cand")
     toggle = (
@@ -1200,12 +1662,13 @@ def evidence(h: Hud, *, played: bool) -> str:
         f'the verified revision"><label for="{in_o}" class="hud-tg-orig">Original</label>'
         f'<label for="{in_c}" class="hud-tg-cand">Verified revision</label></div>'
     )
+    cand_name = "Verified revision" if plain else f"Verified revision, {h.cand_base}"
     return (
-        f'<div class="hud hud-ev">{toggle}<div class="hud-panes">'
-        f'<section class="hud-pane hud-pane-orig" aria-label="Original">{"".join(orig_parts)}'
-        f"</section>"
-        f'<section class="hud-pane hud-pane-cand" aria-label="Verified revision, '
-        f'{esc(h.cand_base)}">{"".join(cand_parts)}</section></div></div>'
+        f'<div class="hud hud-ev">{toggle}<div class="hud-panes{rows}">'
+        f'<section class="hud-pane hud-pane-orig" aria-label="Original">'
+        f"{''.join(side('orig'))}</section>"
+        f'<section class="hud-pane hud-pane-cand" aria-label="{esc(cand_name)}">'
+        f"{''.join(side('cand'))}</section></div></div>"
     )
 
 
@@ -1220,7 +1683,12 @@ TERMINAL_STATES = (
 
 
 def _stage_items(
-    states: list[dict], terminal: str | None, lit_from: int | None, *, live: bool
+    states: list[dict],
+    terminal: str | None,
+    lit_from: int | None,
+    *,
+    live: bool,
+    tips: bool = True,
 ) -> list[str]:
     """One node per recorded stage. The terminal stage shows its code in its colour; on a
     live track the latest stage of a run still going is marked current. Nodes from index
@@ -1241,7 +1709,8 @@ def _stage_items(
         cls += " hud-stage-now" if now else ""
         cls += " hud-a-node" if lit_from is not None and i >= lit_from else ""
         current = ' aria-current="step"' if now else ""
-        items.append(f'<li class="{cls}"{current} title="{esc(tip)}">{body}</li>')
+        tip_attr = f' title="{esc(tip)}"' if tips else ""
+        items.append(f'<li class="{cls}"{current}{tip_attr}>{body}</li>')
     if not states:
         items.append(
             f'<li class="hud-stage"><span class="hud-stage-n">states: {NOT_RECORDED}</span></li>'
@@ -1279,20 +1748,36 @@ def _counter(label: str, used, limit, source: str) -> str:
 
 
 def _track(
-    items: list[str], n: int, counters: str, source: str, ids: Ids, lit: bool
+    items: list[str],
+    n: int,
+    counters: str,
+    source: str,
+    ids: Ids,
+    lit: bool,
+    plain: bool = False,
 ) -> str:
     label = ids("track", "label")
+    title = C.TRACK_TITLE_PLAIN if plain else f"Mission track · {n} recorded stages"
+    tail = (
+        ""
+        if plain
+        else f'<div class="hud-cnts">{counters}</div>'
+        f'<div class="hud-src">{esc(source)}</div>'
+    )
     return (
         f'<div class="hud hud-track{_anim(not lit)}"><div class="hud-ph">'
-        f'<span class="hud-lbl" id="{label}">Mission track · {n} recorded stages</span></div>'
+        f'<span class="hud-lbl" id="{label}">{esc(title)}</span></div>'
         f'<ol class="hud-stages" aria-labelledby="{label}">{"".join(items)}</ol>'
-        f'<div class="hud-cnts">{counters}</div><div class="hud-src">{esc(source)}</div></div>'
+        f"{tail}</div>"
     )
 
 
-def track(report: dict, ids: Ids, *, lit_from: int | None = None) -> str:
+def track(
+    report: dict, ids: Ids, *, lit_from: int | None = None, plain: bool = False
+) -> str:
     """A finished run's recorded stages, in order, and its budget counters, from its report.
-    Settled unless `lit_from` names the first stage to light."""
+    Settled unless `lit_from` names the first stage to light. Plain mode: the stages only
+    (no request counts, sources or stage times)."""
     states = [
         s for s in report.get("states") or [] if isinstance(s, dict) and s.get("state")
     ]
@@ -1311,10 +1796,12 @@ def track(report: dict, ids: Ids, *, lit_from: int | None = None) -> str:
         + counter("Tool operations", "tool_operations", "tool_operations")
         + counter("Revisions", "revisions", "candidate_revisions")
     )
-    items = _stage_items(states, report.get("terminal_state"), lit_from, live=False)
+    items = _stage_items(
+        states, report.get("terminal_state"), lit_from, live=False, tips=not plain
+    )
     source = "agent_report.json · states[], budget.used, budget.limits"
     lit = lit_from is not None and lit_from < len(states)
-    return _track(items, len(states), counters, source, ids, lit)
+    return _track(items, len(states), counters, source, ids, lit, plain)
 
 
 def log_progress(events: list[dict]) -> tuple[list[dict], int, int]:
@@ -1510,9 +1997,13 @@ PROPOSALS_NOT_EXECUTED = (
 _MARKUP = re.compile(r"[*`]")
 
 
-def _string_map(path: Path, key: str) -> dict[str, str]:
+def _string_map(path: Path, key: str, field: str | None = None) -> dict[str, str]:
     data = A.read_json(path)
     entries = data.get(key) if isinstance(data, dict) else None
+    if field is not None:
+        entries = {
+            k: v.get(field) for k, v in (entries or {}).items() if isinstance(v, dict)
+        }
     return {k: v for k, v in (entries or {}).items() if isinstance(v, str)}
 
 
@@ -1522,8 +2013,19 @@ def load_definitions(path: Path = DEFINITIONS) -> dict[str, str]:
 
 
 def load_labels(path: Path = LABELS) -> dict[str, str]:
-    """The fixed plain-English assertion labels, by assertion ID; {} when unreadable."""
-    return _string_map(path, "labels")
+    """The fixed plain-English failure labels ("what a FAIL means"), by assertion ID; {}
+    when unreadable."""
+    return _string_map(path, "labels", "failure")
+
+
+def load_descriptions(path: Path = LABELS) -> dict[str, str]:
+    """The fixed plain-English descriptions ("what the check verifies"), by assertion ID."""
+    return _string_map(path, "labels", "description")
+
+
+@functools.lru_cache(maxsize=1)
+def _frozen_copy() -> tuple[dict[str, str], dict[str, str]]:
+    return load_labels(), load_descriptions()
 
 
 def plain_text(text: str) -> str:
@@ -1537,6 +2039,7 @@ class BriefLine:
     source: str
     kind: str = "line"  # "line", "fail" (a failing assertion) or "caveat"
     assertion_id: str | None = None  # a "fail" line's assertion
+    plain: str | None = None  # the line without IDs or paths (plain mode); else `text`
 
 
 def briefing_lines(
@@ -1555,11 +2058,15 @@ def briefing_lines(
     verified = verified_paths(checks)
     base = "original/" if report is not None else ""
     lines: list[BriefLine] = []
+    count = integrity_count(checks)
     lines.append(
         BriefLine(
-            f"Evidence intact: {integrity_count(checks).verified}.",
+            f"Evidence intact: {count.verified}.",
             "recomputed now from the run's files (each recorded sha256) and the "
             "reported outcomes compared with their outcome.json",
+            plain=C.BRIEF_INTACT_PLAIN.format(
+                v=count.total - count.differ, t=count.total
+            ),
         )
     )
     outcome = _json(run_dir, f"{base}outcome.json", verified)
@@ -1580,9 +2087,10 @@ def briefing_lines(
             lines.append(
                 BriefLine(
                     f"{aid} (FAIL): " + (words or f"label {NOT_RECORDED}."),
-                    f"{LABELS_FILE} · labels.{aid} (fixed text)",
+                    f"{LABELS_FILE} · labels.{aid}.failure (fixed text)",
                     "fail",
                     aid,
+                    plain=C.BRIEF_FAIL_PLAIN.format(label=words) if words else None,
                 )
             )
         if len(failing) > BRIEF_FAILS:
@@ -1611,6 +2119,9 @@ def briefing_lines(
                     f"{fixed} FAIL → PASS.",
                     f"{sub}/execution.json · status; {sub}/outcome.json · outcome, "
                     "assertions[].status",
+                    plain=C.BRIEF_REVISION_PLAIN.format(
+                        outcome=cand_outcome["outcome"], k=fixed
+                    ),
                 )
             )
         if any(
@@ -1623,34 +2134,45 @@ def briefing_lines(
                     "agent_report.json · proposals[].outcome (the engine's code only)",
                 )
             )
-    m_orig = A.primary_metric(outcome) if isinstance(outcome, dict) else None
-    if m_orig is not None and m_orig.pooled is not None:
-        name = (m_orig.name or "metric").replace("_", " ").capitalize()
-        text = (
-            f"{name} (pooled), descriptive only: original {A.fmt_metric(m_orig.pooled)}"
-        )
-        m_cand = A.primary_metric(cand_outcome) if cand_outcome else None
-        if (
-            m_cand is not None
-            and m_cand.pooled is not None
-            and m_cand.name == m_orig.name
-        ):
-            text += f", candidate {A.fmt_metric(m_cand.pooled)}"
+    metric = metric_text(outcome, cand_outcome)
+    if metric is not None:
         lines.append(
             BriefLine(
-                text + ".",
-                "outcome.json · descriptive[metric.recomputed_primary] (pooled)",
+                metric, "outcome.json · descriptive[metric.recomputed_primary] (pooled)"
             )
         )
     lines.append(BriefLine(A.CAVEAT, "the fixed caveat (UI_SPEC §1.1)", "caveat"))
     return lines
 
 
-def briefing(lines: list[BriefLine], ids: Ids) -> str:
-    """The briefing panel: each line as plain, escaped text with its source in a title."""
+def metric_text(outcome, cand_outcome) -> str | None:
+    """The descriptive metric line: the pooled independent primary metric of the original
+    (and of the candidate, when it is the same metric). Descriptive only, never causal."""
+    m_orig = A.primary_metric(outcome) if isinstance(outcome, dict) else None
+    if m_orig is None or m_orig.pooled is None:
+        return None
+    name = (m_orig.name or "metric").replace("_", " ").capitalize()
+    text = f"{name} (pooled), descriptive only: original {A.fmt_metric(m_orig.pooled)}"
+    m_cand = A.primary_metric(cand_outcome) if cand_outcome else None
+    if m_cand is not None and m_cand.pooled is not None and m_cand.name == m_orig.name:
+        text += f", candidate {A.fmt_metric(m_cand.pooled)}"
+    return text + "."
+
+
+def briefing(lines: list[BriefLine], ids: Ids, *, plain: bool = False) -> str:
+    """The briefing panel: each line as plain, escaped text with its source in a title.
+    Plain mode: each line's plain variant (no assertion ID or run path) and no sources; a
+    line with no plain variant that names an assertion is left out."""
     label = ids("brief", "label")
     items = []
     for line in lines:
+        if plain:
+            if line.assertion_id is not None and line.plain is None:
+                continue
+            items.append(
+                f'<li class="hud-brief-{line.kind}">{esc(line.plain or line.text)}</li>'
+            )
+            continue
         if line.assertion_id is not None:
             # The same words as the text line: "<assertion> (FAIL): <definition>".
             aid = line.assertion_id
@@ -1664,12 +2186,17 @@ def briefing(lines: list[BriefLine], ids: Ids) -> str:
         items.append(
             f'<li class="hud-brief-{line.kind}" title="{esc(line.source)}">{body}</li>'
         )
+    source = (
+        esc(C.BRIEF_SOURCE_PLAIN)
+        if plain
+        else "from the run&#39;s verified files and fixed labels "
+        "(src/atlas/ui/assertion&#95;labels.json) only; no model-written text"
+    )
     return (
         f'<section class="hud hud-brief" aria-labelledby="{label}">'
         f'<div class="hud-ph"><span class="hud-lbl" id="{label}">Briefing</span></div>'
         f'<ul class="hud-brief-lines">{"".join(items)}</ul>'
-        '<div class="hud-src">from the run&#39;s verified files and fixed labels '
-        "(src/atlas/ui/assertion&#95;labels.json) only; no model-written text</div>"
+        f'<div class="hud-src">{source}</div>'
         "</section>"
     )
 
@@ -1713,6 +2240,8 @@ _MOTION = f"""
 .hud-insp[open]>.hud-insp-frame{{animation:hud-fade 120ms ease-out}}
 .hud-tg label,.hud-scroll{{transition:background-color 120ms ease-out,color 120ms ease-out,outline-color 120ms ease-out}}
 .hud-panes .hud-pane{{transition:opacity 200ms ease-out,visibility 200ms}}
+@keyframes hud-sq{{from{{opacity:0;transform:scale(0.6)}}}}
+@container hud (max-width:759px){{.hud-tg-in-cand:checked~.hud-panes .hud-pane-cand .hud-sq,.hud-tg-in-orig:checked~.hud-panes .hud-pane-orig .hud-sq{{animation:hud-sq 200ms ease-out}}}}
 }}
 @media (prefers-reduced-motion: reduce) {{
 .hud-anim,.hud-anim *,.hud,.hud *{{animation:none !important;transition:none !important}}
@@ -1787,6 +2316,8 @@ CSS = (
     "row-gap:8px;grid-template-rows:auto auto auto}"
     ".hud-pane{display:grid;grid-row:1/span 3;grid-template-rows:subgrid;row-gap:8px;min-width:0}"
     ".hud-pane-orig{grid-column:1}.hud-pane-cand{grid-column:2}"
+    ".hud-panes-2{grid-template-rows:auto auto}.hud-panes-2 .hud-pane{grid-row:1/span 2}"
+    ".hud-panes-1{grid-template-rows:auto}.hud-panes-1 .hud-pane{grid-row:1/span 1}"
     ".hud-ev-single .hud-panes{grid-template-columns:minmax(0,1fr);grid-template-rows:auto}"
     ".hud-ev-single .hud-pane{grid-row:auto;grid-template-rows:none;"
     "grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 16px}"
@@ -1822,22 +2353,33 @@ CSS = (
     ".hud .hud-lm th{font-family:'IBM Plex Mono',monospace;font-weight:400;font-size:11px;"
     "color:#94A3B8;text-align:left;padding:0 4px;border:0;background:none;line-height:1.2}"
     ".hud .hud-lm tbody th{color:#E2E8F0}"
-    ".hud .hud-lm td{min-width:68px;height:15px;padding:0 3px;border-radius:2px;"
-    "text-align:center;vertical-align:middle;font-size:10px;white-space:nowrap;line-height:1}"
-    ".hud .hud-lm td.hud-both{background:rgba(248,113,113,0.18);border:2px solid #F87171;"
-    "font-weight:600;color:#E2E8F0}"
-    ".hud .hud-lm td.hud-none{background:transparent;border:1px dotted #A8A29E;color:#A8A29E}"
+    ".hud .hud-lm td{padding:0;border:0;text-align:center;vertical-align:middle;line-height:0;"
+    "min-width:16px}"
+    ".hud .hud-sq{display:inline-block;width:15px;height:15px;border-radius:2px;"
+    "box-sizing:border-box;vertical-align:middle}"
+    ".hud .hud-lm td.hud-both .hud-sq{background:rgba(248,113,113,0.55);border:2px solid #F87171}"
+    ".hud .hud-lm td.hud-none .hud-sq{background:transparent;border:1px dotted #A8A29E}"
     ".hud .hud-lm td.hud-empty{border:1px dotted #A8A29E;color:#A8A29E;white-space:normal;"
-    "text-align:left;padding:4px 8px}"
-    ".hud-short,.hud-legend{display:none}"
-    ".hud-legend{font-size:11px;color:#94A3B8;margin-top:4px}"
-    "@media (max-width:480px){.hud-full{display:none}.hud-short{display:inline}"
-    ".hud-legend{display:block}.hud .hud-lm td{min-width:30px}}"
+    "text-align:left;padding:4px 8px;line-height:1.4;font-size:12px}"
+    ".hud .hud-lm thead th{text-align:center;padding:0 3px}"
+    ".hud .hud-lm thead th.hud-lm-col,.hud .hud-lm tbody th{text-align:left}"
+    ".hud .hud-legend{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;font-size:12px;"
+    "color:#94A3B8;margin:6px 0 0}"
+    ".hud-lg{display:inline-flex;align-items:center;gap:6px}"
+    ".hud .hud-lm caption{white-space:nowrap}"
+    ".hud-sw{display:inline-block;width:11px;height:11px;border-radius:2px;"
+    "box-sizing:border-box}"
+    ".hud-sw-on{background:rgba(248,113,113,0.55);border:2px solid #F87171}"
+    ".hud-sw-off{border:1px dotted #A8A29E}"
+    ".hud .hud-reason{display:block;font-size:13px;line-height:1.4;color:#E2E8F0;"
+    "margin-top:4px;overflow-wrap:anywhere}"
     # fit-scope flow
     ".hud-flow-svg{display:block;width:100%;height:auto}"
     ".hud-fo{fill:#0A0F14;stroke-width:1.5}.hud-fo-red{stroke:#F87171}.hud-fo-muted{stroke:#1E2A36}"
+    ".hud-fo-green{stroke:#4ADE80}"
     ".hud-fl{fill:none;stroke-width:1.5}.hud-fl-red{stroke:#F87171}.hud-fl-muted{stroke:#94A3B8}"
-    ".hud-fh-red{fill:#F87171}.hud-fh-muted{fill:#94A3B8}"
+    ".hud-fl-green{stroke:#4ADE80}"
+    ".hud-fh-red{fill:#F87171}.hud-fh-muted{fill:#94A3B8}.hud-fh-green{fill:#4ADE80}"
     ".hud-ft,.hud-ft-m,.hud-ft-s{font-family:'IBM Plex Mono',monospace;font-size:11px;fill:#E2E8F0}"
     ".hud-ft-m{fill:#94A3B8}.hud-ft-s{fill:#E2E8F0}"
     ".hud-ft-f{font-family:'IBM Plex Sans Condensed',sans-serif;font-size:11px;"
@@ -1851,6 +2393,15 @@ CSS = (
     "border:1px solid #1E2A36;border-radius:2px;padding:4px 8px;font-family:'IBM Plex Mono',"
     "monospace;font-size:12px;margin:0}"
     ".hud-tile .hud-code{min-width:7.2em}"
+    ".hud-tile-main{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 16em}"
+    ".hud .hud-desc{font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.4;"
+    "color:#E2E8F0;overflow-wrap:anywhere}"
+    ".hud .hud-fail{font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.4;"
+    "color:#F87171}"
+    ".hud .hud-tile .hud-reason{font-family:'IBM Plex Sans',sans-serif;font-size:12px;"
+    "color:#94A3B8;margin-top:0}"
+    ".hud .hud-cond{font-family:'IBM Plex Sans',sans-serif;font-size:12px;line-height:1.4;"
+    "color:#FBBF24}"
     ".hud .hud-tiles-pair li.hud-tile{display:grid;grid-template-columns:7.2em minmax(0,1fr) 7em;"
     "gap:4px 8px}"
     ".hud-tiles-pair .hud-move{text-align:right}"

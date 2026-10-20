@@ -15,6 +15,7 @@ import streamlit as st
 
 from atlas.agent.approval import CONFIRM_CHARS, inert
 from atlas.ui import artifacts as A
+from atlas.ui import copy as C
 from atlas.ui import hud as H
 from atlas.ui import recorded as RR
 from atlas.ui.recorded import CHANGED
@@ -92,8 +93,11 @@ CSS = """
 
 
 def inject_css() -> None:
+    from atlas.ui import story
+
     st.html(CSS)
     st.html(H.CSS)
+    story.inject_css()
 
 
 def _count(value) -> str:
@@ -183,9 +187,13 @@ def recorded_banner(
             )
 
 
-def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
+def integrity(
+    checks: list, ok: bool, ring: str | None = None, *, plain: bool = False
+) -> None:
     """The recorded hashes, recomputed from the files on disk before anything is shown.
-    `ring` is the HUD integrity ring's markup (`atlas.ui.hud.ring`), shown first."""
+    `ring` is the HUD integrity ring's markup (`atlas.ui.hud.ring`), shown first. `plain`
+    (the story's plain mode, intact runs only) leaves out the table of hashes and names no
+    file; a run that is not intact always shows its table of differing items."""
     with st.container(key="card-integrity", border=True):
         st.subheader("Recorded evidence")
         if ring is not None:
@@ -206,12 +214,13 @@ def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
                     f":green-badge[intact] {H.integrity_count(checks).verified}: each "
                     "matches the files on disk, recomputed now."
                 )
-            with (
-                st.expander("Integrity checks"),
-                st.container(key="scroll-integrity"),
-                st.container(key="trace-integrity"),
-            ):
-                st.table(pd.DataFrame(rows), hide_index=True)
+            if not plain:
+                with (
+                    st.expander("Integrity checks"),
+                    st.container(key="scroll-integrity"),
+                    st.container(key="trace-integrity"),
+                ):
+                    st.table(pd.DataFrame(rows), hide_index=True)
         else:
             bad = [r for r in rows if r["result"] != "matches"]
             with st.container(key="integrity-failed"):
@@ -230,7 +239,9 @@ def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
             ):
                 st.table(pd.DataFrame(bad), hide_index=True)
         st.caption(
-            "Each hash the run recorded is recomputed from the bytes on disk, and each "
+            C.INTEGRITY_NOTE_PLAIN
+            if plain and ok
+            else "Each hash the run recorded is recomputed from the bytes on disk, and each "
             "reported outcome is compared with its outcome.json. This detects changes since "
             "recording; it does not authenticate a run whose files and recorded hashes were "
             "both rewritten."

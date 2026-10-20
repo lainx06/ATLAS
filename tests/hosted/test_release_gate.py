@@ -224,7 +224,7 @@ def test_the_recorded_original_card_shows_no_findings_from_changed_evidence(
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HOSTED_LIVE_ENABLED", "false")
     at = AppTest.from_file(APP, default_timeout=60)
-    at.session_state["hosted_view"] = page.LIVE_VIEW
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     with Hh.loopback_only():
         at.run()
     assert_only_the_evidence_changed_panel(at)
@@ -275,6 +275,7 @@ def test_the_local_recorded_view_shows_no_result_from_changed_evidence(
     monkeypatch.delenv("ATLAS_HOSTED", raising=False)
     monkeypatch.setenv(RR.RECORDED_ENV, str(tmp_path))
     at = AppTest.from_file(APP, default_timeout=60)
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     at.session_state["view"] = "recorded"
     at.session_state["recorded_run"] = LIVE6
     at.run()
@@ -358,17 +359,28 @@ def test_no_entry_point_reads_results_outside_the_gate():
     callers = {}
     for path in [root / "app.py", *sorted((root / "src" / "atlas").rglob("*.py"))]:
         text = path.read_text(encoding="utf-8")
-        for name in ("finished_run(", "finished_verified(", "recorded_page("):
-            for m in re.finditer(rf"\b(R|results)\.{re.escape(name)}", text):
+        for name in (
+            "finished_run(",
+            "finished_verified(",
+            "recorded_page(",
+            "case_page(",
+        ):
+            for m in re.finditer(rf"\b(R|RS|results)\.{re.escape(name)}", text):
                 line = text.count("\n", 0, m.start()) + 1
                 callers[f"{path.relative_to(root).as_posix()}:{line}"] = name
     assert sorted(callers.values()) == [
+        "case_page(",  # the Overview & Cases page (story slice 1)
         "finished_verified(",
         "finished_verified(",
         "recorded_page(",
         "recorded_page(",
     ], callers
     results = (root / "src/atlas/ui/results.py").read_text(encoding="utf-8")
-    for fn in ("def recorded_page(", "def finished_verified(", "def finished_run("):
+    for fn in (
+        "def recorded_page(",
+        "def finished_verified(",
+        "def finished_run(",
+        "def case_page(",
+    ):
         body = results.split(fn, 1)[1].split("\ndef ", 1)[0]
         assert "gate(" in body and "return" in body, fn

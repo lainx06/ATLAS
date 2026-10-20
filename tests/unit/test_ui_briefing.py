@@ -138,7 +138,7 @@ def test_every_number_in_the_briefing_is_the_files(label):
     assert [t.split(" (FAIL): ", 1)[0] for t in shown] == fails[: H.BRIEF_FAILS]
     for t in shown:
         aid, words = t.split(" (FAIL): ", 1)
-        assert words == labels[aid]  # the fixed label, never the formal definition
+        assert words == labels[aid]["failure"]  # the fixed label, not the definition
     assert text[-1] == A.CAVEAT
 
 
@@ -248,7 +248,9 @@ def test_every_assertion_has_exactly_one_fixed_label():
 
 def test_labels_are_the_projects_fixed_file_not_read_from_runs():
     assert H.LABELS == ROOT / "src/atlas/ui/assertion_labels.json"
-    assert H.load_labels() == json.loads(H.LABELS.read_text(encoding="utf-8"))["labels"]
+    labels = json.loads(H.LABELS.read_text(encoding="utf-8"))["labels"]
+    assert H.load_labels() == {aid: v["failure"] for aid, v in labels.items()}
+    assert H.load_descriptions() == {aid: v["description"] for aid, v in labels.items()}
 
 
 # -- on the page -------------------------------------------------------------------------------
@@ -258,6 +260,7 @@ def recorded_page(monkeypatch, root: Path, label: str):
     monkeypatch.delenv("ATLAS_HOSTED", raising=False)
     monkeypatch.setenv(R.RECORDED_ENV, str(root))
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     at.session_state["view"] = "recorded"
     at.session_state["recorded_run"] = label
     at.run()

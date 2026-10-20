@@ -9,8 +9,11 @@ HASH = re.compile(r"[0-9a-f]{64}")
 
 
 # -- page helpers ------------------------------------------------------------------------------
+LIVE_PAGE = "/try_it_live"  # the Try It Live page (story slice 1 navigation)
+
+
 def open_app(page, app) -> None:
-    page.goto(app.url)
+    page.goto(app.url + LIVE_PAGE)
     page.get_by_role("button", name="Confirm & run").wait_for(timeout=60_000)
 
 
@@ -87,6 +90,16 @@ def wait_finished(page, app, timeout: float = 240) -> Path:
                 return newest
         time.sleep(0.5)
     raise AssertionError("the run did not finish on the page")
+
+
+def open_step(page, n: int) -> None:
+    """Expands step `n` of the Overview's story (a native expander), if it is collapsed."""
+    details = page.locator(f".st-key-step-{n} details").first
+    if details.get_attribute("open") is None:
+        page.locator(f".st-key-step-{n} summary").first.click()
+        page.wait_for_function(
+            f"() => document.querySelector('.st-key-step-{n} details').open"
+        )
 
 
 def text(page, key: str) -> str:

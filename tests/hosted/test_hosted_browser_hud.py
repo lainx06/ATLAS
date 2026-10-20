@@ -107,9 +107,7 @@ def exhausted(tmp_path_factory, database):
 
 
 def to_live(page, url: str) -> None:
-    page.goto(url)
-    page.locator(".st-key-card-integrity").wait_for(timeout=60_000)
-    page.get_by_test_id("stSidebar").get_by_text("Live session", exact=True).click()
+    page.goto(url + "/try_it_live")  # the Try It Live page (navigation)
     page.get_by_role("button", name="Start the live session").wait_for(timeout=60_000)
 
 

@@ -1,9 +1,10 @@
-"""Scenario 9 (UI design pass, phase 1): the HUD on the hosted "Recorded runs" view.
+"""Scenario 9 (UI design pass, phase 1; story slice 1): the HUD on the hosted Overview.
 
 ATLAS_HOSTED=1 with the live kill switch off ("Live: unavailable"); the bundled runs in
-demo/recorded are only read. live6 shows the hero in the first viewport; the two HAR bundles
+demo/recorded are only read. Since story slice 1 they are the Overview's case cards: live6
+(the default case) shows the verdict bar's hero in the first viewport; the two HAR bundles
 (no candidate) show the ring, one reticle, the leak map and the fit-scope flow from their own
-files, with no candidate column. With ATLAS_UI_SCREENS set, screenshots are saved there.
+files in step 2, with no candidate column. With ATLAS_UI_SCREENS set, screenshots are saved.
 """
 
 import json
@@ -33,26 +34,25 @@ def read(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+TITLES = {
+    "t09/agent-har_flawed-1e2267f662c0": "A real-data leak",
+    "t09/agent-har_clean-ac63eaecd7a8": "A clean evaluation",
+}
+
+
 def open_hosted(page, app, label: str | None = None) -> None:
+    """The Overview; `label` selects that bundled run's case card (layout step)."""
     page.goto(app.url)
-    page.locator(".st-key-card-integrity").wait_for(timeout=60_000)
+    page.locator(".st-key-verdict-bar").wait_for(timeout=60_000)
     wait_idle(page)
     if label is None:
         return
-    phone = (page.viewport_size or {}).get("width", 1440) < 600
-    if phone:
-        page.get_by_test_id("stExpandSidebarButton").click()
-    box = page.get_by_role("combobox", name="Recorded run")
-    box.click()
-    page.get_by_role("option", name=label, exact=True).click()
-    page.get_by_text(f"Run {label}.", exact=False).wait_for(timeout=30_000)
+    page.get_by_role("button", name=TITLES[label], exact=True).click()
+    page.locator("[class*='st-key-case-card-on-']").get_by_text(
+        TITLES[label], exact=True
+    ).wait_for(timeout=30_000)
+    page.locator(".st-key-verdict-bar").wait_for(timeout=30_000)
     wait_idle(page)
-    if phone:
-        page.keyboard.press("Escape")
-        close = page.get_by_test_id("stSidebarCollapseButton")
-        if close.count() and close.is_visible():
-            close.click()
-        time.sleep(0.5)
 
 
 @pytest.mark.parametrize("size", SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
@@ -65,18 +65,15 @@ def test_the_hosted_header_with_live_unavailable_and_the_live6_hero(app, page, s
     if w >= 1024:
         sidebar = page.get_by_test_id("stSidebar").inner_text()
         assert "Live: unavailable" in sidebar and "Hosted demo: limited" in sidebar
-        assert "Recorded run" in sidebar
-        for selector in (".hud-brief", ".hud-ret"):  # phase 2: the briefing leads
+        for selector in (".hud-ret",):  # slice 1: the verdict bar leads
             boxes = page.locator(selector).evaluate_all(
                 "els => els.map(e => e.getBoundingClientRect().bottom)"
             )
             assert boxes and max(boxes) <= h, (selector, boxes)
     banner = page.locator(".st-key-banner").inner_text()
-    assert "Replay: these are recorded runs" in banner and "LIVE RUN" in banner
-    assert (
-        "recomputed now from the bundled files"
-        in page.locator(".hud-ring").inner_text()
-    )
+    # Plain mode: the run's own live label in plain words (Expert view: the full banner).
+    assert "Replay: these are recorded runs" in banner and "Recorded live run" in banner
+    assert "recomputed now" in page.locator(".hud-ring").inner_text()
     if w < 1024:
         page.get_by_test_id("stExpandSidebarButton").click()
         time.sleep(0.6)
@@ -128,8 +125,11 @@ def test_the_har_bundles_render_from_their_own_files(app, page, size, label):
         assert (
             origin["class"] in flow and f"[{origin['contributing_rows']} rows]" in flow
         )
-    if not fit["observed"].get("origins"):
-        assert "observed.judged_uses" in flow
+    if not fit["observed"].get("origins"):  # plain mode: the PASS reason sentence
+        assert (
+            f"{fit['observed']['judged_uses']} uses of a fitted step were checked"
+            in flow
+        )
     assert "CC BY 4.0" in page.locator(".st-key-banner").inner_text()
 
 
@@ -137,7 +137,7 @@ def test_the_live_view_with_the_kill_switch_off(app, page):
     """Phase 2: the recorded original's ring and reticle (original only) and the
     live-unavailable state with its next action; nothing to start."""
     open_hosted(page, app)
-    page.get_by_test_id("stSidebar").get_by_text("Live session", exact=True).click()
+    page.get_by_role("link", name="Try It Live").click()  # the navigation
     state = page.locator(".st-key-live-unavailable")
     state.wait_for(timeout=30_000)
     assert "LIVE UNAVAILABLE" in state.inner_text()

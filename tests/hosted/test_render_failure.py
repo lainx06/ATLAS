@@ -173,7 +173,7 @@ def hosted_run(monkeypatch, tmp_path):
 
 def hosted_page(handle):
     at = AppTest.from_file(APP, default_timeout=60)
-    at.session_state["hosted_view"] = page.LIVE_VIEW
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     at.session_state["hosted_live"] = handle
     with H.loopback_only():
         at.run()
@@ -232,6 +232,7 @@ def local_run(monkeypatch, tmp_path):
 
 def local_page():
     at = AppTest.from_file(APP, default_timeout=60)
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     at.run()
     return at
 

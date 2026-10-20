@@ -5,6 +5,7 @@ candidate or with changed evidence, motion is switchable, and IDs are unique per
 The runs are the bundled recordings in demo/recorded (read only; tampering uses copies).
 """
 
+import dataclasses
 import html as html_lib
 import json
 import re
@@ -152,7 +153,36 @@ def test_fit_scope_flow_equals_the_files(live6):
     # The candidate's own file: PASS, no origins key at all. The PASS state is shown from the
     # recorded fields; "not recorded" is not printed for the origins it does not list.
     assert cand["status"] == "PASS" and "origins" not in cand["observed"]
+    # Item 5 (story slice 1): every recorded fit event names its fold, so the candidate's
+    # per-fold fits are drawn from those fields, one green lane per fold.
+    events = [
+        json.loads(line)
+        for line in (d / "candidates/c1/provenance.jsonl")
+        .read_text("utf-8")
+        .splitlines()
+    ]
+    fits = [(e["fold"], e["class"]) for e in events if e.get("type") == "fit"]
+    cand_folds = [s["fold"] for s in read(d / "candidates/c1/splits.json")]
+    assert len(fits) == 12 and {f for f, _ in fits} == set(cand_folds)
+    lanes = {}
+    for fold, cls in fits:
+        lanes.setdefault(fold, []).append(cls)
+    assert h.flow_cand.fold_fits == list(lanes.items())
     html = H.fit_flow(h.flow_cand, h.ids, "cand", played=True)
+    tags = Tags(html)
+    drawn = tags.all("path", "hud-fl")
+    assert len(drawn) == len(fits) and all("hud-fl-green" in p["class"] for p in drawn)
+    assert [(p["data-fold"], p["data-lane"]) for p in drawn] == [
+        (f, str(list(lanes).index(f))) for f, _ in fits
+    ]
+    assert "hud-fl-red" not in html
+    assert (
+        "candidates/c1/provenance.jsonl · events type fit · fold, class" in tags.joined
+    )
+    # Without the fold fields (never derived from row sets) the PASS summary is shown.
+    html = H.fit_flow(
+        dataclasses.replace(h.flow_cand, fold_fits=None), h.ids, "cand", played=True
+    )
     assert "<svg" not in html and "hud-fl-red" not in html
     tags = Tags(html)
     folds = len(read(d / "candidates/c1/splits.json"))
@@ -640,9 +670,7 @@ def test_the_hosted_recorded_page_plays_once_and_uses_no_widget_for_the_toggle(h
     assert not at.exception
     first = hud_markdown(at)
     assert "hud-anim" in first and "hud-ret" in first and 'type="radio"' in first
-    assert [r.label for r in at.radio] == [
-        "View"
-    ]  # the toggle is not a Streamlit widget
+    assert [r.label for r in at.radio] == []  # the toggle is not a Streamlit widget
     assert at.session_state[RS.HUD_PLAYED] == {LIVE6}
     at.run()  # a rerun renders the final state
     second = hud_markdown(at)

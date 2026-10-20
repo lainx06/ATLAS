@@ -92,6 +92,51 @@ def recorded_page(
     played_runs.add(run.label)
 
 
+def case_page(
+    run: R.RecordedRun,
+    *,
+    bundled: bool,
+    notes: tuple[str, ...] = (),
+    plain_notes: tuple[str, ...] = (),
+) -> None:
+    """A bundled case on the Overview & Cases page (story layout, `atlas.ui.story`): the
+    banner, then the one verification gate, then the verdict bar and the five steps. On a
+    failed verification only the evidence-changed panel is drawn and nothing else of the
+    case: no verdict bar, no step, no outcome. Motion plays once per case per session."""
+    from atlas.ui import story
+
+    report = (
+        A.read_json(run.path / "agent_report.json") if run.kind == R.AGENT else None
+    )
+    finished_utc, _source = R.finished(run, report)
+    played_runs = st.session_state.setdefault(HUD_PLAYED, set())
+    played = run.label in played_runs
+    with st.container(key="hud-page"):
+        if not played:
+            st.html(H.once_css(played))
+        story.banner(report, run.label, finished_utc, notes, plain_notes)
+        checks = gate(
+            run.path,
+            report,
+            run.kind,
+            H.Ids(H.run_hash(run.label)),
+            played=played,
+            phrase=_ring_phrase(bundled),
+        )
+        if checks is None:
+            played_runs.add(run.label)
+            return
+        slot = st.empty()
+        try:
+            with slot.container():
+                story.case(run, report, checks, bundled=bundled, played=played)
+        except Exception:  # noqa: BLE001 - never a partial result; the record is unchanged
+            slot.empty()
+            _log.error(RENDER_FAILED_EVENT)
+            st.error(RENDER_FAILED, icon=":material/error:")
+    played_runs.add(run.label)
+
+
 def finished_verified(
     run_dir: Path | None, report: dict | None, mode: str, *, run_id: str, **kwargs
 ) -> None:
@@ -296,10 +341,24 @@ def _cards(
             st.markdown(H.evidence(hud, played=played), unsafe_allow_html=True)
     if preamble is not None:
         preamble()
+    analysis_section(run_dir, report, mode, decisions, on_restart, hud)
+    finding_section(run_dir, report, mode, notes, compare, original_title)
+    revision_section(run_dir, report, mode)
+    comparison_section(run_dir, report, mode)
+    trust_section(run_dir, report)
+
+
+def analysis_section(
+    run_dir: Path | None,
+    report: dict | None,
+    mode: str,
+    decisions: list[dict],
+    on_restart: Callable[[], None] | None,
+    hud: H.Hud | None,
+) -> None:
+    """2. Analysis: the terminal state, the mission track, the budget gauge, the trace."""
     terminal = report.get("terminal_state") if report else None
     terminal_reason = report.get("terminal_reason") if report else None
-    comp = (report or {}).get("comparison") or {}
-
     if mode == AUDIT:
         with st.container(key="card-analysis", border=True):
             st.subheader("2. Analysis")
@@ -362,7 +421,19 @@ def _cards(
                 collapsed=terminal not in A.FAILED_STATES,
             )
 
-    # -- 3. Finding ---------------------------------------------------------------------------
+
+def finding_section(
+    run_dir: Path | None,
+    report: dict | None,
+    mode: str,
+    notes: tuple[str, ...],
+    compare: tuple | None,
+    original_title: str,
+) -> None:
+    """3. Finding: the original's outcome, its required checks and their details."""
+    terminal = report.get("terminal_state") if report else None
+    terminal_reason = report.get("terminal_reason") if report else None
+    comp = (report or {}).get("comparison") or {}
     with st.container(key="card-finding", border=True):
         st.subheader("3. Finding")
         if mode == AUDIT:
@@ -442,7 +513,10 @@ def _cards(
             with st.expander("Limitations of this evaluation"):
                 V.bullet_list(limitations, "finding-limitations")
 
-    # -- 4. Revision and 5. Comparison (agent runs) -----------------------------------------
+
+def revision_section(run_dir: Path | None, report: dict | None, mode: str) -> None:
+    """4. Revision (agent runs): the proposals, their rationale, the candidates."""
+    comp = (report or {}).get("comparison") or {}
     if mode == AGENT and report is not None:
         views = A.proposals(run_dir, report)
         rationale = [
@@ -477,12 +551,19 @@ def _cards(
                     )
             for i, c in enumerate(comp.get("candidates") or [], start=1):
                 V.candidate_detail(c, i)
-        if comp.get("candidates"):
-            with st.container(key="card-comparison", border=True):
-                st.subheader("5. Comparison")
-                V.comparison(report, run_dir)
 
-    # -- 6. Trust and export ----------------------------------------------------------------
+
+def comparison_section(run_dir: Path | None, report: dict | None, mode: str) -> None:
+    """5. Comparison (agent runs with an evaluated candidate)."""
+    comp = (report or {}).get("comparison") or {}
+    if mode == AGENT and report is not None and comp.get("candidates"):
+        with st.container(key="card-comparison", border=True):
+            st.subheader("5. Comparison")
+            V.comparison(report, run_dir)
+
+
+def trust_section(run_dir: Path | None, report: dict | None) -> None:
+    """6. Trust and export: other model-written text, the cost, limitations, export."""
     with st.container(key="card-trust", border=True):
         st.subheader("6. Trust and export")
         if report is not None:

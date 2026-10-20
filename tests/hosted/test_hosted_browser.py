@@ -140,6 +140,7 @@ def live_session(page, server, typed: str, expected: str):
     page.get_by_text("Replay: these are recorded runs", exact=False).wait_for(
         timeout=60_000
     )
+    page.locator(".st-key-step-5 summary").first.click()  # step 5: the evidence panel
     page.locator(".st-key-card-integrity").wait_for(timeout=60_000)
     card = page.locator(".st-key-card-integrity").inner_text()
     assert (
@@ -148,7 +149,7 @@ def live_session(page, server, typed: str, expected: str):
     shots = H.ROOT / "runs" / "t12" / "screens"  # git-ignored evidence
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / "hosted_recorded.png"), full_page=True)
-    page.get_by_test_id("stSidebar").get_by_text("Live session", exact=True).click()
+    page.get_by_role("link", name="Try It Live").click()  # the navigation
     page.get_by_role("textbox", name="Judge access code (optional)").fill(typed)
     page.get_by_role("button", name="Start the live session").click()
     page.get_by_text(expected, exact=True).wait_for(timeout=180_000)

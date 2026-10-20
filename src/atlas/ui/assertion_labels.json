@@ -1,20 +1,65 @@
 {
-  "source": "Fixed product copy written by the project: one plain-English label per canonical assertion ID in evaluation/assertion_definitions.json (policy-v1.3). Never generated at runtime and never taken from model output. Each label says what a FAIL of that assertion means.",
+  "source": "Fixed product copy written by the project: two fields per canonical assertion ID in evaluation/assertion_definitions.json (policy-v1.3). Never generated at runtime and never taken from model output. \"failure\" says what a FAIL of that assertion means (FAIL lines and the briefing); \"description\" says what the check verifies (tiles of any status). The policy's formal definition stays in evaluation/assertion_definitions.json.",
   "labels": {
-    "fit.coverage_complete": "predictions are not exactly one per fold, or are not traceable to their producing step",
-    "fit.state_dependencies_within_fold_train": "a preprocessing or model step was fit on rows outside its fold's training data",
-    "metric.prediction_ids_match_eval_ids": "the predictions do not cover exactly the rows each fold was meant to evaluate",
-    "metric.reported_matches_recomputed": "the reported metric does not match the metric ATLAS recomputed",
-    "split.evaluation_folds_nonempty": "a declared evaluation fold contains no evaluation rows",
-    "split.no_group_overlap": "the same subjects appear in training and testing",
-    "split.no_row_overlap": "the same rows appear in both training and testing",
-    "split.no_shared_source_observation": "the same source observation appears in both training and testing",
-    "split.no_window_overlap": "a training time window overlaps an evaluation window in the same stream",
-    "split.repeated_measures_rule": "repeated measurements of one subject are split across training and testing",
-    "split.sampling_unit_disjoint": "the same sampling units (subjects) appear on both sides of a split",
-    "split.temporal_separation": "training and evaluation items are closer in time than the declared minimum gap",
-    "temporal.cutoff_precedes_evaluation": "the training cutoff, plus the allowed gap, is not before the earliest evaluation time",
-    "temporal.features_available_when_used": "a feature value was used before the time it became available",
-    "temporal.training_labels_available_by_cutoff": "a training row or its label is dated after the training cutoff"
+    "fit.coverage_complete": {
+      "failure": "predictions are not exactly one per fold, or are not traceable to their producing step",
+      "description": "Each fold has exactly one set of predictions, traced back through every step that produced it"
+    },
+    "fit.state_dependencies_within_fold_train": {
+      "failure": "a preprocessing or model step was fit on rows outside its fold's training data",
+      "description": "Every preprocessing and model step used in a fold learned only from that fold's training rows"
+    },
+    "metric.prediction_ids_match_eval_ids": {
+      "failure": "the predictions do not cover exactly the rows each fold was meant to evaluate",
+      "description": "Predictions cover exactly the test rows declared for each fold"
+    },
+    "metric.reported_matches_recomputed": {
+      "failure": "the reported metric does not match the metric ATLAS recomputed",
+      "description": "The score the project reports matches the score ATLAS recomputes from its predictions, within tolerance"
+    },
+    "split.evaluation_folds_nonempty": {
+      "failure": "a declared evaluation fold contains no evaluation rows",
+      "description": "Every test fold contains at least one row to evaluate"
+    },
+    "split.no_group_overlap": {
+      "failure": "the same subjects appear in training and testing",
+      "description": "No group, such as a person, appears in both training and testing within a fold"
+    },
+    "split.no_row_overlap": {
+      "failure": "the same rows appear in both training and testing",
+      "description": "No data row appears in both training and testing within a fold"
+    },
+    "split.no_shared_source_observation": {
+      "failure": "the same source observation appears in both training and testing",
+      "description": "No test row is the same original observation as a training row"
+    },
+    "split.no_window_overlap": {
+      "failure": "a training time window overlaps an evaluation window in the same stream",
+      "description": "Time windows used for training and testing do not overlap within the same recording stream"
+    },
+    "split.repeated_measures_rule": {
+      "failure": "repeated measurements of one subject are split across training and testing",
+      "description": "Repeated measurements of one unit are not split between training and testing"
+    },
+    "split.sampling_unit_disjoint": {
+      "failure": "the same sampling units (subjects) appear on both sides of a split",
+      "description": "Each declared sampling unit, such as a participant, stays on one side of the split"
+    },
+    "split.temporal_separation": {
+      "failure": "training and evaluation items are closer in time than the declared minimum gap",
+      "description": "Within each fold, every training item and test item are at least the declared minimum time gap apart"
+    },
+    "temporal.cutoff_precedes_evaluation": {
+      "failure": "the training cutoff, plus the allowed gap, is not before the earliest evaluation time",
+      "description": "In each fold, the training cutoff plus the declared gap comes no later than the earliest test prediction time"
+    },
+    "temporal.features_available_when_used": {
+      "failure": "a feature value was used before the time it became available",
+      "description": "Every feature value used for a row was available by that row's prediction time"
+    },
+    "temporal.training_labels_available_by_cutoff": {
+      "failure": "a training row or its label is dated after the training cutoff",
+      "description": "Every training row, and its label, is dated no later than its fold's training cutoff"
+    }
   }
 }

@@ -1,10 +1,11 @@
 """The hosted page (T-12; SPEC §13 limited hosted). Shown only when ATLAS_HOSTED=1.
 
-Two views:
+Two pages of the app's navigation (app.py) use it:
 
-- **Recorded runs** (the default): the bundled runs in the hash-verifying viewer, disclosed
-  as recordings. Nothing executes and no approval is asked. Always available.
-- **Live session**: one live Nemotron session per visitor session. The model inspects and
+- **Overview & Cases** (the default, `atlas.ui.story`): the bundled runs as cases, verified
+  by hash, disclosed as recordings (`atlas.ui.story.case_notes`). Nothing executes and no approval is asked.
+  Always available. `recorded_view` is the single-run replay viewer of the same bundle.
+- **Try It Live** (`live_page`): one live Nemotron session per visitor session. The model inspects and
   proposes; every proposal passes `validate_diff` and is "not executed here". The original's
   findings are those of the recorded, hash-verified trusted evaluation. The session runs in
   a background thread of this server process (`session.run_live_session`); the page follows
@@ -27,6 +28,7 @@ from atlas.agent.controller import NOT_EXECUTED_HERE, recorded_label
 from atlas.hosted import bundle, secrets
 from atlas.hosted import session as hs
 from atlas.ui import artifacts as A
+from atlas.ui import copy as C
 from atlas.ui import hud as HUD
 from atlas.ui import recorded as RR
 from atlas.ui import results as R
@@ -34,17 +36,8 @@ from atlas.ui import views as V
 from atlas.ui.catalogue import BY_NAME, read_claim
 
 RECORDED_VIEW, LIVE_VIEW = "recorded", "live"
-HAR_CITATION = (
-    "UCI HAR: Reyes-Ortiz, J., Anguita, D., Ghio, A., Oneto, L., & Parra, X. (2013). Human "
-    "Activity Recognition Using Smartphones [Dataset]. UCI Machine Learning Repository. "
-    "https://doi.org/10.24432/C54S4K. The dataset page grants CC BY 4.0; the archive's 2012 "
-    'README.txt adds "Any commercial use is prohibited." This demo shows precomputed results '
-    "only and does not distribute the data (benchmarks/real_sensor/ATTRIBUTION.md)."
-)
-REPLAY_DISCLOSURE = (
-    "Replay: these are recorded runs. Every recorded hash is recomputed from the bundled "
-    "files before anything is shown; nothing is re-executed here and no model is called."
-)
+HAR_CITATION = C.HAR_CITATION
+REPLAY_DISCLOSURE = C.REPLAY_DISCLOSURE
 LIVE_INTRO = (
     "One live session per visitor session, with the decided limits (at most 6 model "
     "requests, an estimate cap of $0.0648). The model inspects the project and may propose "
@@ -92,32 +85,10 @@ class LiveHandle:
         return found[-1] if found else None
 
 
-def main() -> None:
-    secret = secrets.read
-    if "hosted_view" not in st.session_state:
-        st.session_state.hosted_view = RECORDED_VIEW
-    reason = hs.availability(secret)
-    handle: LiveHandle | None = st.session_state.get("hosted_live")
-    running = handle is not None and handle.active
-    runs = {r.label: r for r in bundle.list_bundle()}
-    run = None
+def sidebar() -> None:
+    """The hosted sidebar, on every page: what this deployment can and cannot do."""
+    reason = hs.availability(secrets.read)
     with st.sidebar:
-        st.markdown("## ATLAS")
-        st.caption("Checks whether an evaluation supports its deployment claim.")
-        st.radio(
-            "View",
-            [RECORDED_VIEW, LIVE_VIEW],
-            key="hosted_view",
-            format_func=lambda v: (
-                "Recorded runs" if v == RECORDED_VIEW else "Live session"
-            ),
-            disabled=running,
-        )
-        # The run picker sits here so the recorded run's hero fits the first viewport.
-        if st.session_state.hosted_view == RECORDED_VIEW and runs:
-            run = runs[
-                st.selectbox("Recorded run", list(runs), key="hosted_recorded_run")
-            ]
         st.markdown("**Capability**")
         st.markdown(":blue-badge[Hosted demo: limited]")
         st.caption(
@@ -128,10 +99,14 @@ def main() -> None:
         else:
             st.markdown(":gray-badge[Live: unavailable]")
             st.caption(hs.UNAVAILABLE_MESSAGE)
-    if st.session_state.hosted_view == RECORDED_VIEW:
-        recorded_view(run)
-    else:
-        live_view(secret, reason, handle)
+
+
+def live_page() -> None:
+    """The Try It Live page: one live session per visitor session."""
+    secret = secrets.read
+    reason = hs.availability(secret)
+    handle: LiveHandle | None = st.session_state.get("hosted_live")
+    live_view(secret, reason, handle)
 
 
 def recorded_view(run: RR.RecordedRun | None) -> None:
@@ -328,7 +303,7 @@ def _finished(handle: LiveHandle, label: str) -> None:
                 "ERROR",
                 f"The live session stopped with an internal error (`{handle.crash}`). "
                 "Recorded runs remain available.",
-                "open Recorded runs in the sidebar.",
+                f"open {C.PAGE_OVERVIEW}.",
             )
         return
     if outcome.status == "exhausted" or outcome.code == "exhausted":
@@ -338,7 +313,7 @@ def _finished(handle: LiveHandle, label: str) -> None:
                 "amber",
                 "BUDGET_EXHAUSTED",
                 hs.EXHAUSTED_MESSAGE,
-                "open Recorded runs in the sidebar; they do not use the live budget.",
+                f"open {C.PAGE_OVERVIEW}; its recorded runs do not use the live budget.",
             )
     if outcome.status == "unavailable":
         with st.container(key="live-unavailable"):
@@ -378,6 +353,5 @@ def _unavailable(message: str) -> None:
         "stone",
         "LIVE UNAVAILABLE",
         message,
-        "open Recorded runs in the sidebar; the full workflow, with execution, runs "
-        "locally.",
+        f"open {C.PAGE_OVERVIEW}; the full workflow, with execution, runs locally.",
     )

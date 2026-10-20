@@ -102,7 +102,7 @@ def logged_states(handle) -> list[str]:
 def test_the_track_follows_the_session_and_stops_with_it(live):
     paused, handle, result, calls = live
     at = AppTest.from_file(APP, default_timeout=60)
-    at.session_state["hosted_view"] = page.LIVE_VIEW
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     at.session_state["hosted_live"] = handle
 
     # Intermediate point 1: the session waits inside its second provider request.

@@ -87,6 +87,7 @@ def test_every_displayed_integrity_count_is_the_verification_results(
     monkeypatch.delenv("ATLAS_HOSTED", raising=False)
     monkeypatch.setenv(R.RECORDED_ENV, str(tmp_path))
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+    at.switch_page("app_pages/try_it_live.py")  # the Try It Live page (navigation)
     at.session_state["view"] = "recorded"
     at.session_state["recorded_run"] = shown_label
     at.run()
@@ -96,9 +97,10 @@ def test_every_displayed_integrity_count_is_the_verification_results(
 
     matches = PHRASE.findall(joined)
     word = "verified now" if differ == 0 else "differ"
-    # ring title, ring caption and the briefing (intact), or ring title, ring caption and the
-    # evidence-changed panel (changed): the same phrase each time.
-    assert len(matches) >= 3, joined
+    # ring title and the briefing (intact), or ring title and the evidence-changed panel
+    # (changed): the same phrase each time. The ring's caption carries no breakdown (story
+    # slice 1: the breakdown is in the evidence panel only).
+    assert len(matches) >= 2, joined
     for n_a, n_b, kind, h, c in matches:
         assert kind == word
         assert (int(n_b), int(h), int(c)) == (total, hashes, comparisons)
@@ -114,10 +116,11 @@ def test_every_displayed_integrity_count_is_the_verification_results(
         brief = next(t for t in texts if "hud-brief" in t)
         assert H.esc(f"Evidence intact: {H.integrity_count(checks).verified}.") in brief
         assert f":green-badge[intact] {H.integrity_count(checks).verified}:" in joined
-        # One phrase in the ring's title, its caption, the briefing and the evidence panel.
-        assert len(matches) == 4
+        # One phrase in the ring's title, the briefing and the evidence panel.
+        assert len(matches) == 3
     else:
         assert "hud-brief" not in joined and "Evidence intact" not in joined
         assert ":red-badge[EVIDENCE CHANGED]" in joined
         assert CENTRE.findall(ring[0]) == []  # no n/n centre on changed evidence
-        assert len(matches) == 3
+        assert f"{differ} of {total} recorded items differ</span>" in ring[0]  # caption
+        assert len(matches) == 2
