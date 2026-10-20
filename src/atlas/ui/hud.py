@@ -1808,6 +1808,8 @@ CSS = (
     ".hud .hud-insp-kv dt{color:#94A3B8;font-weight:400;overflow-wrap:anywhere;margin:0}"
     ".hud .hud-insp-kv dd{color:#E2E8F0;margin:0;overflow-wrap:anywhere}"
     ".hud .hud-insp-ev dd{word-break:break-all}"
+    "@container hud (max-width:759px){.hud dl.hud-insp-kv{grid-template-columns:minmax(0,1fr);"
+    "gap:0}.hud .hud-insp-kv dd{margin:0 0 4px 12px}}"
     ".hud ul.hud-insp-list{margin:0;padding-left:18px;font-size:13px;color:#E2E8F0}"
     ".hud .hud-insp-list li{margin:0 0 2px}"
     ".hud p.hud-insp-none{margin:0;font-size:13px;color:#94A3B8}"
@@ -1850,7 +1852,7 @@ CSS = (
     ".hud-brief-aid{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#E2E8F0}"
     ".hud li.hud-brief-caveat{font-size:13px;color:#94A3B8}"
     # full hashes, field labels and HUD state panels
-    ".hud.hud-flabel{margin:0 0 -8px}"
+    ".hud.hud-flabel{margin:0}"
     ".hud.hud-hash{font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.5;"
     "color:#E2E8F0;overflow-wrap:anywhere;word-break:break-all;margin:0;background:#0A0F14;"
     "border:1px solid #1E2A36;border-radius:2px;padding:8px 12px}"

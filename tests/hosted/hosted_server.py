@@ -5,7 +5,9 @@
 Before Streamlit starts, the pre-run check and the production client are routed to the mock
 provider of `hosted_helpers` (no real provider is ever reachable), and Python networking in
 this process is limited to loopback for its whole life (the browser connection and the local
-test database). Each completion request is counted in `$ATLAS_TEST_PROVIDER_LOG`. This file
+test database). Each completion request is counted in `$ATLAS_TEST_PROVIDER_LOG`. For the UI
+evidence, `$ATLAS_TEST_POST_DELAY_S` holds each mocked request that long (a session still
+going) and `$ATLAS_TEST_EXHAUSTED=1` answers every session with the store's refusal. This file
 lives under tests/ and is never part of the hosted app.
 """
 
@@ -28,12 +30,25 @@ def main() -> int:
     port = sys.argv[1]
     log = Path(os.environ["ATLAS_TEST_PROVIDER_LOG"])
 
+    delay = float(os.environ.get("ATLAS_TEST_POST_DELAY_S") or 0)
+
     def count(request):
         with open(log, "a", encoding="utf-8") as f:
             f.write("post\n")
+        if delay:  # screenshots of a session still going (UI phase 2 evidence)
+            import time
+
+            time.sleep(delay)
 
     replies = [H.completion(c) for c in [*H.LIVE6_REPLIES, H.FINISH]] * 10
     H.wire(_Patch(), H.Provider(replies, on_post=count))
+    if os.environ.get("ATLAS_TEST_EXHAUSTED") == "1":
+        # The budget store's refusal, without a store: the page's exhausted state.
+        from atlas.hosted import session as hs
+
+        hs.run_live_session = lambda *a, **k: hs.Outcome(
+            "exhausted", "public_daily", "public"
+        )
     guard = H.loopback_only()
     attempts = guard.__enter__()  # held for the life of the process
     guard_log = Path(os.environ["ATLAS_TEST_GUARD_LOG"])

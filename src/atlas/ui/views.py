@@ -57,7 +57,8 @@ CSS = """
   .st-key-hosted-original-checks, [class*="st-key-status-changes-"],
   [class*="st-key-scroll-comparison-"], .st-key-protocol-comparison) table td {
   font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.45;
-  color: #E2E8F0; padding: 7px 12px; border-color: #1E2A36; vertical-align: top; }
+  color: #E2E8F0; padding: 7px 12px; border-color: #1E2A36; vertical-align: top;
+  overflow-wrap: anywhere; }
 :is([class*="st-key-trace-"], .st-key-export, .st-key-finding-checks,
   .st-key-hosted-original-checks, [class*="st-key-status-changes-"],
   [class*="st-key-scroll-comparison-"], .st-key-protocol-comparison) table th {

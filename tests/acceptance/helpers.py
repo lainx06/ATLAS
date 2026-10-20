@@ -129,3 +129,53 @@ def shot(page, name: str) -> None:
     page.screenshot(
         path=str(Path(folder) / f"{name}_{vp.get('width')}x{vp.get('height')}.png")
     )
+
+
+SIZES = ((1440, 900), (1280, 800), (390, 844))
+
+
+def shots(page, name: str, locator=None) -> list[str]:
+    """Settled viewport screenshots of one page state at 1440 x 900, 1280 x 800 and 390 x 844
+    (resized in place; the sidebar is collapsed for the phone size and reopened after), with
+    `locator` scrolled into view, if ATLAS_UI_SCREENS names a folder. Returns the file names."""
+    folder = os.environ.get("ATLAS_UI_SCREENS")
+    if not folder:
+        return []
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    names = []
+    for w, h in SIZES:
+        page.set_viewport_size({"width": w, "height": h})
+        time.sleep(0.6)
+        if w < 600:
+            close = page.get_by_test_id("stSidebarCollapseButton")
+            if close.count() and close.is_visible():
+                close.click()
+                time.sleep(0.5)
+        if locator is not None:
+            locator.first.scroll_into_view_if_needed()
+            time.sleep(0.3)
+        settle(page)
+        names.append(f"{name}_{w}x{h}.png")
+        page.screenshot(path=str(Path(folder) / names[-1]))
+    page.set_viewport_size({"width": 1440, "height": 900})
+    time.sleep(0.6)
+    expand = page.get_by_test_id("stExpandSidebarButton")
+    if expand.count() and expand.is_visible():
+        expand.click()
+        time.sleep(0.5)
+    return names
+
+
+FOCUSED = """() => { const e = document.activeElement; if (!e) return "none";
+    const name = e.getAttribute("aria-label") || (e.innerText || e.value || "").trim()
+        .split(String.fromCharCode(10))[0].slice(0, 60);
+    return `${e.tagName.toLowerCase()}${e.type ? "[" + e.type + "]" : ""}: ${name}`; }"""
+
+
+def tab_order(page, steps: int) -> list[str]:
+    """Where keyboard focus lands, Tab by Tab, from the element focused now."""
+    seen = []
+    for _ in range(steps):
+        page.keyboard.press("Tab")
+        seen.append(page.evaluate(FOCUSED))
+    return seen

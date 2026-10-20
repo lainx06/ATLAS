@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
-from helpers import settle, shot, wait_idle
+from helpers import settle, shot, shots, wait_idle
 
 ROOT = Path(__file__).resolve().parents[2]
 BUNDLE = ROOT / "demo" / "recorded"
@@ -131,3 +131,24 @@ def test_the_har_bundles_render_from_their_own_files(app, page, size, label):
     if not fit["observed"].get("origins"):
         assert "observed.judged_uses" in flow
     assert "CC BY 4.0" in page.locator(".st-key-banner").inner_text()
+
+
+def test_the_live_view_with_the_kill_switch_off(app, page):
+    """Phase 2: the recorded original's ring and reticle (original only) and the
+    live-unavailable state with its next action; nothing to start."""
+    open_hosted(page, app)
+    page.get_by_test_id("stSidebar").get_by_text("Live session", exact=True).click()
+    state = page.locator(".st-key-live-unavailable")
+    state.wait_for(timeout=30_000)
+    assert "LIVE UNAVAILABLE" in state.inner_text()
+    assert "Live calls are unavailable; recorded runs remain available." in (
+        state.inner_text()
+    )
+    assert "Next action:" in state.inner_text()
+    assert page.locator(".hud-ret").count() == 1
+    assert (
+        "Verified revision" not in page.locator(".st-key-hosted-original").inner_text()
+    )
+    assert page.get_by_role("button", name="Start the live session").count() == 0
+    shots(page, "p2_46_hosted_live_original", page.locator(".st-key-hosted-original"))
+    shots(page, "p2_47_hosted_live_unavailable", state)

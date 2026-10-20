@@ -1,6 +1,6 @@
-# ATLAS HUD visual system (UI design pass, phase 1)
+# ATLAS HUD visual system (UI design pass, phases 1 and 2)
 
-Status: **design spec for the `ui-hud` branch, phase 1 (one screen).** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Other screens inherit the theme colours and type, and are not redesigned.
+Status: **design spec for the `ui-hud` branch, phases 1 and 2.** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 (§1–§10) covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Phase 2 (§11) rolls the HUD out to every view (the local run, the typed-approval panel, the hosted live session, the failure and honest-empty states, the tables) and adds the deterministic briefing, the evidence drill-down and the live mission track.
 
 Skills read before this spec: Anthropic `frontend-design`, Streamlit `developing-with-streamlit` 1.66.0 (`SKILL.md`, `references/theme.md`), Addy `frontend-ui-engineering` (`docs/TOOLING.md` "UI HUD pass skills").
 
@@ -58,7 +58,7 @@ Files: Plex Sans Regular, Italic, Medium, SemiBold; Plex Mono Regular, Medium, S
 
 - Spacing scale (px): 4, 8, 12, 16, 24, 32. Cards padded 16 / 20; HUD panels 12 / 16; 16 between panels.
 - Radius: 4 px cards and widgets (`baseRadius`, `buttonRadius`); 2 px tiles and cells.
-- Borders: 1 px solid `hairline` on every card and panel. **HUD corner brackets only on the outcome reticle** (phase 2: at most the active inspection frame), never on other cards.
+- Borders: 1 px solid `hairline` on every card and panel. **HUD corner brackets only on the outcome reticle (status colour) and on the active frame (accent):** phase 2's typed-approval panel and an open inspection frame. Never on other cards.
 - Theme `paddingTop = "1rem"` so the hero clears the first viewport.
 
 ## 3. Layout
@@ -84,6 +84,8 @@ First viewport at 1440 × 900 and 1280 × 800, sidebar open, no scrolling and no
 +------------------------------------------------------------------------------------------------------+
   (below the fold) CHECK MATRIX original | candidate, then the existing cards 1–6
 ```
+
+Phase 2: the **Briefing** (§11.2) now leads the run, between the title and the hero. The first viewport at 1440 × 900 and 1280 × 800 holds the banner, the title, the briefing, the ring and both reticles; the leak maps and flows follow directly below the hero (scenario 8 asserts both).
 
 - The hero renders inside `finished_run`'s single clearable slot: a render failure clears the hero with every other card (the T-12 fix pass 2 boundary stays).
 - The integrity card (the intact line, the item table in an expander and the detection caveat) follows the hero, and the existing cards (claim, 2. Analysis to 6. Trust and export) follow it unchanged in content.
@@ -174,6 +176,23 @@ Example: `atlas-flow-arrow-orig-1f0e9a2c-h`. A test renders the original and can
 | Streamlit caption (`text` at 60 %) | `panel` / `bg` (composites #8E949D / #8C9198) | 5.91 / 6.06 |
 | `bg` #0A0F14 (primary button text) | `accent` #67E8F9 | 13.27 |
 
+Phase 2 pairs (all also in `atlas.ui.hud.CONTRAST_PAIRS`, checked ≥ 4.5 by a test; non-text marks need 3:1):
+
+| Text or mark | Background | Ratio | Where |
+| --- | --- | --- | --- |
+| `text` #E2E8F0 | `bg` #0A0F14 | 15.61 | full hashes in the approval panel, the decision inset |
+| `text` #E2E8F0 | `panel` #0F1720 | 14.64 | briefing lines, inspection-frame values, state reasons, data-table cells, track nodes |
+| `muted` #94A3B8 | `panel` | 7.04 | inspection-frame keys and labels, the briefing caveat, table heads, **disabled buttons** (were dark on nothing, or Streamlit's 40 % text) |
+| `muted` #94A3B8 | `bg` | 7.50 | the tile's "Inspect"/"Close" cue, decision-inset labels |
+| `accent` #67E8F9 | `bg` | 13.27 | the cue on hover, a tile's focus ring |
+| `red` #F87171 | `panel` | 6.52 | the briefing's FAIL code |
+| `text` #E2E8F0 | neutral badge #2D343D | 10.20 | changed rows of the per-assertion table (were #EFF6FF under light text, about 1.1:1) |
+| state badges: violet / amber / stone / red | #28263F / #302F21 / #242A32 / #30242B | 5.52 / 8.09 / 5.73 / 5.37 | ERROR; NEEDS_INPUT, BUDGET_EXHAUSTED, Docker, incomplete_coverage; NOT_SUPPORTED, LIVE UNAVAILABLE, NO RECORDED RUNS; EVIDENCE CHANGED |
+| `text` #E2E8F0 | grid composite #10151B | 14.88 | the hosted Route line |
+| `accent` (mark) | `panel` | 12.45 | the active frame's corner brackets |
+| state edge (mark): red / amber / violet / stone | `panel` | 6.52 / 10.81 / 6.83 / 7.16 | the 2 px left edge of a state panel |
+| `text` (mark) | `panel` | 14.64 | the current stage's outline on a live track |
+
 The 1 px `hairline` (#1E2A36 on `panel`, 1.24:1) is decorative structure, never the only cue: the leak map's two cell states differ by fill, border style and text. Rendered colours are checked in the browser (phase 1 report).
 
 ## 8. Implementation constraints and deviations
@@ -206,3 +225,103 @@ Choices made while building against the rendered page (screenshots at 1440 × 90
 ## 10. Forbidden
 
 Neon glow on everything (one subtle glow, the reticle only); gradients as decoration (the grid is two 1 px line gradients at 4 %, the only gradient); glassmorphism blur; particles or radar; fake terminal streams; typing effects; corner brackets on every card; 3D or pre-rendered imagery; Orbitron/Rajdhani-style display fonts; emoji; stock sci-fi imagery; decorative numbers, random hex or scanning animations; any Marvel/Stark/JARVIS name or likeness ("HUD" is the design term).
+
+## 11. Phase 2: the HUD on every view (2026-10-19)
+
+Skills re-read for this phase: Anthropic `frontend-design`, Streamlit `developing-with-streamlit` 1.66.0, Addy `frontend-ui-engineering`. Everything in §1–§10 still applies: the truth rules, the escaping and one-line markup rule (§8), the motion rules (§5: once per run per session, never on a rerun, nothing loops, none under reduced motion) and the ID scheme (§6).
+
+### 11.1 Roll-out
+
+| View | What it shows now | Source |
+| --- | --- | --- |
+| Local "Run a project" | The HUD page container (grid, spacing); the claim card; mode controls; an amber Docker-unavailable state for agent runs | `app.py` |
+| A run still going (local) | The mission track from the stages the run's log has recorded so far (`agent_log.jsonl` state events; counters "<n> so far" from model_attempt and tool events), each new stage lighting once | `hud.track_live`, the page's existing one-second fragment |
+| A finished local run | Verified first (`results.finished_verified`, the same `recorded.verify` as a recorded run). Intact: briefing, hero, evidence block, integrity card, then the cards. Changed: an evidence-changed state ("the cards below are read from the files as they are now"), no HUD, no briefing | `results.finished_verified` |
+| Typed approval | §11.4 | `views.approval_panel` |
+| Hosted live session | The recorded original's ring and reticle (original only, headed "Original"); the start form or the live-unavailable state; while running, the live track and gauge (§11.6); finished: the Route line (Plex Mono), the session verified with its briefing, HUD, track and gauge; proposals "not executed here" in the model-written frame | `hosted/page.py` |
+| Failure and honest-empty states | §11.5 | `views.state_panel` |
+| Agent trace, check details, comparison, integrity and export tables | Hairline rows, Plex Mono data in `text`, 7 px / 12 px cells, HUD-label column heads; still `st.table` (tests read the cells); cells wrap anywhere at phone width. "Check details" uses the inspection frame's field rows instead of the JSON viewer | `views.CSS`, `views.assertion_details` |
+
+### 11.2 Briefing (`hud.briefing_lines`, `hud.briefing`)
+
+A pure function of the run's verified files and `evaluation/assertion_definitions.json` only (the policy's frozen definitions). From the report it reads only the proposals' outcome codes. It never reads model text, a rationale, a proposal's text, a diff, a complete file or a reply. Built only when `recorded.verify` reports the run intact; changed evidence gets the evidence-changed panel and no briefing. In order, each line only when its data is recorded:
+
+1. "Evidence intact: <n> of <n> recorded hashes verified now." (`n` counts the recorded file hashes recomputed now; the report-key outcome checks the ring also counts are not hashes, so live6's ring reads 49/49 and its briefing 46);
+2. "Original outcome: <code>. Required checks: <f> FAIL, <na> NOT_ASSESSED, <e> ERROR (of <n>)." (`original/outcome.json`; an audit run's root `outcome.json`);
+3. up to four "<assertion> (FAIL): <definition's first sentence, Markdown marks removed>", then "and <k> more";
+4. "Revision <candidates/c>, executed and verified: <code>; <k> FAIL → PASS." (the §4 "after" candidate only);
+5. "Proposals were checked by ATLAS validation and not executed here." (a proposal with outcome `not_executed_here`);
+6. "<Metric> (pooled), descriptive only: original <x>[, candidate <y>]." (`descriptive[metric.recomputed_primary]`, 4 decimals as the cards);
+7. "This does not say the scientific claim is true or false." (always).
+
+Each line carries its source in a `title`; the panel's source line says "from the run's verified files and evaluation/assertion_definitions.json only; no model-written text".
+
+### 11.3 Evidence drill-down (`hud.inspect_records`, `hud.inspection`, `hud.record_body`)
+
+Each FAIL, NOT_ASSESSED or ERROR tile of the check matrix (original and verified revision) is a `<details>` whose `<summary>` is the tile itself: no Streamlit widget, no rerun. Enter and Space toggle it (native); Chromium exposes the summary as a disclosure with its expanded state (read from its accessibility tree: false, true, false), so no static `aria-expanded` is written (it would go stale). The open frame carries the accent corner brackets and shows, from the assertion's verified check file (or the run's verified `outcome.json` when no check file lists it): status, reason, evidence_valid, limitations, each evidence artifact with its full sha256 (wrapped, `text`), and the observed object as key/value rows (nested objects as dotted keys two levels deep; lists as "<n> items: a; b; … and <k> more", six shown; deeper values summarised by size). The source line names the file and `assertions[assertion_id=…]`. IDs: `atlas-insp-sum<letters>-<scope>-<runhash8>-<instance>`; the frame is `aria-labelledby` its summary. The tile's direction and its "Inspect"/"Close" cue share the tile's end slot, so paired columns keep equal widths. The frame fades in over 120 ms when opened (a response to the person's action; none under reduced motion).
+
+### 11.4 The typed-approval panel
+
+The active frame: hairline border, accent corner brackets (eight solid marks painted as background layers under the hairline, 3 px so 2 px show; solid colour, not a visual gradient). The request first ("Run the ORIGINAL …" / "Run this CANDIDATE …", the entry point, the snapshot and code hashes as HUD-labelled Plex Mono blocks in `text`, wrapping, never truncated); for a candidate, the rationale and the diff each in the model-written frame (badge, the engine's label, then the text; the diff keeps "Proposed diff (untrusted; control characters shown as escapes)"). Then the decision in its own `bg` inset ("Your decision": the confirmation field and Submit confirmation), with "Close without deciding" below a hairline. The request, the single submission, the rule, the timeouts and the declines are the engine's (`atlas.ui.approver`, `atlas.agent.approval`), untouched.
+
+### 11.5 Failure and honest-empty states (`views.state_panel`)
+
+A panel with a 2 px left edge in the status colour, the code as a status-coloured badge, the reason, then "**Next action:** …". Native elements (one render pass); never success styling, never green.
+
+| State | Tone | Code shown | Next action |
+| --- | --- | --- | --- |
+| Terminal ERROR | violet | ERROR | read the reason code and the trace; a new run starts from the beginning |
+| Terminal NEEDS_INPUT | amber | NEEDS_INPUT | nothing more executed; a new run asks again |
+| Terminal BUDGET_EXHAUSTED | amber | BUDGET_EXHAUSTED | what was recorded before the limit stands; a new run starts with fresh limits |
+| NOT_SUPPORTED | stone | the `## NOT_SUPPORTED` headline (kept) | the intake reason's action |
+| Incomplete coverage (INCONCLUSIVE) | amber | incomplete_coverage | the next actions per reason code |
+| Evidence changed (recorded or finished run) | red | EVIDENCE CHANGED | restore the files, or treat the results as unverified |
+| Run crashed before a report | violet | ERROR | start a new run |
+| Docker unavailable (agent mode) | amber | Docker: <state> | start Docker, then reload |
+| No recorded runs | stone | NO RECORDED RUNS | finish a run, or set ATLAS_UI_RECORDED_DIR |
+| Hosted live unavailable | stone | LIVE UNAVAILABLE | open Recorded runs |
+| Hosted budget exhausted | amber | BUDGET_EXHAUSTED | open Recorded runs |
+| Hosted session crashed | violet | ERROR | open Recorded runs |
+
+### 11.6 Live mission track
+
+Local: the run view's existing one-second fragment reads the run's log; the track shows the stages so far, the latest outlined in `text` as current (`aria-current="step"`), and each stage lights once (`hud-a-node`, 300 ms opacity from unlit) the first time this page sees it (the lit count is display state in `st.session_state`). Hosted: the page already followed a running session with a one-second `st.fragment` reading `handle.run_dir()/agent_log.jsonl`; the same read now draws the track and the gauge (requests and estimated cost so far from the logged model_attempt events, known plus held, against `budget.DECIDED_SLICE4`'s 6 requests and $0.0648, the limits the session runs with). Display only: no change to how a session runs, reserves, sends or settles; the UI writes no run, store or log state. When the session ends the fragment reruns the page, which renders the finished session without the fragment, so polling stops.
+
+### 11.7 Keyboard (recorded in the browser, `runs/ui-hud/screens2/keyboard_tab_order.json`)
+
+- **Approval panel**, Tab from the request: the page title's and the panel heading's hover links (Streamlit's heading anchors), then (a candidate only) the diff's scroll region and its Copy button, then the confirmation field, Submit confirmation, Close without deciding. The decision controls come after everything they decide on.
+- **Drill-down**, Tab from the original's leak-map scroll region: each FAIL tile's summary in matrix order (four for live6), then the candidate's leak-map region. Each summary shows the 2 px accent focus ring (offset 2 px); Enter or Space opens and closes it.
+
+### 11.8 Phase 2 build notes
+
+| # | Note | Why |
+| --- | --- | --- |
+| P1 | The title's bottom padding is back (0.75rem) under Streamlit's -1rem heading margin | Phase 1 removed it and the hero rode up under the title (A1) |
+| P2 | Fit-scope without drawn origins: one summary line from the recorded fields; "not recorded" only where a value is expected | A2 |
+| P3 | The flow draws one lane per origin; targets listed once per origin | A3: two origins into five folds crossed |
+| P4 | A reticle with nothing executed after it is headed "Original", not "Before · original" | No "before" without an "after" (§3.2) |
+| P5 | "not executed here" proposals are gray, not violet | Violet is ERROR |
+| P6 | The briefing's failing line reads "<assertion> (FAIL): …" | As "FAIL <assertion> …" it duplicated the check-details expander's label, which scenario 1 clicks by text |
+| P7 | Primary buttons keep dark text only when enabled; disabled ones use `muted` | Disabled primary buttons are transparent: the dark text vanished |
+| P8 | Field labels in the approval panel are HUD labels with no negative margin | At 390 px a negative margin overlapped the block below |
+| P9 | Inspection-frame keys stack above values when the page is under 760 px | Keys wrapped mid-word at 390 px |
+| P10 | Data-table cells wrap anywhere | The hosted original's checks table clipped long IDs at 390 px |
+| P11 | The briefing leads; the leak maps and flows move just below the first viewport | §3.1, phase 2 note |
+
+### 11.9 frontend-ui-engineering checklist (evidence, not a score)
+
+| Item | Finding | Fix or evidence |
+| --- | --- | --- |
+| Renders without console errors | none seen in the probes | scenarios 8 to 11, the hosted HUD test |
+| Keyboard access | every new control is native (summary, input, buttons) | §11.7; Enter and Space checked in scenario 10 |
+| Visible focus | tile summaries had no ring | 2 px accent `:focus-visible` ring on `summary.hud-tile-row` |
+| Screen reader | frames are `role="group"` labelled by their tile; states are text; the track marks the current step | §11.3, §11.6 |
+| Responsive (390, 1280, 1440) | label overlap, mid-word keys, a clipped table at 390 | P8, P9, P10; no page-level sideways scroll (scenario 10) |
+| Loading, empty, error and permission states | Docker, no recorded runs, live unavailable and exhausted had no next action | §11.5 |
+| Colour not the only signal | every state prints its code; the frame edge repeats it | §11.5 |
+| Design-system adherence | a light #EFF6FF row fill on the dark theme; a one-off violet for "not executed here" | §7 phase 2 pairs; P5 |
+| Contrast | disabled buttons unreadable | P7; every new pair at least 4.5 (text) or 3 (marks), §7 |
+
+### 11.10 Evidence
+
+`runs/ui-hud/screens2/` (git-ignored): `p2_01` to `p2_47` at 1440 × 900, 1280 × 800 and 390 × 844 (settled: every finite animation finished first), the live6 load frames `p2_07_motion_*`, the live-track frames `p2_41_live_track_frame*`, two videos (`video_live6_load`, `video_hosted_live_track`) and `keyboard_tab_order.json`; plus the phase 1 scenario screenshots re-taken settled. Full suite: `runs/ui-hud/full2.log`.
