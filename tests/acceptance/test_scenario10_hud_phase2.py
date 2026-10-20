@@ -87,13 +87,19 @@ def test_the_briefing_and_the_drill_down_on_recorded_runs(app, page):
     brief.wait_for()
     shown = brief.inner_text()
     for line in (
-        "Evidence intact: 46 of 46 recorded hashes verified now.",
+        (
+            "Evidence intact: 49 of 49 recorded items verified now (46 file hashes, "
+            "3 outcome comparisons)."
+        ),
         "Revision candidates/c1, executed and verified: NO_VIOLATION_FOUND; 4 FAIL → PASS.",
         "Balanced accuracy (pooled), descriptive only: original 0.6812, candidate 0.6750.",
         "This does not say the scientific claim is true or false.",
     ):
         assert line in shown, line
-    assert "split.no_group_overlap (FAIL): No group_id value" in shown
+    assert (
+        "split.no_group_overlap (FAIL): the same subjects appear in training and testing"
+        in shown
+    )
     box = brief.bounding_box()
     hero = page.locator(".st-key-hud-hero").bounding_box()
     assert box["y"] + box["height"] <= hero["y"]  # the briefing comes first
@@ -117,6 +123,8 @@ def test_the_briefing_and_the_drill_down_on_recorded_runs(app, page):
     body = frame.inner_text()
     assert "split_integrity.json" in body and "8 items: S01; S02" in body
     assert "and 2 more" in body
+    assert "definition (policy-v1.3)" in body.lower()
+    assert "No group_id value is in both partitions of a fold." in body
     assert re.search(r"[0-9a-f]{64}", re.sub(r"\s", "", body))  # full sha256, wrapped
     shots(page, "p2_02_drilldown_open_live6", frame)
     page.keyboard.press("Space")

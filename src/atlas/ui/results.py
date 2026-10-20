@@ -131,8 +131,8 @@ def briefing(
     run_dir: Path, report: dict | None, checks: list, run_id: str
 ) -> str | None:
     """The deterministic briefing's markup (`atlas.ui.hud.briefing_lines`: the run's verified
-    files and the policy's frozen definitions only); None unless the run is intact."""
-    lines = H.briefing_lines(run_dir, report, checks, H.load_definitions())
+    files and the fixed assertion labels only); None unless the run is intact."""
+    lines = H.briefing_lines(run_dir, report, checks, H.load_labels())
     return H.briefing(lines, H.Ids(H.run_hash(run_id))) if lines else None
 
 

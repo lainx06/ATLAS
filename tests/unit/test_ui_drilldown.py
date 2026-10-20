@@ -234,3 +234,30 @@ def test_the_frame_escapes_what_it_reads():
     body = H.record_body(item)
     assert "<img" not in body and "\n" not in body
     assert unescape(body).count(hostile) >= 3
+
+
+def test_every_frame_shows_its_frozen_definition_in_full():
+    """Fix pass 1: the briefing says it in plain words; the formal definition (policy-v1.3,
+    evaluation/assertion_definitions.json) stays one click away, here."""
+    defs = json.loads(
+        (ROOT / "evaluation/assertion_definitions.json").read_text(encoding="utf-8")
+    )["definitions"]
+    for label in (LIVE6, HAR_FLAWED):
+        _, h = load(label)
+        html = H.evidence(h, played=True)
+        found = re.findall(
+            r'<span class="hud-lbl">definition \(policy-v1\.3\)</span>'
+            r'<p class="hud-insp-def" title="([^"]*)">(.*?)</p>',
+            html,
+        )
+        assert len(found) == len(Frames(html).frames) > 0
+        for source, text in found:
+            source = unescape(source)
+            aid = source.rsplit("definitions.", 1)[1]
+            assert source == (
+                f"evaluation/assertion_definitions.json · definitions.{aid}"
+            )
+            assert unescape(text) == defs[aid].replace("`", "").replace("*", "")
+    group = H.definition_block("split.no_group_overlap")
+    assert "No group&#95;id value is in both partitions of a fold." in group
+    assert "not recorded" in H.definition_block("no.such_assertion")

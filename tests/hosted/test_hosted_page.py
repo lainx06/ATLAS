@@ -6,6 +6,7 @@ and the recorded runs still render. A live session (mocked Token Factory, local 
 shows the SPEC §13 labels. Docker, approvals and the local registry are never reached.
 """
 
+import re
 import time
 
 import hosted_helpers as H
@@ -95,7 +96,12 @@ def test_without_the_kill_switch_nothing_is_sent_and_recorded_runs_render(
             at.run()
         assert not at.exception
         shown = texts(at)
-        assert "All" in shown and "match the files on disk" in shown, label
+        assert re.search(
+            r"\d+ of \d+ recorded items verified now \(\d+ file hashes?, "
+            r"\d+ outcome comparisons?\)",
+            shown,
+        ), label
+        assert "matches the files on disk" in shown, label
         assert "Recorded run, finished" in shown
         if "har_" in label:
             assert "CC BY 4.0" in shown and "Any commercial use is prohibited" in shown

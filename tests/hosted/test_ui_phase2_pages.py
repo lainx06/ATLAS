@@ -45,7 +45,7 @@ def test_the_local_finished_run_leads_with_the_verified_hud(local_run):  # noqa:
     assert "hud-track" in hud and "hud-gauge" in hud
     assert "hud-anim" in hud  # the first load plays once
     text = shown(at)
-    assert "match the files on disk, recomputed now" in text
+    assert f"{H.integrity_count(RR.verify(local_run, report)).verified}: each" in text
     assert at.session_state[R.HUD_PLAYED] == {local_run.name}
     at.run()  # a rerun renders the settled state
     assert "hud-anim" not in hud_markup(at) and "hud-ret" in hud_markup(at)
@@ -92,6 +92,11 @@ def test_the_live_view_shows_the_recorded_original_with_ring_and_reticle(
     text = shown(at)
     assert ":gray-badge[LIVE UNAVAILABLE] " + hs.UNAVAILABLE_MESSAGE in text
     assert "**Next action:**" in text and not at.button
+    # The ring, its caption and the page's own line carry the one integrity count.
+    count = (
+        "49 of 49 recorded items verified now (46 file hashes, 3 outcome comparisons)"
+    )
+    assert hud.count(count) == 2 and f"{count}. The original is not executed" in text
 
 
 def test_the_finished_session_shows_route_hud_and_framed_proposals(hosted_run):  # noqa: F811

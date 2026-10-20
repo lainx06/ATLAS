@@ -12,6 +12,7 @@ Motion is CSS only. Animated markup carries the `hud-anim` class and `hud-a-*` c
 state is its final state; animations only start from a blank or unlit frame.
 """
 
+import functools
 import hashlib
 import json
 import math
@@ -389,9 +390,28 @@ def _field(a: dict, key: str) -> str:
     return _scalar(a.get(key)) if key in a else NOT_RECORDED
 
 
+@functools.lru_cache(maxsize=1)
+def _frozen_definitions() -> dict[str, str]:
+    return load_definitions()
+
+
+def definition_block(assertion_id: str) -> str:
+    """The policy's frozen formal definition of the assertion, in full (Markdown marks
+    removed), from evaluation/assertion_definitions.json."""
+    text = _frozen_definitions().get(assertion_id)
+    source = f"evaluation/assertion_definitions.json · definitions.{assertion_id}"
+    body = esc(plain_text(text)) if text else NOT_RECORDED
+    cls = "hud-insp-def" if text else "hud-insp-none"
+    return (
+        f'<span class="hud-lbl">definition ({POLICY})</span>'
+        f'<p class="{cls}" title="{esc(source)}">{body}</p>'
+    )
+
+
 def record_body(item: Inspect) -> str:
-    """An assertion's recorded fields: status, reason, evidence_valid, limitations, the
-    evidence artifacts with their sha256, the observed object as rows, and the source."""
+    """An assertion's recorded fields: status, reason, evidence_valid, its frozen definition,
+    limitations, the evidence artifacts with their sha256, the observed object as rows, and
+    the source."""
     a = item.record
     kv = "".join(
         f"<dt>{key}</dt><dd>{esc(_field(a, key))}</dd>"
@@ -426,6 +446,7 @@ def record_body(item: Inspect) -> str:
     source = f"{item.source} · assertions[assertion_id={item.assertion_id}]"
     return (
         f'<dl class="hud-insp-kv">{kv}</dl>'
+        f"{definition_block(item.assertion_id)}"
         f'<span class="hud-lbl">Limitations</span>{limitations}'
         f'<span class="hud-lbl">Evidence · artifact, sha256</span>{evidence}'
         f'<span class="hud-lbl">Observed</span><dl class="hud-insp-kv hud-insp-obs">{observed}</dl>'
@@ -663,6 +684,55 @@ def build(
 
 
 # -- 1. integrity ring --------------------------------------------------------------------------------
+@dataclass(frozen=True)
+class IntegrityCount:
+    """What `verify` checked, counted once for every place that shows it (the ring, its caption
+    and title, the briefing, the evidence panel, the hosted caption). `hashes` are the recorded
+    file hashes recomputed from disk; `comparisons` are the report-key checks (a reported
+    outcome against its verified outcome.json); `differ` is how many of the two kinds do not
+    match. The unit is "recorded items"."""
+
+    hashes: int
+    comparisons: int
+    differ: int
+
+    @property
+    def total(self) -> int:
+        return self.hashes + self.comparisons
+
+    @property
+    def breakdown(self) -> str:
+        h, c = self.hashes, self.comparisons
+        return (
+            f"{h} file hash{'' if h == 1 else 'es'}, "
+            f"{c} outcome comparison{'' if c == 1 else 's'}"
+        )
+
+    @property
+    def verified(self) -> str:
+        """'49 of 49 recorded items verified now (46 file hashes, 3 outcome comparisons)'."""
+        return (
+            f"{self.total - self.differ} of {self.total} recorded items verified now "
+            f"({self.breakdown})"
+        )
+
+    @property
+    def differing(self) -> str:
+        """'1 of 49 recorded items differ (46 file hashes, 3 outcome comparisons)'."""
+        return f"{self.differ} of {self.total} recorded items differ ({self.breakdown})"
+
+
+def integrity_count(checks: list[R.Check]) -> IntegrityCount:
+    """Report-key checks (`agent_report.json:...`, `report.json:outcome`) are outcome
+    comparisons; every other check is a recorded file hash."""
+    comparisons = [c for c in checks if ":" in c.item]
+    return IntegrityCount(
+        hashes=len(checks) - len(comparisons),
+        comparisons=len(comparisons),
+        differ=sum(1 for c in checks if not c.ok),
+    )
+
+
 def _arc(cx: float, cy: float, r: float, a0: float, a1: float) -> str:
     def pt(a):
         rad = math.radians(a - 90)
@@ -677,14 +747,15 @@ def ring(checks: list[R.Check], ids: Ids, *, played: bool, phrase: str) -> str:
     """One segment per recorded item `verify` checked; lit when it matches. A changed run's
     differing segments are red and the centre reads EVIDENCE CHANGED (no outcome here)."""
     n = len(checks)
+    count = integrity_count(checks)
     bad = [c for c in checks if not c.ok]
     ok = not bad and n > 0
     title_id, desc_id = ids("ring", "title"), ids("ring", "desc")
     if ok:
-        title = f"Integrity: {n} of {n} recorded items intact"
+        title = f"Integrity: {count.verified}"
         desc = "Every recorded hash and outcome matches, recomputed now."
     else:
-        title = f"Integrity: evidence changed, {len(bad)} of {n} recorded items differ"
+        title = f"Integrity: evidence changed, {count.differing}"
         desc = "Differing items: " + "; ".join(f"{c.item} ({c.status})" for c in bad)
     segs = []
     per = 360 / max(n, 1)
@@ -715,10 +786,10 @@ def ring(checks: list[R.Check], ids: Ids, *, played: bool, phrase: str) -> str:
             '<text x="64" y="76" text-anchor="middle" class="hud-ring-x">CHANGED</text>'
         )
     group = f'<g class="hud-ring-g{_a(played or ok, "hud-a-shake")}">'
-    count = (
-        ""
+    caption = (
+        f'<span class="hud-code">{esc(count.verified)}</span>'
         if ok
-        else f'<span class="hud-c-red hud-code">{len(bad)} of {n} differ</span>'
+        else f'<span class="hud-c-red hud-code">{esc(count.differing)}</span>'
     )
     return (
         f'<div class="hud hud-ring{_anim(played)}">'
@@ -727,7 +798,7 @@ def ring(checks: list[R.Check], ids: Ids, *, played: bool, phrase: str) -> str:
         f'<title id="{title_id}">{esc(title)}</title><desc id="{desc_id}">{esc(desc)}</desc>'
         f'{group}<circle cx="64" cy="64" r="52" class="hud-ring-track"/>{"".join(segs)}</g>'
         f"{centre}</svg>"
-        f'<div class="hud-ring-cap">{count}<span class="hud-src">{esc(phrase)}</span></div>'
+        f'<div class="hud-ring-cap">{caption}<span class="hud-src">{esc(phrase)}</span></div>'
         "</div>"
     )
 
@@ -1422,31 +1493,42 @@ MODEL_BADGE_MARKDOWN = f":orange-badge[{MODEL_BADGE}]"
 
 
 # -- 9. mission briefing (deterministic, text only) -----------------------------------------------
-# The briefing is built only from a run's verified files and the policy's frozen definitions
-# (evaluation/assertion_definitions.json). It never reads model text, a rationale, a proposal's
-# text, a diff, a complete file or a reply: from the report it takes only the proposals'
-# outcome codes, which the engine sets.
+# The briefing is built only from a run's verified files and fixed product text: the plain-English
+# assertion labels (src/atlas/ui/assertion_labels.json, written by the project, one per canonical
+# assertion ID, never generated at runtime and never from model output). It never reads model
+# text, a rationale, a proposal's text, a diff, a complete file or a reply: from the report it
+# takes only the proposals' outcome codes, which the engine sets. The policy's frozen formal
+# definitions (evaluation/assertion_definitions.json) are shown in the evidence drill-down.
 DEFINITIONS = ROOT / "evaluation" / "assertion_definitions.json"
+LABELS = Path(__file__).resolve().parent / "assertion_labels.json"
+LABELS_FILE = "src/atlas/ui/assertion_labels.json"
+POLICY = "policy-v1.3"
 BRIEF_FAILS = 4  # failing assertions listed by name, then "and <k> more"
 PROPOSALS_NOT_EXECUTED = (
     "Proposals were checked by ATLAS validation and not executed here."
 )
-_SENTENCE_END = re.compile(r"\.\s+(?=[A-Z*`(])")
 _MARKUP = re.compile(r"[*`]")
+
+
+def _string_map(path: Path, key: str) -> dict[str, str]:
+    data = A.read_json(path)
+    entries = data.get(key) if isinstance(data, dict) else None
+    return {k: v for k, v in (entries or {}).items() if isinstance(v, str)}
 
 
 def load_definitions(path: Path = DEFINITIONS) -> dict[str, str]:
     """The policy's frozen definitions, by assertion ID; {} when the file is unreadable."""
-    data = A.read_json(path)
-    defs = (data or {}).get("definitions") if isinstance(data, dict) else None
-    return {k: v for k, v in (defs or {}).items() if isinstance(v, str)}
+    return _string_map(path, "definitions")
 
 
-def plain_definition(text: str) -> str:
-    """A definition's first sentence, without its Markdown emphasis and code marks."""
-    first = _SENTENCE_END.split(text.strip(), maxsplit=1)[0].strip()
-    first = _MARKUP.sub("", first)
-    return first if first.endswith(".") else first + "."
+def load_labels(path: Path = LABELS) -> dict[str, str]:
+    """The fixed plain-English assertion labels, by assertion ID; {} when unreadable."""
+    return _string_map(path, "labels")
+
+
+def plain_text(text: str) -> str:
+    """A definition without its Markdown emphasis and code marks."""
+    return _MARKUP.sub("", text.strip())
 
 
 @dataclass(frozen=True)
@@ -1461,28 +1543,25 @@ def briefing_lines(
     run_dir: Path,
     report: dict | None,
     checks: list[R.Check],
-    definitions: dict[str, str],
+    labels: dict[str, str],
 ) -> list[BriefLine] | None:
     """The briefing of a finished or recorded run, in order; each line only when its data is
     recorded. None unless the run is intact (changed evidence gets no briefing). `report` is
-    None for a deterministic audit run (its outcome.json is at the run's root)."""
+    None for a deterministic audit run (its outcome.json is at the run's root). `labels` are
+    the fixed assertion labels (`load_labels`)."""
     if not checks or not R.intact(checks):
         return None
     run_dir = Path(run_dir)
     verified = verified_paths(checks)
     base = "original/" if report is not None else ""
     lines: list[BriefLine] = []
-    hashes = [
-        c for c in checks if ":" not in c.item
-    ]  # report-key checks are not hashes
-    if hashes:
-        lines.append(
-            BriefLine(
-                f"Evidence intact: {len(hashes)} of {len(hashes)} recorded hashes verified "
-                "now.",
-                "recomputed now from the run's files (each recorded sha256)",
-            )
+    lines.append(
+        BriefLine(
+            f"Evidence intact: {integrity_count(checks).verified}.",
+            "recomputed now from the run's files (each recorded sha256) and the "
+            "reported outcomes compared with their outcome.json",
         )
+    )
     outcome = _json(run_dir, f"{base}outcome.json", verified)
     if isinstance(outcome, dict) and outcome.get("outcome"):
         statuses = _statuses(outcome)
@@ -1497,18 +1576,11 @@ def briefing_lines(
         )
         failing = [aid for aid, status in statuses if status == "FAIL"]
         for aid in failing[:BRIEF_FAILS]:
-            words = definitions.get(aid)
+            words = labels.get(aid)
             lines.append(
                 BriefLine(
-                    f"{aid} (FAIL): "
-                    + (
-                        plain_definition(words)
-                        if words
-                        else f"definition {NOT_RECORDED}."
-                    ),
-                    "evaluation/assertion_definitions.json · definitions."
-                    + aid
-                    + " (first sentence)",
+                    f"{aid} (FAIL): " + (words or f"label {NOT_RECORDED}."),
+                    f"{LABELS_FILE} · labels.{aid} (fixed text)",
                     "fail",
                     aid,
                 )
@@ -1596,8 +1668,8 @@ def briefing(lines: list[BriefLine], ids: Ids) -> str:
         f'<section class="hud hud-brief" aria-labelledby="{label}">'
         f'<div class="hud-ph"><span class="hud-lbl" id="{label}">Briefing</span></div>'
         f'<ul class="hud-brief-lines">{"".join(items)}</ul>'
-        '<div class="hud-src">from the run&#39;s verified files and '
-        "evaluation/assertion&#95;definitions.json only; no model-written text</div>"
+        '<div class="hud-src">from the run&#39;s verified files and fixed labels '
+        "(src/atlas/ui/assertion&#95;labels.json) only; no model-written text</div>"
         "</section>"
     )
 
@@ -1671,9 +1743,9 @@ CSS = (
     "margin-bottom:2px}"
     ".hud :focus-visible{outline:2px solid #67E8F9;outline-offset:2px}"
     # hero
-    ".hud-hero{display:grid;grid-template-columns:124px minmax(0,1fr) 14px minmax(0,1fr);"
+    ".hud-hero{display:grid;grid-template-columns:172px minmax(0,1fr) 14px minmax(0,1fr);"
     "gap:10px;align-items:stretch}"
-    ".hud-hero-single{grid-template-columns:124px minmax(0,1fr)}"
+    ".hud-hero-single{grid-template-columns:172px minmax(0,1fr)}"
     ".hud-hero-arrow{align-self:center;text-align:center;color:#94A3B8;font-size:18px}"
     ".hud-hero-ring{background:#0F1720;border:1px solid #1E2A36;border-radius:4px;"
     "padding:8px 6px;display:flex;justify-content:center;align-items:center}"
@@ -1689,6 +1761,7 @@ CSS = (
     "font-size:13px;letter-spacing:0.08em;fill:#F87171}"
     ".hud-ring-cap{display:flex;flex-direction:column;align-items:center}"
     ".hud-ring-cap .hud-src{margin-top:2px;text-align:center}"
+    ".hud-ring-cap .hud-code{text-align:center;font-size:11px;line-height:1.35}"
     # reticle (the only corner brackets and the only glow)
     ".hud-ret{position:relative;background:#0F1720;border:1px solid #1E2A36;border-radius:2px;"
     "padding:8px 14px 7px;min-width:0}"
@@ -1813,6 +1886,8 @@ CSS = (
     ".hud ul.hud-insp-list{margin:0;padding-left:18px;font-size:13px;color:#E2E8F0}"
     ".hud .hud-insp-list li{margin:0 0 2px}"
     ".hud p.hud-insp-none{margin:0;font-size:13px;color:#94A3B8}"
+    ".hud p.hud-insp-def{margin:0;font-size:13px;line-height:1.45;color:#E2E8F0;"
+    "overflow-wrap:anywhere}"
     ".hud-insp-frame .hud-src{color:#94A3B8}"
     "@container hud (max-width:759px){.hud .hud-tiles-pair li.hud-tile,"
     ".hud .hud-tiles-pair summary.hud-tile-row{grid-template-columns:7.2em minmax(0,1fr)}"

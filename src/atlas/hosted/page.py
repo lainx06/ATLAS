@@ -185,8 +185,8 @@ def _original_card():
                     unsafe_allow_html=True,
                 )
         st.caption(
-            f"From the recorded run `{bundle.LIVE_ORIGINAL_RUN}`, re-verified now "
-            f"({len(checks)} items). The original is not executed here."
+            f"From the recorded run `{bundle.LIVE_ORIGINAL_RUN}`: "
+            f"{HUD.integrity_count(checks).verified}. The original is not executed here."
         )
         rows = (((report or {}).get("comparison") or {}).get("original") or {}).get(
             "required_set"

@@ -1,8 +1,10 @@
-"""The deterministic mission briefing (UI design pass phase 2, part C).
+"""The deterministic mission briefing (UI design pass phase 2, part C; fix pass 1).
 
-Built by a pure function from a run's verified files and the policy's frozen definitions
-(evaluation/assertion_definitions.json) only: never model text, a rationale, a proposal's
-text, a diff, a complete file or a reply. A run whose evidence changed gets no briefing.
+Built by a pure function from a run's verified files and the fixed plain-English assertion
+labels (src/atlas/ui/assertion_labels.json) only: never model text, a rationale, a proposal's
+text, a diff, a complete file or a reply. A run whose evidence changed gets no briefing. The
+integrity count it opens with is the one the ring, the evidence panel and the hosted caption
+show (`atlas.ui.hud.integrity_count`).
 """
 
 import hashlib
@@ -24,22 +26,26 @@ HAR_CLEAN = "t09/agent-har_clean-ac63eaecd7a8"
 MARKER = "ZQX-BRIEFING-MARKER-7f31c2"
 
 GROUP = (
-    "split.no_group_overlap (FAIL): No group_id value is in both partitions of a fold."
+    "split.no_group_overlap (FAIL): the same subjects appear in training and testing"
 )
-UNIT = "split.sampling_unit_disjoint (FAIL): No unit_id value crosses partitions."
+UNIT = (
+    "split.sampling_unit_disjoint (FAIL): the same sampling units (subjects) appear on "
+    "both sides of a split"
+)
 REPEATED = (
-    "split.repeated_measures_rule (FAIL): v1.1: assessed through an explicit route over rows "
-    "participating in the declared folds, from the route's own same-fold witnesses; "
-    "aggregate group/unit statuses are never inherited."
+    "split.repeated_measures_rule (FAIL): repeated measurements of one subject are split "
+    "across training and testing"
 )
 FIT = (
-    "fit.state_dependencies_within_fold_train (FAIL): For every use event in fold k "
-    "(transforms and predictions, on train or eval rows), the dependency rows of the used "
-    "state version ⊆ train(k)."
+    "fit.state_dependencies_within_fold_train (FAIL): a preprocessing or model step was "
+    "fit on rows outside its fold's training data"
 )
 EXPECTED = {
     LIVE6: [
-        "Evidence intact: 46 of 46 recorded hashes verified now.",
+        (
+            "Evidence intact: 49 of 49 recorded items verified now (46 file hashes, "
+            "3 outcome comparisons)."
+        ),
         (
             "Original outcome: VIOLATION_FOUND. Required checks: 4 FAIL, 0 NOT_ASSESSED, "
             "0 ERROR (of 9)."
@@ -53,7 +59,10 @@ EXPECTED = {
         A.CAVEAT,
     ],
     HAR_FLAWED: [
-        "Evidence intact: 20 of 20 recorded hashes verified now.",
+        (
+            "Evidence intact: 21 of 21 recorded items verified now (20 file hashes, "
+            "1 outcome comparison)."
+        ),
         (
             "Original outcome: VIOLATION_FOUND. Required checks: 4 FAIL, 1 NOT_ASSESSED, "
             "0 ERROR (of 11)."
@@ -66,7 +75,10 @@ EXPECTED = {
         A.CAVEAT,
     ],
     HAR_CLEAN: [
-        "Evidence intact: 20 of 20 recorded hashes verified now.",
+        (
+            "Evidence intact: 21 of 21 recorded items verified now (20 file hashes, "
+            "1 outcome comparison)."
+        ),
         (
             "Original outcome: NO_VIOLATION_FOUND. Required checks: 0 FAIL, "
             "0 NOT_ASSESSED, 0 ERROR (of 10)."
@@ -80,7 +92,7 @@ EXPECTED = {
 def lines_for(run_dir: Path):
     report = A.read_json(run_dir / "agent_report.json")
     checks = R.verify(run_dir, report)
-    return H.briefing_lines(run_dir, report, checks, H.load_definitions())
+    return H.briefing_lines(run_dir, report, checks, H.load_labels())
 
 
 @pytest.mark.parametrize("label", list(EXPECTED))
@@ -102,11 +114,14 @@ def test_every_number_in_the_briefing_is_the_files(label):
     report = A.read_json(d / "agent_report.json")
     checks = R.verify(d, report)
     hashes = [c for c in checks if ":" not in c.item]
-    assert all(c.ok and c.recorded == c.recomputed for c in hashes)
+    comparisons = [c for c in checks if ":" in c.item]
+    assert all(c.ok and c.recorded == c.recomputed for c in checks)
     text = H.briefing_text(lines_for(d))
-    assert (
-        text[0]
-        == f"Evidence intact: {len(hashes)} of {len(hashes)} recorded hashes verified now."
+    n, h, c = len(checks), len(hashes), len(comparisons)
+    assert h + c == n
+    assert text[0] == (
+        f"Evidence intact: {n} of {n} recorded items verified now "
+        f"({h} file hashes, {c} outcome comparison{'' if c == 1 else 's'})."
     )
     outcome = json.loads((d / "original/outcome.json").read_text(encoding="utf-8"))
     statuses = [a["status"] for a in outcome["assertions"]]
@@ -115,18 +130,15 @@ def test_every_number_in_the_briefing_is_the_files(label):
         f"{statuses.count('FAIL')} FAIL, {statuses.count('NOT_ASSESSED')} NOT_ASSESSED, "
         f"{statuses.count('ERROR')} ERROR (of {len(statuses)})."
     )
-    defs = json.loads(
-        (ROOT / "evaluation/assertion_definitions.json").read_text(encoding="utf-8")
-    )["definitions"]
+    labels = json.loads(
+        (ROOT / "src/atlas/ui/assertion_labels.json").read_text(encoding="utf-8")
+    )["labels"]
     fails = [a["assertion_id"] for a in outcome["assertions"] if a["status"] == "FAIL"]
     shown = [t for t in text if " (FAIL): " in t]
     assert [t.split(" (FAIL): ", 1)[0] for t in shown] == fails[: H.BRIEF_FAILS]
     for t in shown:
         aid, words = t.split(" (FAIL): ", 1)
-        plain = defs[aid].replace("`", "").replace("*", "")
-        assert plain.startswith(
-            words.rstrip(".")
-        )  # the definition's own first sentence
+        assert words == labels[aid]  # the fixed label, never the formal definition
     assert text[-1] == A.CAVEAT
 
 
@@ -142,17 +154,17 @@ def test_more_than_four_failing_checks_end_with_the_count():
         H._json = lambda run_dir, rel, verified: (
             outcome if rel == "outcome.json" else None
         )
-        lines = H.briefing_lines(Path("."), None, checks, {"a.0": "Zero is defined."})
+        lines = H.briefing_lines(Path("."), None, checks, {"a.0": "zero is labelled"})
     finally:
         H._json = original
     text = H.briefing_text(lines)
-    assert text[2] == "a.0 (FAIL): Zero is defined."
-    assert text[3] == "a.1 (FAIL): definition not recorded."
+    assert text[2] == "a.0 (FAIL): zero is labelled"
+    assert text[3] == "a.1 (FAIL): label not recorded."
     assert [t for t in text if " (FAIL): " in t] == [
-        "a.0 (FAIL): Zero is defined.",
-        "a.1 (FAIL): definition not recorded.",
-        "a.2 (FAIL): definition not recorded.",
-        "a.3 (FAIL): definition not recorded.",
+        "a.0 (FAIL): zero is labelled",
+        "a.1 (FAIL): label not recorded.",
+        "a.2 (FAIL): label not recorded.",
+        "a.3 (FAIL): label not recorded.",
     ]
     assert "and 3 more" in text
 
@@ -203,7 +215,7 @@ def test_nothing_model_written_ever_reaches_the_briefing(tmp_path):
     replies = [c for c in checks if c.item.startswith("replies/")]
     assert replies and all(c.ok for c in replies)
     assert any(MARKER in (copy / c.item).read_text("utf-8") for c in replies)
-    lines = H.briefing_lines(copy, report, checks, H.load_definitions())
+    lines = H.briefing_lines(copy, report, checks, H.load_labels())
     assert H.briefing_text(lines) == EXPECTED[LIVE6]
     html = H.briefing(lines, H.Ids(H.run_hash(LIVE6)))
     assert MARKER not in html and MARKER not in "".join(x.source for x in lines)
@@ -215,10 +227,28 @@ def test_definitions_are_the_frozen_file():
         (ROOT / "evaluation/assertion_definitions.json").read_text(encoding="utf-8")
     )
     assert defs == data["definitions"]
-    assert H.plain_definition(defs["split.no_group_overlap"]) == (
-        "No group_id value is in both partitions of a fold."
-    )
     assert H.load_definitions(ROOT / "no-such-file.json") == {}
+
+
+def test_every_assertion_has_exactly_one_fixed_label():
+    labels = H.load_labels()
+    defs = H.load_definitions()
+    assert (
+        set(labels) == set(defs) and len(defs) == 15
+    )  # the same ID set, no more or less
+    assert H.load_labels(ROOT / "no-such-file.json") == {}
+    for aid, text in labels.items():
+        assert text.strip() == text and 10 <= len(text) <= 90, aid
+        assert "`" not in text and "*" not in text and "§" not in text, aid
+        assert text != defs[aid], aid  # plain words, not the formal definition
+    assert labels["split.no_group_overlap"] == (
+        "the same subjects appear in training and testing"
+    )
+
+
+def test_labels_are_the_projects_fixed_file_not_read_from_runs():
+    assert H.LABELS == ROOT / "src/atlas/ui/assertion_labels.json"
+    assert H.load_labels() == json.loads(H.LABELS.read_text(encoding="utf-8"))["labels"]
 
 
 # -- on the page -------------------------------------------------------------------------------
@@ -242,6 +272,9 @@ def test_the_briefing_comes_first_on_a_recorded_page(monkeypatch, tmp_path):
     assert "hud-brief" in blocks[0] and "hud-hero" in blocks[1]
     for line in EXPECTED[LIVE6][:2] + EXPECTED[LIVE6][6:]:
         assert H.esc(line) in blocks[0]
+    for aid, label in H.load_labels().items():
+        if f"{aid} (FAIL): {label}" in EXPECTED[LIVE6]:
+            assert H.esc(aid) in blocks[0] and H.esc(label) in blocks[0]
 
 
 def test_a_tampered_copy_shows_the_evidence_changed_panel_and_no_briefing(

@@ -298,7 +298,8 @@ def test_ring_has_one_lit_segment_per_verified_item(live6):
     assert len(segs) == 49 and all("hud-seg-ok" in s["class"] for s in segs)
     assert (
         "49/49" in tags.joined
-        and "Integrity: 49 of 49 recorded items intact" in tags.joined
+        and "Integrity: 49 of 49 recorded items verified now (46 file hashes, 3 outcome comparisons)"
+        in tags.joined
     )
 
 

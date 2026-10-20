@@ -22,17 +22,17 @@ from atlas.ui import recorded as R
 
 MARKER = "ZQX-HOSTED-BRIEFING-MARKER-41d9"
 EXPECTED = [
-    "Evidence intact: 25 of 25 recorded hashes verified now.",
+    "Evidence intact: 26 of 26 recorded items verified now (25 file hashes, "
+    + "1 outcome comparison).",
     "Original outcome: VIOLATION_FOUND. Required checks: 4 FAIL, 0 NOT_ASSESSED, "
     + "0 ERROR (of 9).",
-    "split.no_group_overlap (FAIL): No group_id value is in both partitions of a fold.",
-    "split.sampling_unit_disjoint (FAIL): No unit_id value crosses partitions.",
-    "split.repeated_measures_rule (FAIL): v1.1: assessed through an explicit route over rows "
-    + "participating in the declared folds, from the route's own same-fold witnesses; "
-    + "aggregate group/unit statuses are never inherited.",
-    "fit.state_dependencies_within_fold_train (FAIL): For every use event in fold k "
-    + "(transforms and predictions, on train or eval rows), the dependency rows of the used "
-    + "state version ⊆ train(k).",
+    "split.no_group_overlap (FAIL): the same subjects appear in training and testing",
+    "split.sampling_unit_disjoint (FAIL): the same sampling units (subjects) appear on "
+    + "both sides of a split",
+    "split.repeated_measures_rule (FAIL): repeated measurements of one subject are split "
+    + "across training and testing",
+    "fit.state_dependencies_within_fold_train (FAIL): a preprocessing or model step was "
+    + "fit on rows outside its fold's training data",
     HUD.PROPOSALS_NOT_EXECUTED,
     "Balanced accuracy (pooled), descriptive only: original 0.6812.",
     A.CAVEAT,
@@ -55,7 +55,7 @@ def session(tmp_path, replies):
 def lines_for(run_dir):
     report = A.read_json(run_dir / "agent_report.json")
     checks = R.verify(run_dir, report)
-    return HUD.briefing_lines(run_dir, report, checks, HUD.load_definitions())
+    return HUD.briefing_lines(run_dir, report, checks, HUD.load_labels())
 
 
 def test_the_hosted_session_briefing_text_is_exact(tmp_path, monkeypatch):

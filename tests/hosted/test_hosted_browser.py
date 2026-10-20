@@ -141,8 +141,9 @@ def live_session(page, server, typed: str, expected: str):
         timeout=60_000
     )
     page.locator(".st-key-card-integrity").wait_for(timeout=60_000)
+    card = page.locator(".st-key-card-integrity").inner_text()
     assert (
-        "match the files on disk" in page.locator(".st-key-card-integrity").inner_text()
+        "recorded items verified now (" in card and "matches the files on disk" in card
     )
     shots = H.ROOT / "runs" / "t12" / "screens"  # git-ignored evidence
     shots.mkdir(parents=True, exist_ok=True)

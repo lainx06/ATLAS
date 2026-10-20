@@ -202,8 +202,8 @@ def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
         if ok:
             with st.container(key="integrity-ok"):
                 st.markdown(
-                    f":green-badge[intact] All {len(checks)} recorded hashes and outcomes "
-                    "match the files on disk, recomputed now."
+                    f":green-badge[intact] {H.integrity_count(checks).verified}: each "
+                    "matches the files on disk, recomputed now."
                 )
             with (
                 st.expander("Integrity checks"),
@@ -218,8 +218,8 @@ def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
                     "integrity",
                     "red",
                     "EVIDENCE CHANGED",
-                    f"**{CHANGED}**: {len(bad)} of {len(rows)} recorded items differ from "
-                    "the files on disk, so no outcome is shown.",
+                    f"**{CHANGED}**: {H.integrity_count(checks).differing} from the "
+                    "files on disk, so no outcome is shown.",
                     "restore the run's files from the recording (or copy the run again) and "
                     "open it again; the table lists each differing item.",
                 )
@@ -247,9 +247,9 @@ def unverified(checks: list) -> None:
                 "integrity",
                 "red",
                 "EVIDENCE CHANGED",
-                f"**{CHANGED}**: {len(bad)} of {len(checks)} recorded items differ from the "
-                "files on disk. The HUD and the briefing are not drawn; the cards below are "
-                "read from the files as they are now.",
+                f"**{CHANGED}**: {H.integrity_count(checks).differing} from the files on "
+                "disk. The HUD and the briefing are not drawn; the cards below are read "
+                "from the files as they are now.",
                 "treat the results below as unverified; the table lists each differing "
                 "item.",
             )
