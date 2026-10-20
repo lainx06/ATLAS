@@ -1996,6 +1996,18 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Screenshots (settled, 1440x900 and 390x844):** `runs/ui-hud/screens/` (phase 1), `runs/ui-hud/screens2/` (phase 2), `runs/ui-hud/screens3/` (fix pass 1: live6 briefing and hero, HAR flawed briefing, live6 and HAR drill-down with the definition, the BUDGET_EXHAUSTED state).
   - **No live run, no Nebius call, no Neon connection, no spend, no push, no deployment change.**
 
+### T-07c UI story layout, slice 1
+- **OWNER:** Claude Code (writer); the user and the lead review before slice 2.
+- **MODEL / EFFORT:** Opus 5.5.
+- **CHANGE:** `app.py` (native navigation), `app_pages/`, `src/atlas/ui/story.py`, `copy.py`, `local_page.py` (moved from `app.py`), `hud.py`, `results.py` (sections split; `case_page`), `views.py`, `assertion_labels.json` (failure + description), `src/atlas/hosted/page.py` (display only), `docs/UI_DESIGN_HUD.md` §12, tests.
+- **RESULT (2026-10-20): built on branch `ui-story` from `ea27046` in the worktree `atlas-story`; not merged, not pushed, not reviewed.**
+  - **Code commit:** `a88dd4f`.
+  - **Item 5:** drawn from the recorded `fold` and `class` fields of the candidate's fit events (`candidates/c1/provenance.jsonl`), never derived from row sets.
+  - **Full suite with Docker required:** **1855 passed, 8 skipped** (`runs/ui-story/full.log`). The skips need git-ignored files absent from the fresh worktree: `runs/live6` (3), the UCI HAR data (2), the archived model listing (1), symlink permission (1), and the evidence-only motion capture (1). Scenario 7 was then run against a copy of the bundled live6 placed in the worktree's `runs/live6`: 3 passed.
+  - **Ruff:** check and format clean.
+  - **Screenshots:** `runs/ui-story/screens/` (39 settled full-page captures at 1440x900, 1280x800 and 390x844).
+  - **No live run, no Nebius call, no Neon connection, no spend, no push, no merge, no deployment change.**
+
 ### T-08 Procedures and transfer benchmark
 - **CUT (lead, 2026-10-17;** DECISIONS.md "Lead decisions, 2026-10-17" item 2). The Session 5 scenario is dropped. The entry below is kept as the record of what was planned.
 - **OWNER:** Claude Code (writer); Codex reviews; Gemini reviews the evaluation claims.

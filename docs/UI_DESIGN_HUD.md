@@ -1,6 +1,6 @@
 # ATLAS HUD visual system (UI design pass, phases 1 and 2)
 
-Status: **design spec for the `ui-hud` branch, phases 1 and 2.** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 (§1–§10) covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Phase 2 (§11) rolls the HUD out to every view (the local run, the typed-approval panel, the hosted live session, the failure and honest-empty states, the tables) and adds the deterministic briefing, the evidence drill-down and the live mission track.
+Status: **design spec for the `ui-hud` branch, phases 1 and 2.** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 (§1–§10) covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Phase 2 (§11) rolls the HUD out to every view (the local run, the typed-approval panel, the hosted live session, the failure and honest-empty states, the tables) and adds the deterministic briefing, the evidence drill-down and the live mission track. **Slice 1 of the story layout (§12, branch `ui-story`)** reorganizes the views into four pages and the Overview & Cases story; plain English by default, Expert view on demand.
 
 Skills read before this spec: Anthropic `frontend-design`, Streamlit `developing-with-streamlit` 1.66.0 (`SKILL.md`, `references/theme.md`), Addy `frontend-ui-engineering` (`docs/TOOLING.md` "UI HUD pass skills").
 
@@ -287,9 +287,9 @@ A panel with a 2 px left edge in the status colour, the code as a status-coloure
 | Run crashed before a report | violet | ERROR | start a new run |
 | Docker unavailable (agent mode) | amber | Docker: <state> | start Docker, then reload |
 | No recorded runs | stone | NO RECORDED RUNS | finish a run, or set ATLAS_UI_RECORDED_DIR |
-| Hosted live unavailable | stone | LIVE UNAVAILABLE | open Recorded runs |
-| Hosted budget exhausted | amber | BUDGET_EXHAUSTED | open Recorded runs |
-| Hosted session crashed | violet | ERROR | open Recorded runs |
+| Hosted live unavailable | stone | LIVE UNAVAILABLE | open Overview & Cases |
+| Hosted budget exhausted | amber | BUDGET_EXHAUSTED | open Overview & Cases |
+| Hosted session crashed | violet | ERROR | open Overview & Cases |
 
 ### 11.6 Live mission track
 
@@ -333,3 +333,71 @@ Local: the run view's existing one-second fragment reads the run's log; the trac
 ### 11.10 Evidence
 
 `runs/ui-hud/screens2/` (git-ignored): `p2_01` to `p2_47` at 1440 × 900, 1280 × 800 and 390 × 844 (settled: every finite animation finished first), the live6 load frames `p2_07_motion_*`, the live-track frames `p2_41_live_track_frame*`, two videos (`video_live6_load`, `video_hosted_live_track`) and `keyboard_tab_order.json`; plus the phase 1 scenario screenshots re-taken settled. Full suite: `runs/ui-hud/full2.log`.
+
+## 12. Story layout, slice 1 (2026-10-20; branch `ui-story`, not merged, not reviewed)
+
+Goal: a non-expert judge understands a case in about ten seconds and can click to go deeper. Everything in §1–§11 still applies (truth rules, the one verification gate `results.gate` and the `finished_run` guard, escaping, the briefing's provenance, motion once per run per session, the ID scheme). No engine, evaluator, policy, provider, spending or verification logic changed.
+
+### 12.1 Information architecture
+
+Streamlit's native multipage navigation (`st.navigation(position="top")` in `app.py`; one file per page in `app_pages/`), the same four pages in hosted and local mode:
+
+| Page | Hosted | Local |
+| --- | --- | --- |
+| **Overview & Cases** (default) | the story of each bundled case (`atlas.ui.story`, entry `results.case_page`) | the same, from the same bundle (`demo/recorded`) |
+| **Try It Live** | the existing live session (`hosted.page.live_page`) | the existing "Run a project" / "Open a recorded run" page, moved unchanged from `app.py` into `atlas.ui.local_page` |
+| **AI Agent vs. Model Alone** | "Coming in slice 2" | same |
+| **How It Works & Limits** | "Coming in slice 2" | same |
+
+The hosted sidebar (capability badges) is drawn on every page (`hosted.page.sidebar`). The local Overview notes a run waiting for approval and links to Try It Live. `ATLAS_UI_CASES_DIR` (set only by whoever starts the server; the browser tests use it) points the Overview at another folder with the bundle's layout, verified exactly like the bundle.
+
+Overview & Cases, top to bottom:
+
+1. **Header**: "ATLAS", the tagline, and the "Why it matters" line with its source link.
+2. **Case cards** (`st.columns`, three; the selection in `st.session_state["story_case"]`, the first by default): the title (the card's button, stretched over the card so the whole card is the click target; its focus ring is the card's), the outcome codes from the case's own verified files (original → executed revision), a one-line description of what the case is (never its outcome), and "Showing this case" on the selected one. A bundle that does not verify shows "evidence changed" and no code.
+3. **The selected case** (`results.case_page`): the banner, then the gate. On a failed verification only the evidence-changed panel is drawn: no verdict bar, no step, no outcome (`tests/unit/test_ui_story.py`, `tests/acceptance/test_scenario13_story_tampered.py`).
+4. **Verdict bar** (first in the case content; placed at the top, not CSS-sticky, so it does not cover the steps on a phone): the integrity ring ("<n>/<n> INTACT · recomputed now"), the reticles with their caveats, the deterministic verdict line, and the Expert view toggle.
+5. **Five steps**, native `st.expander`s (keyed `step-1` … `step-5`; `<details>`/`<summary>`, so keyboard operable with the browser's own expanded state), each headed "<n> · <title> — <summary>" with a summary generated from verified data. Step 2 is open by default.
+
+| Step | Plain | Expert view adds |
+| --- | --- | --- |
+| 1 The claim | the claim statement from the recorded manifest (verified path only) | its run-relative source, the claim fields |
+| 2 The leak | the compact leak map and the fit-scope flow (original \| verified revision), their reason sentences, the analogies | sources, the drill-down (inspection frames of FAIL / NOT_ASSESSED / ERROR), the Finding card |
+| 3 The AI's fix (untrusted) | each proposal: its engine outcome in words, the diff in the model-written frame (`st.code`, `inert`), "Proposed by <model>; ATLAS does not trust this text.", the rationale (`st.text`); or "No revision was proposed." | the Revision card (hashes, complete files, candidate details) |
+| 4 Human approval & sealed run | each approval from the verified log, in words; each execution from its verified `execution.json`: isolated Docker runner, no network, non-root user, read-only filesystem (only the facts its recorded `docker_args` state), container removed; "not executed here" for hosted proposals | the approvals table, the sources |
+| 5 Verified proof | the check tiles before/after ("FAIL → PASS"), the descriptive metric line, the track (stages only), the plain briefing, the recorded-evidence panel (no hash table) | IDs, the drill-down, the Analysis card (track with counters, budget, trace), the Comparison and Trust and export cards, the full briefing and the integrity table |
+
+Expanders may nest in Streamlit 1.66 (only dialogs may not), so the existing cards sit inside their step in Expert view. Each plain step ends in one "Show expert detail" line (step 2: "Show me the evidence"): a button that turns Expert view on.
+
+### 12.2 Plain English and Expert view
+
+- One session-wide setting (`st.session_state["expert"]`, written by the toggle and the step buttons), off by default.
+- **Plain** hides assertion IDs, SHA-256 hashes, file paths (run-relative ones too), source captions and source `title`s (the ring segments' included), cost figures and model/request counts. The banner is one line from the report ("Recorded live run · Nemotron · finished 2026-10-18 · not re-run here"; a fixture run says "scripted replies, no model called"); the HAR citation drops its repository file reference. Tiles lead with the assertion's description, then "Found: <failure label>" on a FAIL, its reason sentences, and on a documented-declaration PASS "PASS rests on a documented declaration that ATLAS did not verify."
+- **Expert** shows everything shown before this slice, with run-relative paths only.
+- **No local filesystem path** in either mode on any page: the local recorded-runs captions name the folder ("the repository's `runs/` folder", "the folder named by ATLAS_UI_RECORDED_DIR"), never its absolute path.
+- Model-written text (diffs, rationale) is shown verbatim in its frame in both modes.
+
+### 12.3 The copy files
+
+- `src/atlas/ui/copy.py`: every new user-visible sentence and template (header, pages, cases, banner, verdict lines, step titles and summaries, analogies, reason templates, plain HUD text, the replay disclosure and HAR citation, which `hosted.page` keeps under their old names). Templates take named fields only, filled from verified files; a template with an unrecorded field is not shown. `test_all_new_copy_comes_from_the_copy_files` parses `story.py` and `app_pages/*.py` and fails on any inline sentence literal.
+- `src/atlas/ui/assertion_labels.json`: per canonical assertion ID, `failure` (the earlier labels, unchanged; FAIL lines and the briefing) and `description` (what the check verifies; tiles of any status). A test requires exactly the canonical ID set and both fields. The four temporal descriptions were written from their frozen definitions, for review.
+- Rules: no claim stronger than its source; NO_VIOLATION_FOUND keeps its caveat; descriptive metrics never get causal words. The case title "A leak caught and fixed" is the task's own fixed copy (UI_SPEC §1.1 otherwise avoids "fixed"; the title is the only place it appears).
+
+### 12.4 Reason sentences (`hud.reasons`)
+
+One fixed template per assertion that records counts (`copy.REASONS`), filled only from that assertion's own `observed` object in its verified outcome; when a needed field is absent or of the wrong type, no sentence (never "null"). Examples (live6 original): "8 subject_id values appear on both sides of the split in 4 of 4 folds"; "SelectKBest was fit once on 160 rows (scope: global) and reused in 4 folds". `split.no_window_overlap` records routes, not counts: status only. Shown under the leak map and the flow, in the tiles and in the drill-down.
+
+### 12.5 Components changed
+
+- **Compact leak map** (both modes, every view): 15 px squares, filled red (on both sides) or a dotted outline (no shared groups), the legend in text at every width, the full cell text in `title` and `aria-label`; no letters in cells. HAR flawed (21 × 5) and live6 (8 × 4) fit their pane at 1280 × 800 without clipping (scenario 12); at 390 px the region keeps `role="region"` and `tabindex="0"`.
+- **Ring caption**: no breakdown ("recomputed now", plus where from in Expert view); the breakdown is in the evidence panel (and in the ring's `<title>`).
+- **Item 5, the symmetric "after" fit diagram: drawn.** Every candidate `fit` event in `candidates/c1/provenance.jsonl` records `fold` and `class` as fields, so the candidate's flow is one green lane per fold (`hud.fold_fits`, `hud._fold_lanes`), source "candidates/c1/provenance.jsonl · events type fit · fold, class", status from `candidates/c1/checks/fit_provenance.json`. It is read only when the file is in the verified set, and only for a candidate whose assertion PASSes with no origins; if any fit event lacks its fold, nothing is drawn (the fold is never derived from row sets).
+- `results._cards` is split into `analysis_section`, `finding_section`, `revision_section`, `comparison_section` and `trust_section` (the same cards in the same order), so Expert view can place them in their steps.
+
+### 12.6 Motion
+
+The three beats in the verdict bar (and step 2's diagrams) play once per case per session (`results.HUD_PLAYED`, keyed by the run label); a step's content reveals in 200 ms when it opens; on narrow screens the leak map's squares fade in (200 ms) when the toggle switches panes. Nothing else is new; nothing loops; none of it runs under `prefers-reduced-motion: reduce`.
+
+### 12.7 Evidence
+
+`runs/ui-story/screens/` (git-ignored; settled full-page captures, top to bottom, at 1440 × 900, 1280 × 800 and 390 × 844): `s12_01_overview_{live6,harflawed,harclean}`, `s12_02_live6_step{1..5}`, `s12_03_live6_expert`, `s12_04_try_it_live_unavailable`, `s12_05_{agent_vs_model,how_it_works}`, `s12_06_tampered_live6`. Full suite: `runs/ui-story/full.log`.
