@@ -88,6 +88,22 @@ CSS = """
 [class*="st-key-scroll-"] { overflow-x: auto; }
 /* Hashes in trace and export tables wrap instead of being clipped (never truncated). */
 [class*="st-key-trace-"] td, .st-key-export td { word-break: break-all; }
+/* Accessibility (slice 3, axe): a value in a table cell wraps instead of becoming a tiny
+   scroll region that the keyboard cannot reach (scrollable-region-focusable), and a link in
+   running text is underlined, not marked by colour alone (link-in-text-block). */
+[data-testid="stTable"] td [data-testid="stMarkdownContainer"],
+[data-testid="stTable"] th [data-testid="stMarkdownContainer"] { overflow: visible; }
+[data-testid="stTable"] td, [data-testid="stTable"] th,
+[data-testid="stTable"] td *, [data-testid="stTable"] th * { overflow-wrap: anywhere; }
+[data-testid="stMain"] [data-testid="stMarkdownContainer"] a { text-decoration: underline;
+  text-underline-offset: 2px; }
+/* Visible keyboard focus on every interactive element (slice 3): the navigation links, the
+   focusable main region, and the switch (whose own outline is drawn on its hidden input). */
+[data-testid="stTopNavLink"]:focus-visible, [data-testid="stSidebarNavLink"]:focus-visible {
+  outline: 2px solid #67E8F9; outline-offset: 2px; border-radius: 4px; }
+[data-testid="stMain"]:focus-visible { outline: 2px solid #67E8F9; outline-offset: -2px; }
+[data-testid="stCheckbox"] label:has(input:focus-visible) { outline: 2px solid #67E8F9;
+  outline-offset: 3px; border-radius: 4px; }
 </style>
 """
 

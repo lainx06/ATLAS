@@ -324,8 +324,8 @@ def test_the_page_shows_the_question_chart_caveats_findings_cost_and_review(mode
     assert "Development cases, not held-out" in VS.caveats(f)[0]
     assert "3 of the model's 12 replies" in VS.caveats(f)[3]
     assert "(3 recorded runs, 1 re-run)" in VS.caveats(f)[2]
-    for i in C.VS_FINDINGS_PLAIN:
-        assert story.code_html(C.T11_FINDINGS[i]) in text
+    for item in C.VS_MEANS_PLAIN:  # slice 3: the plain-words items in plain view
+        assert story.code_html(item) in text
     assert story.md(C.VS_COST.format(usd="0.0630621")) in text
     assert "estimate, not billing" in C.VS_COST
     assert story.md(C.VS_REVIEW) in text
@@ -371,7 +371,7 @@ def test_every_readme_limitation_is_present_plain_and_expert(mode):
         "listed assertions passed": "listed checks passed",
         "development cases": "development projects",
         "not proof of safety": "safe",
-        "3 of 6 live runs": "3 of 6",
+        "5 of 8 live runs": "5 of 8",
         "not independent benchmark evidence": "not independent benchmark evidence",
         "exactly three claim types": "exactly three kinds of claim",
         "2026-12-15": "15 December 2026",

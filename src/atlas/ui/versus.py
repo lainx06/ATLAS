@@ -474,13 +474,11 @@ def body(f: Figures, checks: list, scores: dict, suite: dict, exp: dict) -> None
         st.markdown(chart(f), unsafe_allow_html=True)
     with st.container(key="vs-table"):
         st.table(table(f), hide_index=True)
-    shown = [
-        C.T11_FINDINGS[i]
-        for i in (C.VS_FINDINGS_PLAIN if plain else range(len(C.T11_FINDINGS)))
-    ]
+    # Plain view: the four plain-words items; Expert view: the reviewed findings, exactly.
+    shown = list(C.VS_MEANS_PLAIN if plain else C.T11_FINDINGS)
     _list("vs-means", C.VS_MEANS_HEAD, shown)
     with st.container(key="vs-means-source"):
-        st.caption(story.md(C.VS_LEGS_PLAIN if plain else C.VS_FINDINGS_SOURCE))
+        st.caption(story.md(C.VS_MEANS_PLAIN_SOURCE if plain else C.VS_FINDINGS_SOURCE))
     with st.container(key="vs-cost"):
         st.caption(story.md(C.VS_COST.format(usd=f.cost_usd)))
     with st.container(key="vs-review"):

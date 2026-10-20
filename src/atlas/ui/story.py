@@ -45,6 +45,7 @@ SCRIPT_REASONS = frozenset({"t09_task_authorized_original"})
 TAMPER_LIMIT = "tamper_limit"  # session key: the tamper demo's SessionLimit
 TAMPER_RESULTS = "tamper_results"  # session key: the last demo result per case
 TAMPER_EVENT = "tamper_demo_failed"
+REPORT_EVENT = "audit_report_failed"
 _log = logging.getLogger(__name__)
 _MD = set(
     "\\`*_[]<>#|$~"
@@ -57,6 +58,8 @@ CSS = """
 .st-key-story-header { gap: 0.5rem; }
 /* As on the recorded page: the heading's padding balances Streamlit's -1rem pull-up. */
 .st-key-story-header h1 { padding: 0 0 0.75rem; letter-spacing: 0.04em; }
+/* The title with the Expert view switch at its right (slice 3: the same place on every page). */
+.st-key-story-head { gap: 8px 16px; align-items: flex-start; flex-wrap: wrap; }
 .st-key-story-tagline p { font-size: 17px; line-height: 1.45; color: #E2E8F0; }
 .st-key-story-why p { font-size: 13px; line-height: 1.45; color: #94A3B8; }
 /* Case cards: one panel each; the selected one carries the accent edge. The title button is
@@ -158,9 +161,12 @@ def _select(key: str) -> None:
 
 
 # -- the page --------------------------------------------------------------------------------
-def header() -> None:
+def header(*, toggle: bool = False) -> None:
     with st.container(key="story-header"):
-        st.title(C.APP_NAME)
+        with st.container(key="story-head", horizontal=True):
+            st.title(C.APP_NAME)
+            if toggle:
+                expert_toggle()
         with st.container(key="story-tagline"):
             st.markdown(md(C.TAGLINE))
         with st.container(key="story-why"):
@@ -226,18 +232,32 @@ def esc(value) -> str:
     return H.esc(value)
 
 
-def case_cards(runs: list[tuple[C.Case, R.RecordedRun | None]]) -> str:
-    """The row of case cards; returns the selected case's key (the first by default)."""
+def selected_case(runs: list[tuple[C.Case, R.RecordedRun | None]]) -> str:
+    """The selected case's key (the first by default), kept in the session."""
     keys = [case.key for case, _ in runs]
     selected = st.session_state.get(CASE)
     if selected not in keys:
         selected = keys[0]
         st.session_state[CASE] = selected
+    return selected
+
+
+def case_cards(
+    runs: list[tuple[C.Case, R.RecordedRun | None]],
+    codes: dict[str, list[str] | None] | None = None,
+) -> str:
+    """The row of case cards; returns the selected case's key (the first by default).
+    `codes`: each case's verified outcome codes, when already read."""
+    selected = selected_case(runs)
     with st.container(key="story-cases"):
         cols = st.columns(len(runs), gap="small")
         for col, (case, run) in zip(cols, runs, strict=True):
             on = case.key == selected
-            codes = card_codes(run) if run is not None else None
+            shown = (
+                (codes or {}).get(case.key)
+                if codes is not None
+                else (card_codes(run) if run is not None else None)
+            )
             with col, st.container(key=f"case-card-{'on-' if on else ''}{case.key}"):
                 st.button(
                     case.title,
@@ -249,7 +269,7 @@ def case_cards(runs: list[tuple[C.Case, R.RecordedRun | None]]) -> str:
                 )
                 with st.container(key=f"case-body-{case.key}"):
                     st.markdown(
-                        _card_html(case, codes, run is not None, on),
+                        _card_html(case, shown, run is not None, on),
                         unsafe_allow_html=True,
                     )
     return selected
@@ -269,10 +289,12 @@ def overview(root: Path | None = None) -> None:
     """The Overview & Cases page: the header, the case cards and the selected case, from
     the recorded bundle (`BUNDLE_ROOT` unless `root` is given)."""
     with st.container(key="story-page"):
-        header()
         default = Path(os.environ.get(CASES_ENV) or BUNDLE_ROOT)
         runs = case_runs(root if root is not None else default)
-        selected = case_cards(runs)
+        codes = {case.key: card_codes(r) if r is not None else None for case, r in runs}
+        selected = selected_case(runs)
+        header(toggle=codes.get(selected) is not None)
+        case_cards(runs, codes)
         run = {case.key: r for case, r in runs}[selected]
         if run is None:
             return
@@ -668,8 +690,7 @@ def case(
         return
     plain = not expert()
     f = facts(run, report, checks, hud)
-    verdict_bar(hud, f, played=played, plain=plain)
-    tamper_section(run, checks, plain)
+    verdict_bar(hud, f, played=played, plain=plain, run=run, checks=checks)
     told = summaries(hud, f, checks)
     bodies = {
         1: lambda: step_claim(f, plain),
@@ -685,9 +706,19 @@ def case(
             )
             with st.expander(label, expanded=n == 2, key=f"step-{n}"):
                 body()
+    # C1 (slice 3): the tamper demo, a collapsed expander directly after step 5.
+    tamper_section(run, checks, plain)
 
 
-def verdict_bar(hud: H.Hud, f: Facts, *, played: bool, plain: bool) -> None:
+def verdict_bar(
+    hud: H.Hud,
+    f: Facts,
+    *,
+    played: bool,
+    plain: bool,
+    run: R.RecordedRun | None = None,
+    checks: list | None = None,
+) -> None:
     with st.container(key="verdict-bar"):
         with st.container(key="hud-hero"):
             st.markdown(H.hero(hud, played=played, plain=plain), unsafe_allow_html=True)
@@ -701,7 +732,56 @@ def verdict_bar(hud: H.Hud, f: Facts, *, played: bool, plain: bool) -> None:
                     + "</p>",
                     unsafe_allow_html=True,
                 )
-            expert_toggle()
+            if run is not None and checks is not None:
+                case = next((c for c in C.CASES if c.run == run.label), None)
+                report_button(
+                    run,
+                    f.report,
+                    checks,
+                    subject=case.key if case else run.path.name,
+                    title=case.title if case else None,
+                )
+
+
+def report_citation(run: R.RecordedRun) -> str | None:
+    """The dataset citation the page shows with this run (the HAR runs)."""
+    return C.HAR_CITATION if run.project.startswith("har_") else None
+
+
+def report_button(
+    run: R.RecordedRun,
+    report: dict | None,
+    checks: list,
+    *,
+    subject: str,
+    title: str | None = None,
+) -> None:
+    """ "Download audit report" for a verified run (atlas.ui.report); drawn only after the
+    gate passed. A report that cannot be built shows no button (never a partial file)."""
+    from atlas.ui import report as RP
+
+    try:
+        built = RP.build(
+            run,
+            report,
+            checks,
+            subject=subject,
+            subject_title=title,
+            citation=report_citation(run),
+        )
+    except Exception:  # noqa: BLE001 - no button rather than a partial report
+        _log.error(REPORT_EVENT)
+        return
+    st.download_button(
+        C.REPORT_BUTTON,
+        data=built.html.encode("utf-8"),
+        file_name=built.file_name,
+        mime="text/html",
+        key=f"report-{H.run_hash(run.label)}",
+        help=C.REPORT_HELP,
+        on_click="ignore",
+        icon=":material/download:",
+    )
 
 
 def expert_toggle() -> None:
@@ -810,15 +890,14 @@ def tamper_result(demo: T.Demo, plain: bool) -> None:
 
 
 def tamper_section(run: R.RecordedRun, checks: list, plain: bool) -> None:
-    """Below the verdict bar: pick one of the run's fixed files, change one byte in a
+    """After step 5, collapsed: pick one of the run's fixed files, change one byte in a
     temporary copy, run the real check on the copy, show its result (atlas.ui.tamper)."""
     files = T.options(checks)
     if not files:
         return
     tag = H.run_hash(run.label)
     results = st.session_state.setdefault(TAMPER_RESULTS, {})
-    with st.container(key="tamper", border=True):
-        st.markdown(f"**{md(C.TAMPER_HEAD)}**")
+    with st.expander(md(C.TAMPER_HEAD), expanded=False, key="tamper"):
         st.caption(md(C.TAMPER_INTRO))
         with st.container(
             key="tamper-controls", horizontal=True, vertical_alignment="bottom"
@@ -827,7 +906,9 @@ def tamper_section(run: R.RecordedRun, checks: list, plain: bool) -> None:
                 C.TAMPER_PICK,
                 files,
                 format_func=lambda r: T.label(r) if plain else r,
-                key=f"tamper-file-{tag}",
+                # One key per view: the labels change with Expert view, and a selectbox
+                # redrawn with other labels under the same key could not open its list.
+                key=f"tamper-file-{tag}-{'plain' if plain else 'expert'}",
             )
             clicked = st.button(C.TAMPER_BUTTON, key=f"tamper-go-{tag}")
         if clicked:

@@ -76,7 +76,7 @@ def diagram(*, fade: bool) -> str:
             f'<li class="{kind}"><span class="lim-box">{H.esc(name)}</span>{arrow}</li>'
         )
     return (
-        f'<figure class="hud hud-lim-diagram{" lim-fade" if fade else ""}" '
+        f'<figure class="hud hud-lim-diagram{" lim-fade" if fade else ""}" role="img" '
         f'aria-label="{H.esc(C.HOW_DIAGRAM_ALT)}">'
         f'<span class="hud-lbl">{H.esc(C.DIAGRAM_LABEL)}</span>'
         f"<ol>{''.join(items)}</ol></figure>"

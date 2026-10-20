@@ -105,6 +105,9 @@ def test_the_tamper_demo_on_live6(app, page):
     section = page.locator(".st-key-tamper")
     section.wait_for()
     assert C.TAMPER_HEAD in section.inner_text()
+    # Slice 3: a collapsed expander after step 5; open it.
+    page.locator(".st-key-tamper summary").first.click()
+    page.get_by_role("button", name=C.TAMPER_BUTTON).wait_for()
     assert page.locator(".st-key-tamper-result").count() == 0
     full_page(page, "s14_05_tamper_before_live6")
     page.get_by_role("button", name=C.TAMPER_BUTTON).click()
@@ -122,8 +125,23 @@ def test_the_tamper_demo_on_live6(app, page):
     # Another file of the run, in Expert view.
     page.get_by_text(C.EXPERT_TOGGLE, exact=True).click()
     wait_idle(page)
-    page.locator(".st-key-tamper").get_by_role("combobox").click()
-    page.get_by_role("option", name="candidates/c1/outcome.json").click()
+    details = page.locator(".st-key-tamper details").first
+    if details.get_attribute("open") is None:  # the rerun may redraw it collapsed
+        page.locator(".st-key-tamper summary").first.click()
+    page.locator(".st-key-tamper-table table").wait_for(timeout=30_000)  # Expert drawn
+    wait_idle(page)
+    option = page.get_by_role("option", name="candidates/c1/outcome.json")
+    for _ in range(
+        10
+    ):  # the selectbox is redrawn for Expert view; open it once it is ready
+        page.locator(".st-key-tamper").get_by_role("combobox").click()
+        try:
+            option.wait_for(timeout=2_000)
+            break
+        except Exception:  # noqa: BLE001 - not open yet
+            page.keyboard.press("Escape")
+            time.sleep(0.5)
+    option.click()
     wait_idle(page)
     page.get_by_role("button", name=C.TAMPER_BUTTON).click()
     page.get_by_text("differ: candidates/c1/outcome.json").wait_for(timeout=60_000)
@@ -146,6 +164,7 @@ def test_agent_vs_model_alone_page(app, page):
     assert caveats.is_visible()
     assert "Development cases, not held-out" in caveats.inner_text()
     assert page.locator(".st-key-vs-page details").count() == 0
+    page.locator(".st-key-vs-table table tbody tr").nth(2).wait_for(timeout=30_000)
     rows = page.locator(".st-key-vs-table table tbody tr").all_inner_texts()
     assert any("8 of 8 assessable" in r and "19 of 20 on the same 8" in r for r in rows)
     assert C.VS_REVIEW in body and "estimate, not billing" in body

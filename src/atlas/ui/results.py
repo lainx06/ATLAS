@@ -300,6 +300,7 @@ def finished_run(
                 run_dir,
                 report,
                 mode,
+                checks=guard,
                 decisions=decisions,
                 notes=notes,
                 compare=compare,
@@ -321,6 +322,7 @@ def _cards(
     report: dict | None,
     mode: str,
     *,
+    checks: list[R.Check],
     decisions: list[dict],
     notes: tuple[str, ...],
     compare: tuple | None,
@@ -331,6 +333,17 @@ def _cards(
     preamble: Callable[[], None] | None,
     briefing: str | None,
 ) -> None:
+    if run_dir is not None and checks:
+        # Slice 3: the one-page audit report, from this verified run's files only.
+        from atlas.ui import story
+
+        with st.container(key="run-report"):
+            story.report_button(
+                R.RecordedRun(Path(run_dir), Path(run_dir).name, mode),
+                report,
+                checks,
+                subject=Path(run_dir).name,
+            )
     if briefing is not None:
         with st.container(key="hud-briefing"):
             st.markdown(briefing, unsafe_allow_html=True)

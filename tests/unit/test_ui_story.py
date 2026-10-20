@@ -393,16 +393,16 @@ def test_plain_mode_hides_hashes_paths_ids_and_costs(mode, key):
     assert "mode `" not in shown and "live `True`" not in shown  # no debug banner
     assert LOCAL_PATH.search(shown) is None, LOCAL_PATH.search(shown)
     assert str(ROOT) not in shown
-    # Each step offers its one line of expert detail (after the case cards and, slice 2,
-    # the tamper demo's button).
-    assert [b.label for b in at.button][3] == C.TAMPER_BUTTON
-    labels = [b.label for b in at.button][4:]
+    # Each step offers its one line of expert detail (after the case cards); the tamper
+    # demo's button follows the steps (slice 3, C1).
+    labels = [b.label for b in at.button][3:]
     assert labels == [
         C.SHOW_EXPERT,
         C.SHOW_EVIDENCE,
         C.SHOW_EXPERT,
         C.SHOW_EXPERT,
         C.SHOW_EXPERT,
+        C.TAMPER_BUTTON,
     ]
 
 
@@ -511,11 +511,12 @@ def test_the_verdict_line_and_step_summaries_are_deterministic(mode, key):
     assert labels == [
         C.STEP_LABEL.format(n=n, title=story.md(C.STEP_TITLES[n]), summary=story.md(s))
         for n, s in enumerate(SUMMARIES[key], start=1)
-    ]
+    ] + [story.md(C.TAMPER_HEAD)]  # slice 3: the tamper demo, collapsed, after step 5
     # Step 2 open by default; the others collapsed (their headers tell the story).
     assert [e.proto.expanded for e in at.expander] == [
         False,
         True,
+        False,
         False,
         False,
         False,

@@ -72,6 +72,7 @@ Development-only tools (the `dev` group of `pyproject.toml`; not part of the run
 
 | Package | Version | License (from metadata) |
 | --- | --- | --- |
+| axe-playwright-python | 0.1.8 | MIT (`License-File: LICENSE`, MIT text). It bundles **axe-core 4.12.1** (`axe_playwright_python/axe.min.js`), Copyright (c) 2015-2026 Deque Systems, Inc., under the **Mozilla Public License 2.0** (stated in that file's header); used only by the accessibility tests (slice 3), never shipped or served |
 | pytest | 9.1.1 | MIT |
 | pytest-playwright | 0.10.0 | Apache Software License (classifier; the `License` field holds the Apache License 2.0 text) |
 | ruff | 0.17.0 | MIT |

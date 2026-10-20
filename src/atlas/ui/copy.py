@@ -427,8 +427,8 @@ VS_ALT = (
 VS_TABLE_MEASURE = "Measure"
 VS_TABLE_SEP = "; "
 # What this means: the reviewed findings, copied exactly from docs/EVALUATION.md, "Results
-# (live, 2026-10-19)", "Findings (descriptive)" (a test compares them). Plain view shows the
-# findings at VS_FINDINGS_PLAIN; Expert view shows all of them.
+# (live, 2026-10-19)", "Findings (descriptive)" (a test compares them). Expert view shows them;
+# plain view shows VS_MEANS_PLAIN below.
 VS_MEANS_HEAD = "What this means"
 T11_FINDINGS = (
     (
@@ -480,12 +480,37 @@ T11_FINDINGS = (
         "whereas the agent reads them through bounded tools."
     ),
 )
-VS_FINDINGS_PLAIN = (0, 1, 2, 4, 5)
+# Plain view (slice 3): four plain-words items in place of the findings; every number in them
+# is checked against scores.json and the findings above (tests/unit/test_ui_slice3.py).
+VS_MEANS_PLAIN = (
+    (
+        "The AI model on its own named 19 of the 23 planted problems across its 9 usable answers. "
+        "It raised 2 false alarms on the flawed real-data project and none on the two clean "
+        "projects."
+    ),
+    (
+        "ATLAS found all 8 of the planted problems its checks can assess, with no false alarms. One "
+        "planted problem (overlapping time windows in the real-data project) needs information the "
+        "project did not record, so ATLAS reported it as not assessed instead of guessing. The model "
+        "on its own did not name it in any of its 3 usable answers for that project."
+    ),
+    (
+        "The model's answers varied from try to try, and 3 of its 12 answers broke the required "
+        "format and could not be scored. ATLAS's checks are deterministic by design."
+    ),
+    (
+        "This compares finding problems only, not fixing them, on the small set of projects ATLAS "
+        "was built on."
+    ),
+)
 VS_FINDINGS_SOURCE = (
     'Copied exactly from docs/EVALUATION.md, "Results (live, 2026-10-19)", "Findings '
     '(descriptive)". In the findings, leg (a) is ATLAS and leg (b) is the model alone.'
 )
-VS_LEGS_PLAIN = "In the findings, leg (a) is ATLAS and leg (b) is the model alone."
+VS_MEANS_PLAIN_SOURCE = (
+    "In plain words, from scores.json and the reviewed findings; Expert view shows the "
+    "findings exactly as reviewed."
+)
 # The caveats, in plain words, always visible (sources: docs/EVALUATION.md §9 and the findings)
 VS_CAVEATS_HEAD = "Read these before the numbers"
 VS_CAVEATS = (
@@ -696,8 +721,8 @@ LIMITS_PLAIN = (
     (
         "The live AI agent was accepted within its scope with these limits: the input-token "
         "figure is ATLAS's own estimate, and the provider's enforcement and billing are not "
-        "verified; the model's reply format is not always reliable (format failures in 3 of 6 "
-        "live runs); raw replies are stored only from live run 3b onward; hiding secrets in a "
+        "verified; the model's reply format is not always reliable (schema failures in 5 of 8 "
+        "live runs, runs 1 to 8); raw replies are stored only from live run 3b onward; hiding secrets in a "
         "revision's output is best-effort; and it was tested on one Windows computer only."
     ),
     (
@@ -713,9 +738,10 @@ LIMITS_PLAIN = (
         "store for final held-out labels yet."
     ),
     (
-        "Until deployment, these were not established for the hosted build: that it reaches "
-        "Nebius and builds from the locked dependencies on the host, a signed-out smoke test, "
-        "and availability through 15 December 2026."
+        "Established on 19 October 2026 for the private hosted app: it reaches Nebius and "
+        "builds from the locked dependencies on the host, and a smoke test passed on the public "
+        "and judge routes. Not yet established: a check of the public app by a signed-out "
+        "visitor, and availability through 15 December 2026 (both at publication)."
     ),
     "Saving and reusing evaluation procedures was cut from this version.",
 )
@@ -745,7 +771,7 @@ NOT_DO = (
 )
 
 # -- the tamper demo (atlas.ui.tamper; on the Overview, below the verdict bar) ---------------------
-TAMPER_HEAD = "Try tampering"
+TAMPER_HEAD = "Try tampering: change one byte in a copy and watch the check catch it"
 TAMPER_INTRO = (
     "Pick one of this run's recorded files. ATLAS copies the recorded run to a temporary "
     "folder outside the repository, changes one byte in the copy, and runs the same check "
@@ -803,3 +829,51 @@ TAMPER_LIMITS = (
     "One demo at a time per session, at most {n} per session per hour, and only for recorded "
     "runs up to {mb} MB. Nothing executes except hashing: no project code, no network."
 )
+
+
+# ================================================================================================
+# Slice 3 (2026-10-20): the one-page audit report (atlas.ui.report).
+# ================================================================================================
+REPORT_BUTTON = "Download audit report"
+REPORT_HELP = (
+    "One printable HTML page built from this run's verified files only: no model-written text, "
+    "no scripts, nothing fetched."
+)
+REPORT_TITLE = "ATLAS audit report"
+REPORT_SUBJECT_CASE = "Case: {title}"
+REPORT_SUBJECT_RUN = "Run: {run}"
+REPORT_CLAIM = "The claim"
+REPORT_CLAIM_INTRO = (
+    "What the project says its model can do (from the recorded manifest):"
+)
+REPORT_OUTCOME = "Outcome"
+REPORT_BEFORE = "Before: the original evaluation"
+REPORT_AFTER = "After: the executed revision"
+REPORT_NO_REVISION = "No revision was executed."
+REPORT_CHECKS = "Required checks"
+REPORT_COL_CHECK = "What the check verifies"
+REPORT_COL_ID = "Assertion ID"
+REPORT_COL_BEFORE = "Before"
+REPORT_COL_AFTER = "After"
+REPORT_LEAK = "The leak"
+REPORT_APPROVAL = "Approval and sealed run"
+REPORT_AUDIT_ONLY = (
+    "Deterministic audit: no model was called and nothing was approved; the trusted, "
+    "repository-authored pipeline ran once."
+)
+REPORT_EVIDENCE = "Evidence"
+REPORT_INTEGRITY = "{v} of {t} recorded items verified when this report was generated."
+REPORT_HASH_OUTCOME = "Recorded SHA-256 of {rel}"
+REPORT_HASH_APPROVED = "Approved code hash ({who})"
+REPORT_HASH_COL_ITEM = "Item"
+REPORT_HASH_COL_VALUE = "SHA-256"
+REPORT_DATA = "Data"
+REPORT_WHY = "{label}: {text} Source: {url}"
+REPORT_COMMIT = "ATLAS commit {commit}"
+REPORT_POLICY = "policy {policy}"
+REPORT_GENERATED = "generated {utc} (UTC)"
+REPORT_MODEL_TEXT_NOTE = (
+    "This report contains no model-written text: no explanation, reply or diff written by a "
+    "model."
+)
+REPORT_SEP = " · "
