@@ -2236,3 +2236,4 @@ Task index plus a concise structured entry per task under "Implementation tasks"
 - **HANDOFF:** the user submits on Devpost.
 - **RECOVERY:** fix blockers only after the freeze.
 - **STATUS (2026-10-19):** Merged into main 2026-10-19; drafts updated with T-11 results; remaining TODOs: demo URL, repository URL, video URL, footage.
+- **RELEASE REVIEW 1 FIX PASS (2026-10-20):** Codex `runs/release-review/review.md` FAIL (1 P1, 2 P2, 2 P3); F1 fixed (one verification gate `ui.results.gate` before any result rendering on every page, plus a guard in `finished_run`; `tests/hosted/test_release_gate.py`), F2-F5 fixed in README, the Devpost draft and the video script; full suite on main 1791 passed, 2 skipped (`runs/relfix1/full.log`); dispositions in DECISIONS.md "Release review 1 dispositions (lead, 2026-10-20)"; **next: Codex re-verification.**

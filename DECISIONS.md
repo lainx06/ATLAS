@@ -457,3 +457,10 @@ The repository is published as-is (option A): history, commit hashes and docs/ha
 1. The HUD redesign (phases 1 and 2 on branch ui-hud) is approved by the user and the lead: every element and motion is bound to verified run data; no Marvel/Stark/JARVIS names.
 2. The mission briefing is deterministic text from verified files, fixed plain-English assertion labels (src/atlas/ui/assertion_labels.json) and the frozen definitions; it never includes model text. Voice readout is not in the product (browser voices vary by judge); the demo video may narrate the briefing.
 3. The HUD is in the release review's scope (truth rules, briefing provenance, SVG ID uniqueness, the hosted live-track display change).
+
+## Release review 1 dispositions (lead, 2026-10-20)
+
+1. F1 (P1) fixed: one verification gate before any outcome or result rendering on every page, plus a guard in finished_run; re-verification by Codex required.
+2. F2, F3 (P2) fixed in the Devpost draft (T-11 caveats; exact model actions).
+3. F4, F5 (P3) fixed (dated counts, deployment status, review wording; descriptive score wording).
+4. R7 was not verified because the reviewer's folder guard rejected Windows long-path (`\\?\`) forms of its own temp directory; the builder's full suite for this pass is runs/relfix1/full.log; Codex re-runs it in the re-verification.

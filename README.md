@@ -25,7 +25,7 @@ All figures come from the project's own records; none is a benchmark of detectio
 | Run end state | `BUDGET_EXHAUSTED`: revision 2 was rejected by `validate_diff` (`syntax_error`) and attempt 5 hit the 2-revision limit |
 | Requests / cost | 5 requests, 0 retries, 0 schema failures; estimated $0.0190884 (provider-reported usage at listed prices; **not billing**) |
 
-Source: TASKS.md T-06 "LIVE RUN 6"; STATUS.md. The candidate scored *lower*: removing the leakage cost accuracy, which is the point.
+Source: TASKS.md T-06 "LIVE RUN 6"; STATUS.md. The candidate scored *lower*: After the four violations were removed, the pooled balanced accuracy was lower (0.68125 → 0.675); the difference is descriptive and is not attributed to a single cause.
 
 The six live runs ended differently, and all are recorded: run 1 two proposals rejected, no candidate executed; run 2 `ERROR` (`not_json`); run 3 declined approval (`NEEDS_INPUT`); run 3b `ERROR` (`incomplete`); run 4 both candidates `INCONCLUSIVE` (`KeyError: 'subject_id'`); run 5 `ERROR` (`not_json`); run 6 success above. Estimated total live spend, runs 1 to 6, the T-11 comparison and the hosted smoke test: about $0.133 ($0.1333011; not billing). Source: STATUS.md.
 
@@ -50,15 +50,15 @@ The same model (Nemotron) reading the same files with no executable checks, thre
 | False positives | 0 | 2 |
 | False violations on the clean controls | 0 | 0 |
 | Invalid replies (unscored) | none | 3 of 12 |
-| Repeatability | deterministic by design | varied between trials |
+| Repeatability | deterministic by design (evaluated once per case here) | varied between trials |
 
-On these small cases the model reading the code finds most of the same flaws, possibly helped by the flawed projects' own comments, which describe their flaws. What ATLAS adds is executed, reproducible evidence, no false positives in this comparison, and verification of a fix by running it (live run 6). The comparison tests detection only. Source: `docs/EVALUATION.md` "Results (live, 2026-10-19)" (claims reviewed by Gemini); estimated cost $0.063, not billing.
+On these small cases the model reading the code finds most of the same flaws, possibly helped by the flawed projects' own files, which describe their flaws in plain text. ATLAS's audit was evaluated once per case. What ATLAS adds is evidence you can re-run, no false positive in this comparison, and fixes verified by execution (live run 6), not seeing more. The comparison tests detection only. Source: `docs/EVALUATION.md` "Results (live, 2026-10-19)" (claims reviewed by Gemini); estimated cost $0.063, not billing.
 
 ### Safety controls and their reviews
 
 - Typed approval bound to the snapshot and code hashes; a wrong or truncated confirmation declines. Docker-only execution, no host fallback. The trusted evaluator, holdout labels and pass criteria are immutable to the agent (AGENTS.md; SPEC §9-§10).
-- Reviews: Gates 1-3 PASS; Gate 4 FAIL (two P2), resolved by slices 4c-4h; combined review FAIL (three P2), re-verified and closed; T-06 accepted by the lead within its documented scope (`f059554`, on the code at `199a173`). The hosted build (T-12) passed Codex's security-and-spend review after two fix passes: review 1 found one P2 (the hosted flag did not guard local execution), review 2 with a fault-injection matrix (C1-C10) found two P2 (unguarded Docker maintenance entries; a partial headline after a render failure); all three were fixed and re-verified (DECISIONS.md "T-12 acceptance and merge (lead, 2026-10-19)"). Source: STATUS.md; TASKS.md T-06 "ACCEPTANCE".
-- Suite on the merged `main`: 1644 passed, 1 skipped with Docker required (`runs/merge-20261019/full.log`, git-ignored); the skip is the symlink-permission skip on this host.
+- Reviews: Gate 1 PASS (`runs/g1v3/review.md`, after earlier FAIL and NOT VERIFIED rounds); Gate 2 was the lead's decision record, not a review verdict (DECISIONS.md "2026-10-16 — T-06 slice 4 live-run decisions (lead)"); Gate 3 PASS (`runs/g3y/review.md`, after three FAIL rounds); Gate 4 FAIL (two P2), resolved by slices 4c-4h; combined review FAIL (three P2), re-verified and closed; T-06 accepted by the lead within its documented scope (`f059554`, on the code at `199a173`). The hosted build (T-12) passed Codex's security-and-spend review after two fix passes: review 1 found one P2 (the hosted flag did not guard local execution), review 2 with a fault-injection matrix (C1-C10) found two P2 (unguarded Docker maintenance entries; a partial headline after a render failure); all three were fixed and re-verified (DECISIONS.md "T-12 acceptance and merge (lead, 2026-10-19)"). Source: STATUS.md; TASKS.md T-06 "ACCEPTANCE".
+- Tests: full suite on main, 2026-10-20: 1791 passed, 2 skipped (environment), with Docker required (`runs/relfix1/full.log`, git-ignored); the skips are the symlink-permission test on this host and an evidence-only motion capture.
 
 ## How ATLAS uses NVIDIA Nemotron on Nebius Token Factory
 
@@ -68,7 +68,7 @@ Model: `nvidia/nemotron-3-super-120b-a12b` (listed $0.30 / $0.90 per 1M input / 
 - **Exact reply validation.** The model must return one raw JSON object (one action, no duplicate keys, no undeclared fields). Application-validated by strict Pydantic schemas, **not** provider-enforced structured output: no NVIDIA model on Nebius lists `json_mode` or `structured_outputs`. Reply text is never repaired or leniently parsed. Up to two consecutive schema failures get a corrective turn built from the schema and fixed text only, inside the 6-request budget.
 - **Cost accounting.** Each request is reserved before it is sent; usage is validated before accounting; the run stops unsent if the next ceiling would pass the estimate cap of $0.0648 per run. At most $0.51 per run is authorized (the provider-enforced worst case, which ATLAS has not verified). Figures are estimates from provider-reported usage, **not billing**.
 - **Pre-run model check.** Before any completion, one free authenticated `GET /models` must list the model with exactly the configured prices and context length, or the run aborts.
-- **Roles.** The model reads files, runs checks through typed tools and proposes a revision (`diff` or complete `new_source`). `validate_diff` is the only gate for a proposal; the trusted evaluator is the only source of an outcome.
+- **Roles.** In a bounded loop it chooses one typed action per reply: list the project's files (`list_project_files`), read one project file (`read_project_file`), inspect the original's recorded evidence for one check family (`inspect_evidence`: split integrity, fit provenance, independent metrics or temporal availability), propose a revision of the entry point (`propose_patch`: a unified `diff` or the complete `new_source`, with a rationale), or finish (`finish`, with a summary). ATLAS itself runs the deterministic checks before any model request and, after a typed human approval, executes an accepted revision in Docker and re-evaluates it; the model can do neither. `validate_diff` is the only gate for a proposal; the trusted evaluator is the only source of an outcome.
 
 ## Architecture
 
@@ -91,10 +91,10 @@ Source: docs/SPEC.md §6, §9-§11; docs/T09_CONTAINMENT.md §5.
 | Mode | Executes | Model | Labelled |
 | --- | --- | --- | --- |
 | Local build (full) | Original and every candidate in the isolated Docker runner after typed approval | live (CLI, explicit authorization) or fixture | LIVE or NON-LIVE banner |
-| Limited hosted (built, **not deployed**) | Nothing from a project; the original's findings come from a recorded, hash-verified trusted run; proposals are "not executed here" | one capped live session per visitor session; kill switch off by default | disclosed replay, "not executed here" |
+| Limited hosted (deployed on Streamlit Community Cloud and smoke-tested on both routes (2026-10-19); public at submission) | Nothing from a project; the original's findings come from a recorded, hash-verified trusted run; proposals are "not executed here" | one capped live session per visitor session; kill switch off by default | disclosed replay, "not executed here" |
 | Fixture | Same loop with scripted model replies | none | NON-LIVE |
 
-Source: docs/SPEC.md §13; docs/HOSTED_OPERATIONS.md §1. The hosted caps are $3.00 public ($1.00 per UTC day), $5.00 judge, $0.0648 and 6 requests per session, enforced in Neon Postgres; they are tested only on a local PostgreSQL container so far.
+Source: docs/SPEC.md §13; docs/HOSTED_OPERATIONS.md §1. The hosted caps are $3.00 public ($1.00 per UTC day), $5.00 judge, $0.0648 and 6 requests per session, enforced in Neon Postgres; the caps are tested on a local PostgreSQL container, and the deployed app's smoke test (2026-10-19) reserved and settled its six requests in Neon (judge $0.0045216, public $0.0076857; estimates, not billing). No cap was reached on the host.
 
 ## Setup and running
 
