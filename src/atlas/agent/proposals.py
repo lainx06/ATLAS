@@ -8,7 +8,9 @@ a supplied diff. The validated candidate's entry bytes must equal `new_source`'s
 otherwise the proposal is rejected (`diff_mismatch`). Model text is never altered.
 
 **Newline rule (documented choice).** `new_source` must end with a newline. Without one it is
-rejected as `malformed_source`, never silently completed. It must also contain no carriage
+rejected as `malformed_source`, never silently completed. When the text has no line break but
+two or more literal backslash-n sequences (a double-escaped JSON string), the rejection carries a
+detail saying so; the source is still rejected, never decoded again. It must also contain no carriage
 return or NUL (`malformed_source`), which `validate_diff` refuses in any diff. If the snapshot's
 own entry point lacks a final newline, the generated diff carries the standard
 `\\ No newline at end of file` marker for that old line, which `validate_diff` already parses.
@@ -25,6 +27,11 @@ NO_NEWLINE = "\\ No newline at end of file\n"
 DETAIL_CHARS = 200
 DETAIL_LABEL = "validator message; may quote model text"
 FILE_LABEL = "model-written (untrusted)"
+LITERAL_BACKSLASH_N = "\\n"  # the two characters backslash and n
+DOUBLE_ESCAPED_DETAIL = (
+    "new_source contains literal backslash-n sequences and no line breaks; "
+    "it appears double-escaped. In the JSON reply, escape each newline once, as \\n."
+)
 
 
 def source_diff(original: str, new_source: str, entry_point: str) -> str:
@@ -34,6 +41,8 @@ def source_diff(original: str, new_source: str, entry_point: str) -> str:
             "malformed_source", "carriage return or NUL in new_source"
         )
     if not new_source.endswith("\n"):
+        if "\n" not in new_source and new_source.count(LITERAL_BACKSLASH_N) >= 2:
+            raise CandidateRejected("malformed_source", DOUBLE_ESCAPED_DETAIL)
         raise CandidateRejected(
             "malformed_source", "new_source must end with a newline (it is not altered)"
         )

@@ -319,6 +319,53 @@ def test_the_newline_rule_never_alters_model_text():
     assert info.value.code == "no_change"
 
 
+# The shape of live run 7's rejected sources: the whole file on one line, every line break a
+# literal backslash + n (the model double-escaped the JSON string), ending in a literal backslash-n.
+DOUBLE_ESCAPED = FIX.replace("\n", "\\n")
+GENERIC_DETAIL = (
+    "malformed_source: new_source must end with a newline (it is not altered)"
+)
+
+
+def test_a_double_escaped_source_is_rejected_with_an_exact_diagnostic():
+    assert "\n" not in DOUBLE_ESCAPED and DOUBLE_ESCAPED.count("\\n") >= 2
+    assert DOUBLE_ESCAPED.endswith("\\n")
+    with pytest.raises(CandidateRejected) as info:
+        P.source_diff(ORIGINAL, DOUBLE_ESCAPED, "evaluate.py")
+    assert info.value.code == "malformed_source"
+    assert str(info.value) == f"malformed_source: {P.DOUBLE_ESCAPED_DETAIL}"
+    assert P.DOUBLE_ESCAPED_DETAIL == (
+        "new_source contains literal backslash-n sequences and no line breaks; "
+        "it appears double-escaped. In the JSON reply, escape each newline once, as \\n."
+    )
+    assert len(P.DOUBLE_ESCAPED_DETAIL) <= P.DETAIL_CHARS  # not cut by bounded_detail
+    assert P.bounded_detail(info.value) == P.DOUBLE_ESCAPED_DETAIL
+
+
+def test_the_double_escape_diagnostic_needs_two_sequences_and_no_line_break():
+    # One literal backslash-n is not enough, and a real line break rules it out.
+    for source in ("x = 'a\\n'", FIX.rstrip("\n") + "  # a\\n b\\n"):
+        with pytest.raises(CandidateRejected) as info:
+            P.source_diff(ORIGINAL, source, "evaluate.py")
+        assert str(info.value) == GENERIC_DETAIL
+    # A carriage return is still refused first, with its own detail.
+    with pytest.raises(CandidateRejected) as info:
+        P.source_diff(ORIGINAL, DOUBLE_ESCAPED + "\r", "evaluate.py")
+    assert str(info.value) == "malformed_source: carriage return or NUL in new_source"
+
+
+def test_a_normal_source_missing_only_its_final_newline_keeps_the_generic_detail():
+    with pytest.raises(CandidateRejected) as info:
+        P.source_diff(ORIGINAL, FIX.rstrip("\n"), "evaluate.py")
+    assert info.value.code == "malformed_source"
+    assert str(info.value) == GENERIC_DETAIL
+
+
+def test_a_valid_source_is_accepted_with_its_bytes_unchanged():
+    assert FIX.endswith("\n")
+    assert P.source_diff(ORIGINAL, FIX, "evaluate.py") == DIFF
+
+
 def test_an_original_without_a_final_newline_gets_the_standard_marker():
     generated = P.source_diff("a = 1\nb = 2", "a = 1\nb = 3\n", "m.py")
     assert generated.endswith("-b = 2\n\\ No newline at end of file\n+b = 3\n")
@@ -399,6 +446,41 @@ def test_a_new_source_revision_is_validated_shown_executed_and_recorded(
     assert report["comparison"]["model"] == "fixture replies (non-live)"
     assert "full-source" not in ctl.SYSTEM_PROMPT  # generic guidance only
     assert "new_source" in ctl.SYSTEM_PROMPT and "adapter" in ctl.SYSTEM_PROMPT
+
+
+def test_a_double_escaped_revision_is_told_why_and_the_next_revision_proceeds(
+    tmp_path, monkeypatch, evidence, no_host_runner
+):
+    """Live run 7's shape: revision 1 double-escaped (rejected, nothing repaired), revision 2
+    valid. The exact diagnostic is in the model's next prompt, bounded like other details."""
+    S.fake_docker(monkeypatch, [evidence["faulty"], evidence["clean"]])
+    bad = S.act("propose_patch", new_source=DOUBLE_ESCAPED, rationale="r")
+    client = FixtureClient("s4c", [{"content": r} for r in (bad, NEW_SOURCE, FINISH)])
+    result = ctl.run_agent(S01, tmp_path / "runs", client, S.ApproveExactly(), env={})
+    assert result.terminal_state == ctl.REPORT, result.reason
+
+    first, second = result.report["proposals"]
+    assert (first["outcome"], first["code"]) == ("rejected", "malformed_source")
+    assert first["detail"] == P.DOUBLE_ESCAPED_DETAIL
+    assert (first["diff_path"], first["diff_sha256"]) == (None, None)
+    persisted = (result.run_dir / first["new_source_path"]).read_bytes()
+    assert persisted == DOUBLE_ESCAPED.encode("utf-8")  # the model's text, unaltered
+    assert (second["outcome"], second["code"]) == ("executed", None)
+    (candidate,) = result.candidates
+    assert candidate.outcome.outcome is Outcome.NO_VIOLATION_FOUND
+
+    # The model's next request carries the diagnostic in the propose_patch result.
+    (seen,) = [
+        h["result"]
+        for h in json.loads(
+            next(m for m in client.requests[1].messages if m["role"] == "user")[
+                "content"
+            ]
+        )["history"]
+        if h["tool"] == "propose_patch"
+    ]
+    assert seen == {"rejected": f"malformed_source: {P.DOUBLE_ESCAPED_DETAIL}"}
+    assert len(seen["rejected"]) <= len("malformed_source: ") + P.DETAIL_CHARS
 
 
 def test_a_declined_revision_is_recorded_with_the_approvers_reason(
