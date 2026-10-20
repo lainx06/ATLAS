@@ -464,3 +464,7 @@ The repository is published as-is (option A): history, commit hashes and docs/ha
 2. F2, F3 (P2) fixed in the Devpost draft (T-11 caveats; exact model actions).
 3. F4, F5 (P3) fixed (dated counts, deployment status, review wording; descriptive score wording).
 4. R7 was not verified because the reviewer's folder guard rejected Windows long-path (`\\?\`) forms of its own temp directory; the builder's full suite for this pass is runs/relfix1/full.log; Codex re-runs it in the re-verification.
+
+## Live run 7 disposition (lead, 2026-10-20)
+
+The rejection was correct (no repair); the validator detail was inaccurate for double-escaped sources and is replaced by an exact diagnostic (no change to what is accepted). A further live run on har_flawed is authorized only by the user's explicit go-ahead.

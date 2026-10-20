@@ -93,13 +93,13 @@ ATLAS was started and built entirely during the submission period. No ATLAS code
 
 ## Token Factory and Nemotron feedback (for the "Most Valuable Feedback" prize)
 
-<!-- Sources: STATUS.md "Nebius smoke" and "Nebius configuration"; TASKS.md T-06 live runs 1-6, Gate 3 (runs/g3w, g3x, g3y); DECISIONS.md "Initial model and response approach"; docs/SPEC.md §11. All observations are from our own records on one model, one project and six runs; they are not general claims. Provider spend figures are our estimates, not billing. -->
+<!-- Sources: STATUS.md "Nebius smoke" and "Nebius configuration"; TASKS.md T-06 live runs 1-7, Gate 3 (runs/g3w, g3x, g3y); DECISIONS.md "Initial model and response approach"; docs/SPEC.md §11. All observations are from our own records on one model, one project and seven runs; they are not general claims. Provider spend figures are our estimates, not billing. -->
 
 What worked well:
 
 - **The free `GET /models?verbose=true`** returned price, context length, rate limits and `supported_features` for each model, which made an exact pre-run check possible (model present, prices and context length equal to configuration). It returned HTTP 200 in our checks.
 - **Prompt-requested JSON worked** when the model complied: both smoke calls passed strict validation, and live run 6 had 0 schema failures over 5 requests.
-- **Low cost.** Run 6 cost an estimated $0.0190884; the six runs, the T-11 comparison and the hosted smoke test about $0.133 in total (not billing).
+- **Low cost.** Run 6 cost an estimated $0.0190884; the seven runs, the T-11 comparison and the hosted smoke test about $0.160 in total ($0.1601931; not billing).
 
 Specific observations and suggestions:
 
@@ -108,5 +108,6 @@ Specific observations and suggestions:
 3. **The listing's price-string format.** In the listing, prices are per-token decimal strings (`0.0000003` and `0.0000009`, nine characters each) while the context length is an integer; humans quote the same prices per million tokens ($0.30 / $0.90). We parse them as exact decimals and abort if a listed price differs from configuration, and our review stage range-checks exponent-style strings such as `1E+31` from the decimal's digits and exponent before any formatting; a zero with a large exponent (`0E+200`) is still rejected, failing closed, as a recorded known limitation (DECISIONS.md "Gate 3 re-verification dispositions (lead, 2026-10-17)"). *Suggestion:* state the unit and the allowed string forms in the API reference, and consider also returning a per-million field.
 4. **Request IDs and served-model reporting were useful, and we depend on them.** `GET /models` and completions returned request IDs, and replies report the served model and usage; we log them (only after checking they are plain identifiers that do not contain the key) so a spend or behavior question can be traced to a request. *Suggestion:* keep both stable and documented (the request-ID location and the served-model field), so audit trails like ours stay reliable.
 5. **Usage in error responses.** Our client validates usage on replies and on errors alike and treats a dispatched request with unknown usage as held at its ceiling. A documented guarantee about usage and billing for timeouts and failed requests would let callers release that hold sooner. We have not verified provider-side enforcement of `max_completion_tokens` or billing, and say so.
+6. **Long code inside JSON strings:** in live run 7 the model returned complete source files as JSON strings that were double-escaped (literal backslash-n, no line breaks) twice in a row. A response_format or constrained-decoding option for the Nemotron models would remove this class of failure; we report it as observed on one run.
 
-Everything above is reproducible from the run records named in TASKS.md T-06 (git-ignored `runs/live1` to `runs/live6`; the recorded bundle `demo/recorded/live6/`).
+Everything above is reproducible from the run records named in TASKS.md T-06 (git-ignored `runs/live1` to `runs/live7`; the recorded bundle `demo/recorded/live6/`).

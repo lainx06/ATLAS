@@ -27,7 +27,7 @@ All figures come from the project's own records; none is a benchmark of detectio
 
 Source: TASKS.md T-06 "LIVE RUN 6"; STATUS.md. The candidate scored *lower*: After the four violations were removed, the pooled balanced accuracy was lower (0.68125 → 0.675); the difference is descriptive and is not attributed to a single cause.
 
-The six live runs ended differently, and all are recorded: run 1 two proposals rejected, no candidate executed; run 2 `ERROR` (`not_json`); run 3 declined approval (`NEEDS_INPUT`); run 3b `ERROR` (`incomplete`); run 4 both candidates `INCONCLUSIVE` (`KeyError: 'subject_id'`); run 5 `ERROR` (`not_json`); run 6 success above. Estimated total live spend, runs 1 to 6, the T-11 comparison and the hosted smoke test: about $0.133 ($0.1333011; not billing). Source: STATUS.md.
+The six live runs ended differently, and all are recorded: run 1 two proposals rejected, no candidate executed; run 2 `ERROR` (`not_json`); run 3 declined approval (`NEEDS_INPUT`); run 3b `ERROR` (`incomplete`); run 4 both candidates `INCONCLUSIVE` (`KeyError: 'subject_id'`); run 5 `ERROR` (`not_json`); run 6 success above; run 7 (`har_flawed`, real UCI HAR data) found the violation, but both proposed revisions were rejected as malformed (double-escaped source), so no candidate ran. Estimated total live spend, runs 1 to 7, the T-11 comparison and the hosted smoke test: about $0.160 ($0.1601931; not billing). Source: STATUS.md.
 
 ### UCI HAR: real data, a flawed protocol against a clean control
 
