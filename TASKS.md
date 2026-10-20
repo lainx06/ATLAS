@@ -2031,6 +2031,23 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Screenshots:** `runs/ui-story/screens2/` (24 settled full-page captures: 8 states at 1440x900, 1280x800 and 390x844).
   - **No live run, no Nebius call, no Neon connection, no spend, no push.**
 
+### T-07e UI story layout, slice 3
+- **OWNER:** Claude Code (writer); the user and the lead review.
+- **MODEL / EFFORT:** Opus 5.5 high.
+- **CHANGE:** README.md, TASKS.md (T-06 acceptance limitation), docs/DEVPOST_DRAFT.md (Part A); `src/atlas/ui/report.py` (new), `story.py` (header switch, report button, tamper expander after step 5), `results.py` (report button on finished runs), `versus.py` (plain items), `views.py` (accessibility CSS), `limits.py` (diagram `role="img"`), `copy.py`; `pyproject.toml`/`uv.lock` (dev-only `axe-playwright-python`), THIRD_PARTY_NOTICES.md; tests; `docs/UI_DESIGN_HUD.md` §14. No engine, evaluator, policy, provider, spending, approval, verification, T-11 gate, tamper safety, escaping or briefing logic changed.
+- **RESULT (2026-10-20): built on branch `ui-story` in the worktree `atlas-story`; not reviewed.**
+  - **Commits:** `470420f` (Part A docs), `177e764` (code with tests), and this docs commit.
+  - **A1:** the T-06 limitation now reads "schema failures in 5 of 8 live runs (runs 1 to 8)" (README, the T-06 acceptance record above). Basis, as for the earlier 3 of 6: runs 1 to 8 with run 3 and its retry 3b counted as one run; runs with at least one schema failure 2, 3b, 5, 7, 8 (the acceptance record names 2, 3b, 5; runs 7 and 8 each had 2 `incomplete_length`); none in 1, 4, 6 (run 6 records 0; the run logs, read only, show no schema event for 1 and 4). The Devpost draft's "ended" figure, on its own basis: 4 of 8 (2, 3b, 5, 8).
+  - **A2:** README hosted limitation: established on 2026-10-19 for the private app; not yet the signed-out check and availability through 2026-12-15 (HOSTED_OPERATIONS.md §9). The Devpost draft did not state the old wording.
+  - **B1:** the four plain items, each number tested against scores.json, the recorded har_flawed outcome or the reviewed findings; Expert view shows the reviewed findings exactly.
+  - **C1/C2:** tamper demo collapsed after step 5; the Expert view switch beside the page title on the Overview, the comparison page and How It Works & Limits (Try It Live has no Expert view).
+  - **D:** `atlas-audit-<case or run id>-<outcome>.html`, one page on A4 and Letter, built after the gate from verified files only; deterministic with an injected clock (byte-identical); no model text; every value escaped; executes nothing in hosted mode.
+  - **E:** axe-core over 14 page states at two sizes: ATLAS-markup serious/critical nodes 56 before (link-in-text-block 14, scrollable-region-focusable 42), 0 after; 21 remain in Streamlit's own `st.table`/`st.code` scroll wrappers (recorded). Contrast unit tests over every colour token; visible focus on every Tab stop (Overview 23, comparison 9); `runs/ui-story/a11y/`.
+  - **Full suite with Docker required:** **1963 passed, 6 skipped** (`runs/ui-story/full3.log`; the skips: UCI HAR data absent (2), the archived model listing (1), symlink permission (2), the evidence-only motion capture (1)).
+  - **Ruff:** check and format clean. **check_recorded:** results equal check_recorded2.txt (`runs/ui-story/check_recorded3.txt`).
+  - **Screenshots:** `runs/ui-story/screens3/` (27: 9 states at 1440x900, 1280x800 and 390x844).
+  - **No live run, no Nebius call, no Neon connection, no spend, no push.**
+
 ### T-08 Procedures and transfer benchmark
 - **CUT (lead, 2026-10-17;** DECISIONS.md "Lead decisions, 2026-10-17" item 2). The Session 5 scenario is dropped. The entry below is kept as the record of what was planned.
 - **OWNER:** Claude Code (writer); Codex reviews; Gemini reviews the evaluation claims.

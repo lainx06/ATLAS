@@ -1,6 +1,6 @@
 # ATLAS HUD visual system (UI design pass, phases 1 and 2)
 
-Status: **design spec for the `ui-hud` branch, phases 1 and 2, and the story layout slices 1 and 2 on `ui-story` (§12, §13).** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 (§1–§10) covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Phase 2 (§11) rolls the HUD out to every view (the local run, the typed-approval panel, the hosted live session, the failure and honest-empty states, the tables) and adds the deterministic briefing, the evidence drill-down and the live mission track. **Slice 1 of the story layout (§12, branch `ui-story`)** reorganizes the views into four pages and the Overview & Cases story; plain English by default, Expert view on demand.
+Status: **design spec for the `ui-hud` branch, phases 1 and 2, and the story layout slices 1 to 3 on `ui-story` (§12–§14).** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 (§1–§10) covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Phase 2 (§11) rolls the HUD out to every view (the local run, the typed-approval panel, the hosted live session, the failure and honest-empty states, the tables) and adds the deterministic briefing, the evidence drill-down and the live mission track. **Slice 1 of the story layout (§12, branch `ui-story`)** reorganizes the views into four pages and the Overview & Cases story; plain English by default, Expert view on demand.
 
 Skills read before this spec: Anthropic `frontend-design`, Streamlit `developing-with-streamlit` 1.66.0 (`SKILL.md`, `references/theme.md`), Addy `frontend-ui-engineering` (`docs/TOOLING.md` "UI HUD pass skills").
 
@@ -474,3 +474,78 @@ Everything in §1–§12 still applies. No engine, evaluator, policy, provider, 
 - **Screenshots:** `runs/ui-story/screens2/` (git-ignored; settled full-page captures at 1440 × 900, 1280 × 800 and 390 × 844): `s14_01_overview_live6`, `s14_02_harflawed_step4`, `s14_03_agent_vs_model_{plain,expert}`, `s14_04_how_it_works_{plain,expert}`, `s14_05_tamper_{before,after}_live6`.
 - **Tests:** `tests/unit/test_ui_slice2.py`, `tests/acceptance/test_scenario14_slice2.py`.
 - **Full suite:** `runs/ui-story/full2.log`.
+
+## 14. Slice 3 (2026-10-20; branch `ui-story`): report, layout, accessibility
+
+Everything in §1–§13 still applies. No engine, evaluator, policy, provider, spending, approval or verification logic changed, and neither did the T-11 hash gate or the tamper demo's safety rules. All new copy is in `src/atlas/ui/copy.py` (sections "Slice 2" and "Slice 3").
+
+### 14.1 Stale limitations (README, then the page)
+
+- **T-06 limitation:** "schema failures in 5 of 8 live runs (runs 1 to 8)", on the existing basis: runs 1 to 8, with run 3 and its retry 3b counted as one run. Runs with at least one schema failure: 2, 3b, 5, 7, 8; none in 1, 4 or 6. The Devpost draft's "ended" figure keeps its own basis: 4 of 8 (2, 3b, 5, 8).
+- **Hosted limitation:** established on 2026-10-19 for the private app (Nebius connectivity, the locked build, the smoke test on both routes); not yet the signed-out check or availability through 2026-12-15 (HOSTED_OPERATIONS.md §9).
+- The limits page carries both in plain words; Expert view reads the README's wording at render time.
+
+### 14.2 The comparison page, plain view
+
+- **Plain view:** "What this means" is four plain-words items (`copy.VS_MEANS_PLAIN`). `tests/unit/test_ui_slice3.py` checks every number in them against `scores.json`, the recorded har_flawed outcome or the reviewed findings: 19, 23, 9, 2, the two clean projects, 8, the one coverage gap, 3, and 3 of 12.
+- **Expert view:** the reviewed findings exactly, in their place.
+- The caveats are visible in both views.
+
+### 14.3 Overview layout
+
+- **C1, the tamper demo:** a collapsed expander directly after step 5, "Try tampering: change one byte in a copy and watch the check catch it". Its behaviour, limits and copy are unchanged. Its file picker has one widget key per view, because a picker redrawn with other labels under the same key could not open its list.
+- **C2, the Expert view switch:** beside the page title, top right, on every page that has an Expert view (Overview, AI Agent vs. Model Alone, How It Works & Limits). Try It Live has no Expert view and no switch. On the Overview the switch is not drawn when the selected case fails verification, so that page still shows only the cards and the evidence-changed panel.
+- **The report button:** the verdict row now holds the verdict line and "Download audit report".
+
+### 14.4 The one-page audit report (`atlas.ui.report`)
+
+- **Where:** "Download audit report" (`st.download_button`, `on_click="ignore"`).
+  - On each verified case view (Overview), file `atlas-audit-<case>-<outcome>.html`.
+  - On each verified finished run (`results.finished_run`: the local run page, both recorded-run viewers, the hosted live session), file `atlas-audit-<run folder>-<outcome>.html`.
+  - The outcome in the name is the original evaluation's verified outcome code.
+- **Gate:** `build` is called only after the gate, and it checks again (`NotIntact`). After a failed verification there is no button.
+- **Contents:**
+  - ATLAS and the tagline; the case or run, with the banner line.
+  - The claim from the verified manifest, which includes the ATLAS-authored-variant note on har_flawed.
+  - The outcome before and after, with "This does not say the scientific claim is true or false." and the verdict lines.
+  - The required checks: the plain description from `assertion_labels.json`, the canonical ID, and the status before and after.
+  - The step 2 summary and the reason sentences of the original's FAILs.
+  - The steps 3 and 4 summaries, with the approval and sealed-run lines.
+  - The integrity count ("N of N recorded items verified when this report was generated"), the recorded SHA-256 of each outcome file, and each approved code hash.
+  - The UCI HAR citation on the HAR runs, and the "Why it matters" line with its source URL as plain text.
+  - The footer: the ATLAS commit (read from the git metadata as files, with no git command; left out when unreadable), the policy version, and the UTC time.
+- **What it never holds:** model-written text (no rationale, no reply, no diff). A test checks the live6 report against every model text, reply and diff line. Every value is escaped through `hud.esc`.
+- **Self-contained:** one inline style sheet; no script, link, image, `src`, `href`, `url(` or `@import`.
+- **Print:** a print style (`@page { size: portrait }`, compact type) fits one page on A4 and on Letter. Scenario 15 counts the pages of Chromium's PDF for live6 and har_flawed.
+- **Deterministic:** byte-identical for the same bundle and an injected clock. It executes nothing (tested with ATLAS_HOSTED=1 under a subprocess, socket and `refuse_if_hosted` tripwire).
+
+### 14.5 Accessibility
+
+- **axe-core:** from the dev-only `axe-playwright-python` 0.1.8, which bundles axe-core 4.12.1 (MPL-2.0; THIRD_PARTY_NOTICES.md). Nothing changed at runtime: `requirements.txt` is the `--no-dev` export.
+- **Where it runs:** scenarios 15 (hosted) and 16 (local), on every page at 1440 × 900 and 390 × 844:
+  - Overview for each case, plain and Expert;
+  - Try It Live, hosted and local;
+  - the comparison page and How It Works & Limits, plain and Expert;
+  - a finished-run view;
+  - the evidence-changed panel.
+- **Classification:** each serious or critical node counts as ATLAS's markup (inside `hud*` HTML or a Markdown block ATLAS wrote; colour contrast always counts as ATLAS's) or as Streamlit's.
+- **Before the fixes** (28 page states):
+  - ATLAS markup: link-in-text-block 14 nodes (the "Why it matters" Source link); scrollable-region-focusable 42 nodes (hashes in `st.table` cells became tiny scroll regions).
+  - Streamlit's markup: scrollable-region-focusable 20 nodes.
+- **Fixed** (`views.CSS`): links in running text are underlined; table cell content wraps (`overflow-wrap: anywhere` on the cell and its descendants, `overflow: visible`), so no scroll region appears.
+- **Remaining** (21 nodes, Streamlit's markup, recorded and not patched): scrollable-region-focusable on Streamlit's own `st.table` scroll wrapper (wide tables) and `st.code`'s `<pre>` (diffs on phones). Moderate and minor findings remain too (heading-order, empty-table-header). They are recorded and not in scope.
+- **Required regardless of axe:**
+  - **Contrast:** unit tests over every theme token and every CSS `color:` value in the UI modules. Text is at least 4.5:1 on both dark surfaces; the lowest is badge text on its badge, red at 5.37:1. Chart marks and the accent are at least 3:1. The dark ink used on light fills is at least 4.5:1 on each fill. The report's light palette is at least 4.5:1 on white and on its table header.
+  - **Focus:** a visible focus indicator on every control reached by Tab. Scenario 15 walks the Overview (23 stops) and the comparison page (9 stops). Added: the navigation links, the focusable main region and the switch (its own outline was drawn on its hidden input).
+  - **Charts and diagrams:** every one has `role="img"` and a name (the comparison chart, the HUD's SVGs, and the limits diagram, now `role="img"` with its aria-label; the steps list is its text alternative).
+  - **Reduced motion:** respected, as before.
+- **Evidence:** `runs/ui-story/a11y/` (git-ignored):
+  - `before/` and `after/`: the probe's axe JSON, before and after the fixes;
+  - `final/`: the tests' axe JSON, summaries, keyboard-walk JSON and one screenshot per Tab stop (`tab_overview_NN.png`, `tab_agent_vs_model_NN.png`);
+  - `SUMMARY.md`.
+
+### 14.6 Evidence
+
+- **Screenshots:** `runs/ui-story/screens3/` (git-ignored; settled full-page captures at 1440 × 900, 1280 × 800 and 390 × 844): `s15_01_overview_live6`, `s15_02_overview_live6_tamper_open`, `s15_03_agent_vs_model_{plain,expert}`, `s15_04_how_it_works_plain`, `s15_05_report_{live6,harflawed}_{screen,print}`.
+- **Tests:** `tests/unit/test_ui_slice3.py`, `tests/acceptance/test_scenario15_slice3.py`, `tests/acceptance/test_scenario16_a11y_local.py`.
+- **Full suite:** `runs/ui-story/full3.log`.
