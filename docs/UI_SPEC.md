@@ -253,6 +253,8 @@ The basis line comes first: `comparison.comparison_basis` (for example "Original
 
 ## 7. Visual system
 
+> **Superseded on the `ui-hud` branch:** the palette, typography and spacing below are replaced there by the HUD visual system, `docs/UI_DESIGN_HUD.md` (dark theme, IBM Plex, one accent). The truth rules (§1) are unchanged.
+
 - **Framework:** Streamlit with native theme configuration (`.streamlit/config.toml`). Targeted CSS only where it is documented and tested (playbook §25).
 - **Typography:**
   - UI text: a neutral sans (Inter or IBM Plex Sans) at 15 px base; headings 22 / 18 / 16 px; line height 1.45;
