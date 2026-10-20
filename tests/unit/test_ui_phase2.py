@@ -134,10 +134,18 @@ def test_the_active_frame_and_the_decision_are_documented_hooks():
 
 # -- failure and honest-empty states -----------------------------------------------------------
 def finished_app(tmp_path: Path, report: dict) -> AppTest:
+    """The report in a run folder whose one recorded file (the log) verifies: finished_run
+    verifies the run itself before drawing anything (release review 1, F1)."""
+    run_dir = tmp_path / "agent-s01_faulty-000000000000"
+    run_dir.mkdir()
+    log = run_dir / "agent_log.jsonl"
+    log.write_bytes(b"")
+    report = {**report, "agent_log": {"sha256": A.sha256_file(log)}}
     script = tmp_path / "finished.py"
     script.write_text(
-        "import json\nfrom atlas.ui import results as R\n"
-        f"R.finished_run(None, json.loads({json.dumps(report)!r}), R.AGENT, decisions=[])\n",
+        "import json\nfrom pathlib import Path\nfrom atlas.ui import results as R\n"
+        f"R.finished_run(Path({str(run_dir)!r}), json.loads({json.dumps(report)!r}), "
+        "R.AGENT, decisions=[])\n",
         encoding="utf-8",
     )
     at = AppTest.from_file(str(script), default_timeout=30)

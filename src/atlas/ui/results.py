@@ -7,6 +7,13 @@ placeholder is cleared, so no headline or partial result remains, and one fixed 
 instead; the event is logged by a fixed code only. The saved run record is never touched. A
 recorded run's HUD (`atlas.ui.hud`: the hero, the leak map, the fit-scope flow, the check
 matrix) renders inside the same placeholder, so a failure clears it too.
+
+One verification gate (release review 1, F1): every page that shows a run's outcome, briefing,
+HUD, check table, revision, comparison, metric or export passes `gate` first, with the run
+whose files it will read. When the recomputed hashes and outcomes are not all intact, `gate`
+draws only the evidence-changed panel (the integrity ring and the table of differing items)
+and the page returns without calling any result renderer. `finished_run` calls `gate` again
+itself, so a caller that skipped it still shows nothing but that panel.
 """
 
 import logging
@@ -44,8 +51,6 @@ def recorded_page(
     report = (
         A.read_json(run.path / "agent_report.json") if run.kind == R.AGENT else None
     )
-    checks = R.verify(run.path, report)
-    ok = R.intact(checks)
     finished_utc, _source = R.finished(run, report)
     played_runs = st.session_state.setdefault(HUD_PLAYED, set())
     played = run.label in played_runs
@@ -54,15 +59,15 @@ def recorded_page(
             st.html(H.once_css(played))
         V.recorded_banner(report, run.label, finished_utc, notes)
         st.title("Does the evaluation support the claim?")
-        if not ok:
-            # Nothing from changed evidence: the ring and the table, no outcome, no diagram.
-            ring = H.ring(
-                checks,
-                H.Ids(H.run_hash(run.label)),
-                played=played,
-                phrase=_ring_phrase(bundled),
-            )
-            V.integrity(checks, ok, ring=ring)
+        checks = gate(
+            run.path,
+            report,
+            run.kind,
+            H.Ids(H.run_hash(run.label)),
+            played=played,
+            phrase=_ring_phrase(bundled),
+        )
+        if checks is None:
             played_runs.add(run.label)
             return
         hud = (
@@ -71,7 +76,7 @@ def recorded_page(
             else None
         )
         if hud is None:
-            V.integrity(checks, ok)
+            V.integrity(checks, True)
         fixture = BY_NAME.get(run.project)
         finished_run(
             run.path,
@@ -91,40 +96,74 @@ def finished_verified(
     run_dir: Path | None, report: dict | None, mode: str, *, run_id: str, **kwargs
 ) -> None:
     """A run that finished on this page (a local run, or a hosted live session): every hash
-    it recorded is recomputed first, as for a recorded run. When intact, the HUD (hero,
-    evidence, track) and the integrity record lead its cards, with first-load motion once
-    per run per session; when not, an evidence-changed state says the cards below are read
-    from the files as they are now, and no HUD is drawn from them."""
-    checks = R.verify(run_dir, report if mode == AGENT else None) if run_dir else []
-    ok = bool(checks) and R.intact(checks)
-    hud = (
-        H.build(run_dir, report, checks, run_id)
-        if ok and mode == AGENT and report is not None
-        else None
-    )
+    it recorded is recomputed first (`gate`), as for a recorded run. When intact, the HUD
+    (hero, evidence, track) and the integrity record lead its cards, with first-load motion
+    once per run per session; when not, only the evidence-changed panel is drawn: no outcome,
+    no briefing, no HUD and no card."""
     played_runs = st.session_state.setdefault(HUD_PLAYED, set())
     played = run_id in played_runs
+    checks = gate(run_dir, report, mode, H.Ids(H.run_hash(run_id)), played=True)
+    if checks is None:
+        return
+    hud = (
+        H.build(run_dir, report, checks, run_id)
+        if checks and mode == AGENT and report is not None
+        else None
+    )
     if not played and hud is not None:
         st.html(H.once_css(played))
-    if not checks:
-        preamble = None
-    elif ok:
-        preamble = lambda: V.integrity(checks, True)
-    else:
-        preamble = lambda: V.unverified(checks)
     finished_run(
         run_dir,
         report,
         mode,
         hud=hud,
         played=played,
-        preamble=preamble,
+        preamble=(lambda: V.integrity(checks, True)) if checks else None,
         briefing=briefing(run_dir, report if mode == AGENT else None, checks, run_id)
-        if ok
+        if checks
         else None,
         **kwargs,
     )
     played_runs.add(run_id)
+
+
+def gate(
+    run_dir: Path | None,
+    report: dict | None,
+    mode: str,
+    ids: H.Ids,
+    *,
+    played: bool,
+    phrase: str = "recomputed now from the run's files",
+) -> list[R.Check] | None:
+    """The one verification gate before any result rendering (release review 1, F1).
+
+    Verifies exactly the run whose files the caller will read: every hash it recorded and
+    each reported outcome against its outcome.json (`atlas.ui.recorded.verify`, unchanged).
+    Intact: returns the checks and draws nothing (an empty list when there is no run folder
+    and no report, so nothing will be read). Not intact: draws only the evidence-changed
+    panel (the integrity ring and the table of differing items) and returns None; the
+    caller then returns without drawing an outcome, briefing, diagram, check table, revision,
+    comparison, metric or export. An agent run without its report, or a report without a
+    run folder, has nothing its outcomes can be verified against: it fails closed."""
+    checks = verification(run_dir, report, mode)
+    if R.intact(checks):
+        return checks
+    V.integrity(checks, False, ring=H.ring(checks, ids, played=played, phrase=phrase))
+    return None
+
+
+def verification(run_dir: Path | None, report: dict | None, mode: str) -> list[R.Check]:
+    """The checks `gate` decides on (see there)."""
+    if run_dir is None:
+        return [] if report is None else [_MISSING_RUN]
+    if mode == AGENT and report is None:
+        return [_MISSING_REPORT]
+    return R.verify(run_dir, report if mode == AGENT else None)
+
+
+_MISSING_RUN = R.Check("run folder", None, None, "missing")
+_MISSING_REPORT = R.Check("agent_report.json", None, None, "missing")
 
 
 def briefing(
@@ -196,7 +235,19 @@ def finished_run(
 
     All or nothing: a rendering failure clears every card drawn so far and shows only the
     fixed RENDER_FAILED error (no exception text). Streamlit's stop and rerun signals are not
-    `Exception`s and pass through."""
+    `Exception`s and pass through.
+
+    Defence in depth (release review 1, F1): the run is verified again here (`gate`), so a
+    caller that skipped the gate still draws nothing but the evidence-changed panel."""
+    guard = gate(
+        run_dir,
+        report,
+        mode,
+        hud.ids if hud is not None else H.Ids(H.run_hash(str(run_dir)), "g"),
+        played=True,
+    )
+    if guard is None:
+        return
     slot = st.empty()
     try:
         with slot.container():

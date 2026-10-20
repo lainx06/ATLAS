@@ -16,6 +16,7 @@ import streamlit as st
 from atlas.agent.approval import CONFIRM_CHARS, inert
 from atlas.ui import artifacts as A
 from atlas.ui import hud as H
+from atlas.ui import recorded as RR
 from atlas.ui.recorded import CHANGED
 
 CSS = """
@@ -234,40 +235,6 @@ def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
             "recording; it does not authenticate a run whose files and recorded hashes were "
             "both rewritten."
         )
-
-
-def unverified(checks: list) -> None:
-    """A run finished on this page whose recorded hashes no longer all match: no HUD and no
-    briefing; the cards below are read from the files as they are now."""
-    bad = [c for c in checks if not c.ok]
-    with st.container(key="card-integrity", border=True):
-        st.subheader("Recorded evidence")
-        with st.container(key="integrity-unverified"):
-            state_panel(
-                "integrity",
-                "red",
-                "EVIDENCE CHANGED",
-                f"**{CHANGED}**: {H.integrity_count(checks).differing} from the files on "
-                "disk. The HUD and the briefing are not drawn; the cards below are read "
-                "from the files as they are now.",
-                "treat the results below as unverified; the table lists each differing "
-                "item.",
-            )
-        with st.container(key="scroll-integrity"), st.container(key="trace-integrity"):
-            st.table(
-                pd.DataFrame(
-                    [
-                        {
-                            "result": c.status,
-                            "item": c.item,
-                            "recorded": c.recorded or "",
-                            "recomputed now": c.recomputed or "",
-                        }
-                        for c in bad
-                    ]
-                ),
-                hide_index=True,
-            )
 
 
 def outcome_headline(code: str | None, key: str, title: str) -> None:
@@ -664,13 +631,22 @@ def _latest_run(runs_root: Path, project: str) -> Path | None:
 
 def protocol_comparison(run_dir: Path, this, other) -> None:
     """Descriptive: this run's independent metric beside the related project's latest run.
-    Every number is read from the two runs' outcome.json files."""
+    Every number is read from the two runs' outcome.json files. `run_dir` passed the page's
+    verification gate; the related run is verified here the same way, and when it is not
+    intact nothing is read from it (release review 1, F1)."""
     with st.container(key="protocol-comparison", border=True):
         st.markdown(f"**Descriptive comparison: {this.name} and {other.name}**")
         other_dir = _latest_run(run_dir.parent, other.name)
         if other_dir is None:
             st.caption(
                 f"Run {other.name} to compare the two protocols' independent metrics."
+            )
+            return
+        other_report = A.read_json(other_dir / "agent_report.json")
+        if other_report is None or not RR.intact(RR.verify(other_dir, other_report)):
+            st.caption(
+                f"The latest {other.name} run (`{other_dir.name}`): {CHANGED}, so it is "
+                "not compared."
             )
             return
         rows = []

@@ -147,23 +147,32 @@ def recorded_view(run: RR.RecordedRun | None) -> None:
 
 
 def _label() -> str:
+    """The recorded original's label; its date is read only from an intact bundled run."""
     path = bundle.BUNDLE_ROOT / bundle.LIVE_ORIGINAL_RUN
     report = A.read_json(path / "agent_report.json")
-    return recorded_label(bundle.recorded_date(report) or "date unknown")
+    checks = R.verification(path, report, R.AGENT)
+    date = bundle.recorded_date(report) if RR.intact(checks) else None
+    return recorded_label(date or "date unknown")
 
 
 def _original_card():
-    """The recorded original's findings, verified first. Returns (intact, label)."""
+    """The recorded original's findings, verified first (`results.gate`): when the bundled
+    files are not intact, only the evidence-changed panel. Returns (intact, label)."""
     path = bundle.BUNDLE_ROOT / bundle.LIVE_ORIGINAL_RUN
     report = A.read_json(path / "agent_report.json")
-    checks = RR.verify(path, report) if report is not None else []
-    ok = bool(checks) and RR.intact(checks)
-    label = recorded_label(bundle.recorded_date(report) or "date unknown")
     with st.container(key="card-hosted-original", border=True):
         st.subheader("The original's findings (recorded)")
-        if not ok:
-            V.integrity(checks, ok)
-            return False, label
+        checks = R.gate(
+            path,
+            report,
+            R.AGENT,
+            HUD.Ids(HUD.run_hash(bundle.LIVE_ORIGINAL_RUN), "o"),
+            played=True,
+            phrase="recomputed now from the bundled files",
+        )
+        if checks is None:
+            return False, recorded_label("date unknown")
+        label = recorded_label(bundle.recorded_date(report) or "date unknown")
         hud = HUD.build(
             path,
             report,

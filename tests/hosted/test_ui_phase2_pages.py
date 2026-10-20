@@ -60,9 +60,9 @@ def test_a_local_run_whose_files_changed_shows_no_hud(local_run):  # noqa: F811
     assert "hud-ret" not in hud and "hud-lm" not in hud and "hud-flow" not in hud
     text = shown(at)
     assert ":red-badge[EVIDENCE CHANGED]" in text
-    assert "The HUD and the briefing are not drawn" in text
-    # The cards are still read from the files as they are now (the page's behaviour).
-    assert "3. Finding" in text
+    assert "so no outcome is shown" in text
+    # Release review 1, F1: nothing is read from changed evidence, not even the cards.
+    assert "2. Analysis" not in text and "3. Finding" not in text
 
 
 # -- the hosted live session ---------------------------------------------------------------------
