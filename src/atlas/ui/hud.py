@@ -60,6 +60,7 @@ LEAK_Y_LABEL = (
     "Groups with recorded overlap in the original (observed.overlapping_groups)"
 )
 BOTH, NONE_SHARED = "on both sides", "0 shared"
+NO_USE = "no use listed"
 TYPED_APPROVAL = "executed in the isolated Docker runner after typed approval"
 MODEL_BADGE = "MODEL-WRITTEN · UNTRUSTED"
 
@@ -239,10 +240,16 @@ class Flow:
     judged_uses: int | None
     unknown_uses: int | None  # number of observed.unknown_uses entries
     violating_folds: int | None  # number of folds in observed.violations
+    folds: int | None = None  # number of folds in <base>/splits.json
+    violation_entries: int | None = None  # entries listed across observed.violations
 
     @property
     def source(self) -> str:
         return f"{self.base}/checks/fit_provenance.json"
+
+    @property
+    def folds_source(self) -> str:
+        return f"{self.base}/splits.json"
 
 
 def flow(run_dir: Path, base: str, verified: frozenset[str]) -> Flow:
@@ -253,6 +260,7 @@ def flow(run_dir: Path, base: str, verified: frozenset[str]) -> Flow:
     unknown = observed.get("unknown_uses")
     violations = observed.get("violations")
     judged = observed.get("judged_uses")
+    splits = _json(run_dir, f"{base}/splits.json", verified)
     return Flow(
         base=base,
         recorded=a is not None,
@@ -265,6 +273,14 @@ def flow(run_dir: Path, base: str, verified: frozenset[str]) -> Flow:
         else None,
         unknown_uses=len(unknown) if isinstance(unknown, list) else None,
         violating_folds=len(violations) if isinstance(violations, dict) else None,
+        folds=sum(1 for s in splits if isinstance(s, dict) and "fold" in s)
+        if isinstance(splits, list)
+        else None,
+        violation_entries=sum(
+            len(v) if isinstance(v, list) else 1 for v in violations.values()
+        )
+        if isinstance(violations, dict)
+        else None,
     )
 
 
@@ -666,19 +682,18 @@ def leak_map(data: Leak, rows: list[str], ids: Ids, scope: str, *, played: bool)
 
 
 # -- 8. fit-scope flow -----------------------------------------------------------------------------------
-def _uses(origins: list[dict]) -> list[tuple[str, str]]:
-    """(fold, use) nodes in order of first appearance; an affected fold without a listed use
-    keeps one node of its own."""
+def _origin_uses(o: dict) -> list[tuple[str, str]]:
+    """One origin's (fold, use) targets in recorded order; an affected fold without a listed
+    use keeps one target of its own (drawn without a line: no use is recorded for it)."""
     nodes: list[tuple[str, str]] = []
-    for o in origins:
-        listed = [u for u in o.get("affected_uses") or [] if isinstance(u, str)]
-        for u in listed:
+    for u in o.get("affected_uses") or []:
+        if isinstance(u, str):
             fold, _, name = u.partition(":") if ":" in u else ("", "", u)
             if (fold, name) not in nodes:
                 nodes.append((fold, name))
-        for fold in o.get("affected_folds") or []:
-            if isinstance(fold, str) and not any(f == fold for f, _ in nodes):
-                nodes.append((fold, "no use listed"))
+    for fold in o.get("affected_folds") or []:
+        if isinstance(fold, str) and not any(f == fold for f, _ in nodes):
+            nodes.append((fold, NO_USE))
     return nodes
 
 
@@ -692,61 +707,98 @@ def _origin_text(o: dict) -> tuple[str, str, str]:
     return rows_text, cls, f"(fit: {scope})"
 
 
+def flow_summary(data: Flow) -> tuple[str, str]:
+    """The fit-scope state without drawn origins, from the fields that are recorded: (line,
+    the fields it reads). A PASS with no origins field lists none ("no global fit origins
+    listed"); "not recorded" only for a field that is absent where a value is expected."""
+    parts = []
+    if data.violation_entries is None:
+        parts.append(f"observed.violations: {NOT_RECORDED}")
+    elif data.folds is None:
+        parts.append(
+            f"{data.violation_entries} violations ({data.folds_source}: {NOT_RECORDED})"
+        )
+    else:
+        parts.append(f"{data.violation_entries} violations across {data.folds} folds")
+    parts.append(
+        f"observed.judged_uses: {NOT_RECORDED}"
+        if data.judged_uses is None
+        else f"{data.judged_uses} uses judged"
+    )
+    parts.append(
+        f"observed.unknown_uses: {NOT_RECORDED}"
+        if data.unknown_uses is None
+        else f"{data.unknown_uses} unknown"
+    )
+    if data.origins is not None:
+        parts.append("observed.origins: none listed")
+    elif data.status == "PASS":
+        parts.append("no global fit origins listed")
+    else:
+        parts.append(f"observed.origins: {NOT_RECORDED}")
+    fields = (
+        "status, observed.violations, observed.judged_uses, observed.unknown_uses, "
+        f"observed.origins; {data.folds_source} · fold"
+    )
+    return " · ".join(parts), fields
+
+
 def fit_flow(data: Flow, ids: Ids, scope: str, *, played: bool) -> str:
     title = "Fit-scope flow · " + ("original" if scope == "orig" else data.base)
-    cap = f"{data.source} · {FIT_ASSERTION} · observed.origins"
     status = _code(data.status) if data.recorded else ""
     head = (
         f'<div class="hud-ph"><span class="hud-lbl">{esc(title)}</span>{status}</div>'
     )
-    foot = f'<div class="hud-src">{esc(cap)}</div>'
     if not data.recorded:
+        foot = f'<div class="hud-src">{esc(data.source)} · {esc(FIT_ASSERTION)}</div>'
         body = f'<p class="hud-nr">{esc(FIT_ASSERTION)} in {esc(data.source)}: {NOT_RECORDED}</p>'
         return f'<div class="hud-panel hud-flow">{head}{body}{foot}</div>'
-
-    def num(value) -> str:
-        return NOT_RECORDED if value is None else str(value)
-
-    counts = (
-        '<dl class="hud-counts">'
-        f"<dt>observed.origins</dt><dd>{NOT_RECORDED if data.origins is None else len(data.origins)}</dd>"
-        f"<dt>observed.judged_uses</dt><dd>{num(data.judged_uses)}</dd>"
-        f"<dt>observed.unknown_uses</dt><dd>{num(data.unknown_uses)}</dd>"
-        f"<dt>observed.violations (folds)</dt><dd>{num(data.violating_folds)}</dd></dl>"
-    )
     if not data.origins:
-        return f'<div class="hud-panel hud-flow">{head}{counts}{foot}</div>'
+        line, fields = flow_summary(data)
+        foot = (
+            f'<div class="hud-src">{esc(data.source)} · {esc(FIT_ASSERTION)} · '
+            f"{esc(fields)}</div>"
+        )
+        body = f'<p class="hud-flow-sum">{esc(line)}</p>'
+        return f'<div class="hud-panel hud-flow">{head}{body}{foot}</div>'
+    foot = (
+        f'<div class="hud-src">{esc(data.source)} · {esc(FIT_ASSERTION)} · '
+        "observed.origins</div>"
+    )
 
-    fail = data.status == "FAIL"
-    nodes = _uses(data.origins)
-    row_h, origin_h, origin_gap, pad = 14, 44, 8, 8
-    fold_gap = 4
-    ys, y, last = [], pad + 10, None
-    for fold, _ in nodes:
-        if last is not None and fold != last:
-            y += fold_gap
-        ys.append(y)
-        y += row_h
-        last = fold
-    uses_h = y - row_h + pad
-    origins_h = len(data.origins) * origin_h + (len(data.origins) - 1) * origin_gap
-    height = max(uses_h + 6, origins_h + 2 * pad)
-    oy0 = (height - origins_h) / 2
+    # One lane per origin: the origin box on the left, its own recorded targets (grouped by
+    # fold) on the right, a line to each of them. A target that several origins affect is
+    # listed once in each origin's lane, so no line crosses into another lane.
+    tone = "red" if data.status == "FAIL" else "muted"
+    row_h, origin_h, fold_gap, lane_gap, pad = 14, 44, 4, 14, 6
     ox, ow, nx, tx = 4, 124, 214, 252  # origin box, fold label, use text
-    longest = max((len(n) for _, n in nodes), default=10)
-    width = int(tx + longest * 6.7 + 8)
     arrow = ids("flow", "arrow", scope)
     title_id, desc_id = ids("flow", "title", scope), ids("flow", "desc", scope)
-    tone = "red" if fail else "muted"
-    parts, lines, desc = [], [], []
+    parts, lines, labels, desc, seps = [], [], [], [], []
+    longest = 10
+    y = pad
     for k, o in enumerate(data.origins):
-        top = oy0 + k * (origin_h + origin_gap)
+        nodes = _origin_uses(o)
+        longest = max([longest, *(len(n) for _, n in nodes)])
+        offsets, at, last = [], 0, None
+        for fold, _ in nodes:
+            if last is not None and fold != last:
+                at += fold_gap
+            offsets.append(at)
+            at += row_h
+            last = fold
+        nodes_h = max(at, row_h)
+        lane_h = max(origin_h, nodes_h)
+        top = y + (lane_h - origin_h) / 2
         mid = top + origin_h / 2
+        n0 = y + (lane_h - nodes_h) / 2 + 10
         rows_text, cls, fit = _origin_text(o)
+        uses = [u for u in o.get("affected_uses") or [] if isinstance(u, str)]
         desc.append(
-            f"{cls} {fit} on {rows_text.strip('[] →')}, used by "
-            + ", ".join(u for u in o.get("affected_uses") or [] if isinstance(u, str))
+            f"{cls} {fit} on {rows_text.strip('[] →')}, used by {', '.join(uses)}"
         )
+        if k:
+            seps.append(y - lane_gap / 2)
         parts.append(
             f'<rect x="{ox}" y="{top:.1f}" width="{ow}" height="{origin_h}" rx="2" '
             f'class="hud-fo hud-fo-{tone}"/>'
@@ -754,31 +806,35 @@ def fit_flow(data: Flow, ids: Ids, scope: str, *, played: bool) -> str:
             f'<text x="{ox + 8}" y="{top + 28:.1f}" class="hud-ft">{esc(cls)}</text>'
             f'<text x="{ox + 8}" y="{top + 41:.1f}" class="hud-ft-s">{esc(fit)}</text>'
         )
-        targets = {
-            (u.partition(":")[0], u.partition(":")[2]) if ":" in u else ("", u)
-            for u in o.get("affected_uses") or []
-            if isinstance(u, str)
-        }
-        for i, node in enumerate(nodes):
-            if node not in targets:
+        last = None
+        for (fold, name), off in zip(nodes, offsets, strict=True):
+            ny = n0 + off
+            if fold != last:
+                labels.append(
+                    f'<text x="{nx}" y="{ny:.1f}" class="hud-ft-f">{esc(fold)}</text>'
+                )
+                last = fold
+            labels.append(
+                f'<text x="{tx}" y="{ny:.1f}" class="hud-ft">{esc(name)}</text>'
+            )
+            if name == NO_USE:
                 continue
-            x0, x1, y1 = ox + ow, nx - 8, ys[i] - 4
+            use = f"{fold}:{name}" if fold else name
+            x0, x1, y1 = ox + ow, nx - 8, ny - 4
             c = (x0 + x1) / 2
             lines.append(
-                f'<path class="hud-fl hud-fl-{tone}{_a(played, "hud-a-draw")}" pathLength="1" '
+                f'<path class="hud-fl hud-fl-{tone}{_a(played, "hud-a-draw")}" '
+                f'pathLength="1" data-lane="{k}" data-use="{esc(use)}" '
                 f'd="M{x0} {mid:.1f}C{c:.1f} {mid:.1f} {c:.1f} {y1:.1f} {x1} {y1:.1f}" '
-                f'marker-end="url(#{arrow})"/>'
+                f'marker-end="url(#{arrow})"><title>{esc(cls)} → {esc(use)}</title></path>'
             )
-    labels, last = [], None
-    for i, (fold, name) in enumerate(nodes):
-        if fold != last:
-            labels.append(
-                f'<text x="{nx}" y="{ys[i]:.1f}" class="hud-ft-f">{esc(fold)}</text>'
-            )
-            last = fold
-        labels.append(
-            f'<text x="{tx}" y="{ys[i]:.1f}" class="hud-ft">{esc(name)}</text>'
-        )
+        y += lane_h + lane_gap
+    height = y - lane_gap + pad
+    width = int(tx + longest * 6.7 + 8)
+    rules = "".join(
+        f'<line x1="0" x2="{width}" y1="{s:.1f}" y2="{s:.1f}" class="hud-lane"/>'
+        for s in seps
+    )
     marker = (
         f'<defs><marker id="{arrow}" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" '
         f'markerHeight="6" orient="auto"><path d="M0 0L6 3L0 6z" class="hud-fh-{tone}'
@@ -789,7 +845,7 @@ def fit_flow(data: Flow, ids: Ids, scope: str, *, played: bool) -> str:
         f'style="max-width:{width}px" role="img" aria-labelledby="{title_id} {desc_id}">'
         f'<title id="{title_id}">{esc(title)}: {esc(FIT_ASSERTION)} {esc(data.status)}</title>'
         f'<desc id="{desc_id}">{esc(". ".join(desc))}</desc>'
-        f"{marker}{''.join(lines)}{''.join(parts)}{''.join(labels)}</svg>"
+        f"{marker}{rules}{''.join(lines)}{''.join(parts)}{''.join(labels)}</svg>"
     )
     return f'<div class="hud-panel hud-flow{_anim(played)}">{head}{svg}{foot}</div>'
 
@@ -1062,7 +1118,7 @@ CSS = (
     "letter-spacing:0.08em;text-transform:uppercase;color:#94A3B8}"
     ".hud-src{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.35;"
     "color:#94A3B8;overflow-wrap:anywhere;margin-top:4px}"
-    ".hud-nr{font-size:13px;color:#94A3B8;margin:6px 0}"
+    ".hud .hud-nr{font-size:13px;color:#94A3B8;margin:6px 0}"
     ".hud-code{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500}"
     ".hud-c-red{color:#F87171}.hud-c-green{color:#4ADE80}.hud-c-amber{color:#FBBF24}"
     ".hud-c-violet{color:#C084FC}.hud-c-stone{color:#A8A29E}"
@@ -1170,9 +1226,9 @@ CSS = (
     ".hud-ft-m{fill:#94A3B8}.hud-ft-s{fill:#E2E8F0}"
     ".hud-ft-f{font-family:'IBM Plex Sans Condensed',sans-serif;font-size:11px;"
     "letter-spacing:0.08em;fill:#94A3B8}"
-    ".hud-counts{display:grid;grid-template-columns:auto auto;gap:2px 12px;margin:6px 0 0;"
-    "font-family:'IBM Plex Mono',monospace;font-size:12px}"
-    ".hud-counts dt{color:#94A3B8;font-weight:400}.hud-counts dd{margin:0;color:#E2E8F0}"
+    ".hud .hud-flow-sum{font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.5;"
+    "color:#E2E8F0;margin:6px 0 2px;overflow-wrap:anywhere}"
+    ".hud-lane{stroke:#1E2A36;stroke-width:1;stroke-dasharray:2 3}"
     # check matrix
     ".hud ol.hud-tiles{list-style:none;margin:0;padding:0;display:grid;gap:4px}"
     ".hud li.hud-tile{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;background:#0A0F14;"

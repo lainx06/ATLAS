@@ -34,7 +34,11 @@ CSS = """
    viewport (UI_DESIGN_HUD §3.1). */
 .st-key-banner { background: #0F1720; gap: 2px; padding: 6px 14px; }
 .st-key-hud-page { gap: 0.75rem; }
-.st-key-hud-page h1 { padding: 0.25rem 0 0; }
+/* Streamlit pulls the next element up under a heading (its markdown block has a -1rem bottom
+   margin, which its own 1rem heading padding balances). Phase 1 removed that padding and the
+   hero rode up under the title; with 0.75rem of padding and the 0.75rem page gap, the title's
+   text clears the panel below by 0.5rem at every width. */
+.st-key-hud-page h1 { padding: 0 0 0.75rem; }
 /* Primary buttons: dark text on the accent (Streamlit draws white text, 1.45:1). */
 [class*="st-key-primary-"] button, [class*="st-key-primary-"] button p { color: #0A0F14; }
 /* Wide diffs and tables scroll inside their own region (UI_SPEC §7 viewports). */

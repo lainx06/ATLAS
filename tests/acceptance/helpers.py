@@ -102,12 +102,29 @@ def table_rows(page, key: str) -> list[list[str]]:
     ]
 
 
+def settle(page, timeout_ms: int = 5000) -> None:
+    """Until every finite CSS animation and transition on the page has finished: the settled
+    state (the HUD's first-load motion ends at 1.2 s; nothing loops). Infinite ones, such as
+    Streamlit's own running indicator, are not waited for."""
+    page.evaluate(
+        """(ms) => Promise.race([
+            Promise.all(document.getAnimations()
+                .filter(a => a.effect && a.effect.getComputedTiming().endTime !== Infinity)
+                .map(a => a.finished.catch(() => null))),
+            new Promise(r => setTimeout(r, ms))])""",
+        timeout_ms,
+    )
+
+
 def shot(page, name: str) -> None:
-    """A screenshot of the current viewport for review, if ATLAS_UI_SCREENS names a folder."""
+    """A screenshot of the current viewport for review, if ATLAS_UI_SCREENS names a folder,
+    taken in the settled state (after every finite animation; the motion frames are taken
+    with page.screenshot directly)."""
     folder = os.environ.get("ATLAS_UI_SCREENS")
     if not folder:
         return
     Path(folder).mkdir(parents=True, exist_ok=True)
+    settle(page)
     vp = page.viewport_size or {}
     page.screenshot(
         path=str(Path(folder) / f"{name}_{vp.get('width')}x{vp.get('height')}.png")

@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 import pytest
-from helpers import shot, wait_idle
+from helpers import settle, shot, wait_idle
 
 ROOT = Path(__file__).resolve().parents[2]
 BUNDLE = ROOT / "demo" / "recorded"
@@ -96,6 +96,7 @@ def test_the_har_bundles_render_from_their_own_files(app, page, size, label):
     ev = page.locator(".st-key-hud-evidence")
     ev.scroll_into_view_if_needed()
     if folder:
+        settle(page)
         ev.screenshot(
             path=str(Path(folder) / f"s9_04_{short}_diagrams_{size[0]}x{size[1]}.png")
         )

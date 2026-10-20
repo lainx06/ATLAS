@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 import pytest
-from helpers import shot, text, wait_idle
+from helpers import settle, shot, text, wait_idle
 
 from atlas.ui import artifacts as A
 
@@ -169,6 +169,7 @@ def test_the_diagrams_matrix_and_trust_sections(app, page, size):
         time.sleep(0.3)
         folder = os.environ.get("ATLAS_UI_SCREENS")
         if folder:
+            settle(page)
             el.screenshot(path=str(Path(folder) / f"{name}_{size[0]}x{size[1]}.png"))
     tiles = page.locator(".hud-pane-cand .hud-move")
     assert [t for t in tiles.all_text_contents() if t] == ["FAIL → PASS"] * 4
@@ -221,6 +222,7 @@ def test_the_phone_layout_and_its_toggle(app, page):
     )
     folder = os.environ.get("ATLAS_UI_SCREENS")
     if folder:
+        settle(page)
         ev.screenshot(
             path=str(Path(folder) / "s8_07_phone_toggle_original_390x844.png")
         )
@@ -228,6 +230,7 @@ def test_the_phone_layout_and_its_toggle(app, page):
     time.sleep(0.4)  # the 200 ms cross-fade
     assert panes.evaluate_all(visibility) == ["hidden", "visible"]
     if folder:
+        settle(page)
         ev.screenshot(
             path=str(Path(folder) / "s8_08_phone_toggle_candidate_390x844.png")
         )

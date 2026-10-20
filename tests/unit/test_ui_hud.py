@@ -5,6 +5,7 @@ candidate or with changed evidence, motion is switchable, and IDs are unique per
 The runs are the bundled recordings in demo/recorded (read only; tampering uses copies).
 """
 
+import html as html_lib
 import json
 import re
 import shutil
@@ -148,20 +149,111 @@ def test_fit_scope_flow_equals_the_files(live6):
     lines = tags.all("path", "hud-fl")
     assert len(lines) == len(origin["affected_uses"]) == 8
     assert all("hud-fl-red" in p["class"] for p in lines)  # the assertion FAILs
-    # The candidate's own file: PASS, no origins key at all, its own counts.
+    # The candidate's own file: PASS, no origins key at all. The PASS state is shown from the
+    # recorded fields; "not recorded" is not printed for the origins it does not list.
     assert cand["status"] == "PASS" and "origins" not in cand["observed"]
     html = H.fit_flow(h.flow_cand, h.ids, "cand", played=True)
     assert "<svg" not in html and "hud-fl-red" not in html
     tags = Tags(html)
-    dd = [t for t in re.findall(r"<dt>(.*?)</dt><dd>(.*?)</dd>", html)]
-    assert dict(dd) == {
-        "observed.origins": H.NOT_RECORDED,
-        "observed.judged_uses": str(cand["observed"]["judged_uses"]),
-        "observed.unknown_uses": str(len(cand["observed"]["unknown_uses"])),
-        "observed.violations (folds)": str(len(cand["observed"]["violations"])),
-    }
-    assert dict(dd)["observed.judged_uses"] == "20"
-    assert "candidates/c1/checks/fit_provenance.json" in tags.joined
+    folds = len(read(d / "candidates/c1/splits.json"))
+    violations = sum(len(v) for v in cand["observed"]["violations"].values())
+    expected = (
+        f"{violations} violations across {folds} folds · "
+        f"{cand['observed']['judged_uses']} uses judged · "
+        f"{len(cand['observed']['unknown_uses'])} unknown · no global fit origins listed"
+    )
+    assert expected == (
+        "0 violations across 4 folds · 20 uses judged · 0 unknown · "
+        "no global fit origins listed"
+    )
+    assert expected in tags.joined and H.NOT_RECORDED not in tags.joined
+    for part in (
+        "candidates/c1/checks/fit_provenance.json",
+        H.FIT_ASSERTION,
+        "observed.judged_uses",
+        "observed.unknown_uses",
+        "observed.violations",
+        "candidates/c1/splits.json · fold",
+    ):
+        assert part in tags.joined, part
+
+
+def test_fit_scope_without_origins_prints_not_recorded_only_where_a_value_is_expected():
+    ids = H.Ids("0" * 8)
+
+    def line(flow):
+        return Tags(H.fit_flow(flow, ids, "orig", played=True)).joined
+
+    # A FAIL with no origins field: the origins it needs are genuinely absent.
+    fail = H.Flow("original", True, "FAIL", None, 3, 0, 1, folds=4, violation_entries=2)
+    text = line(fail)
+    assert "observed.origins: not recorded" in text
+    assert "2 violations across 4 folds · 3 uses judged · 0 unknown" in text
+    # A FAIL that lists an empty origins list: recorded as none.
+    empty = H.Flow("original", True, "FAIL", [], 3, 0, 1, folds=4, violation_entries=2)
+    assert "observed.origins: none listed" in line(empty)
+    assert H.NOT_RECORDED not in line(empty)
+    # A PASS with no origins field and every count recorded: no "not recorded" at all.
+    ok = H.Flow("original", True, "PASS", None, 25, 0, 0, folds=5, violation_entries=0)
+    assert H.NOT_RECORDED not in line(ok)
+    assert (
+        "0 violations across 5 folds · 25 uses judged · 0 unknown · no global fit "
+        "origins listed"
+    ) in line(ok)
+    # A PASS whose splits.json is not verified: only the fold count is not recorded.
+    no_folds = H.Flow("original", True, "PASS", None, 25, 0, 0, violation_entries=0)
+    assert line(no_folds).count(H.NOT_RECORDED) == 1
+    assert "0 violations (original/splits.json: not recorded)" in line(no_folds)
+
+
+def test_har_clean_fit_scope_passes_from_its_recorded_fields():
+    d, _report, _checks, h = load(HAR_CLEAN)
+    fit = assertion(d / "original/checks/fit_provenance.json", H.FIT_ASSERTION)
+    assert fit["status"] == "PASS" and "origins" not in fit["observed"]
+    text = Tags(H.fit_flow(h.flow_orig, h.ids, "orig", played=True)).joined
+    folds = len(read(d / "original/splits.json"))
+    assert (
+        f"0 violations across {folds} folds · {fit['observed']['judged_uses']} uses judged · "
+        f"{len(fit['observed']['unknown_uses'])} unknown · no global fit origins listed"
+    ) in text
+    assert H.NOT_RECORDED not in text
+
+
+def _lines(html: str) -> list[tuple[int, str, float, float]]:
+    """(lane, use, start y, end y) of every flow line."""
+    out = []
+    for lane, use, d in re.findall(
+        r'<path class="hud-fl[^"]*" pathLength="1" data-lane="(\d+)" data-use="([^"]+)" '
+        r'd="([^"]+)"',
+        html,
+    ):
+        nums = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", d)]
+        out.append((int(lane), html_lib.unescape(use), nums[1], nums[-1]))
+    return out
+
+
+def test_several_origins_get_one_lane_each_bound_to_their_recorded_uses():
+    d, _report, _checks, h = load(HAR_FLAWED)
+    fit = assertion(d / "original/checks/fit_provenance.json", H.FIT_ASSERTION)
+    origins = fit["observed"]["origins"]
+    assert [o["class"] for o in origins] == ["StandardScaler", "SelectKBest"]
+    html = H.fit_flow(h.flow_orig, h.ids, "orig", played=True)
+    lines = _lines(html)
+    # Every line is one recorded affected use of its own origin, and every use has its line.
+    for k, o in enumerate(origins):
+        drawn = sorted(use for lane, use, _, _ in lines if lane == k)
+        assert drawn == sorted(o["affected_uses"]), o["class"]
+    assert len(lines) == sum(len(o["affected_uses"]) for o in origins) == 10
+    titles = re.findall(r"<title>([^<]+)</title></path>", html)
+    assert len(titles) == 10 and all("→" in t for t in titles)
+    # Lanes do not overlap: each lane's lines start and end inside its own vertical band.
+    bands = {}
+    for lane, _, y0, y1 in lines:
+        lo, hi = bands.get(lane, (1e9, -1e9))
+        bands[lane] = (min(lo, y0, y1), max(hi, y0, y1))
+    assert bands[0][1] < bands[1][0], bands
+    # The targets are listed once per origin (each lane lists its five uses).
+    assert html.count('class="hud-ft">LogisticRegression.predict</text>') == 10
 
 
 def test_reticles_equal_the_files_and_carry_the_caveat(live6):
@@ -272,12 +364,13 @@ def test_absent_fields_render_not_recorded():
     assert "original/splits.json: not recorded" in html
     assert "column not recorded" in html
     flow = H.Flow("original", True, "PASS", None, None, None, None)
-    dd = dict(
-        re.findall(
-            r"<dt>(.*?)</dt><dd>(.*?)</dd>", H.fit_flow(flow, ids, "orig", played=True)
-        )
-    )
-    assert set(dd.values()) == {H.NOT_RECORDED}
+    summary = Tags(H.fit_flow(flow, ids, "orig", played=True)).joined
+    for field in (
+        "observed.violations",
+        "observed.judged_uses",
+        "observed.unknown_uses",
+    ):
+        assert f"{field}: {H.NOT_RECORDED}" in summary, field
     assert H.NOT_RECORDED in H.fit_flow(
         H.Flow("original", False, None, None, None, None, None),
         ids,
