@@ -25,12 +25,12 @@ EXPECTED = [
     "Evidence intact: 25 of 25 recorded hashes verified now.",
     "Original outcome: VIOLATION_FOUND. Required checks: 4 FAIL, 0 NOT_ASSESSED, "
     + "0 ERROR (of 9).",
-    "FAIL split.no_group_overlap: No group_id value is in both partitions of a fold.",
-    "FAIL split.sampling_unit_disjoint: No unit_id value crosses partitions.",
-    "FAIL split.repeated_measures_rule: v1.1: assessed through an explicit route over rows "
+    "split.no_group_overlap (FAIL): No group_id value is in both partitions of a fold.",
+    "split.sampling_unit_disjoint (FAIL): No unit_id value crosses partitions.",
+    "split.repeated_measures_rule (FAIL): v1.1: assessed through an explicit route over rows "
     + "participating in the declared folds, from the route's own same-fold witnesses; "
     + "aggregate group/unit statuses are never inherited.",
-    "FAIL fit.state_dependencies_within_fold_train: For every use event in fold k "
+    "fit.state_dependencies_within_fold_train (FAIL): For every use event in fold k "
     + "(transforms and predictions, on train or eval rows), the dependency rows of the used "
     + "state version ⊆ train(k).",
     HUD.PROPOSALS_NOT_EXECUTED,

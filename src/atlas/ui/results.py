@@ -374,7 +374,11 @@ def _cards(
                     else "see the check details for what is missing.",
                 )
             with st.expander("Check details: observed values, limitations, evidence"):
-                V.assertion_details(outcome, rows)
+                V.assertion_details(
+                    outcome,
+                    rows,
+                    "outcome.json" if mode == AUDIT else "original/outcome.json",
+                )
             V.conditional_passes(outcome)
             V.provenance_notes(limitations, notes)
             V.metric_block(outcome, "finding-metric")

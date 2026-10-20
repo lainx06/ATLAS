@@ -24,16 +24,16 @@ HAR_CLEAN = "t09/agent-har_clean-ac63eaecd7a8"
 MARKER = "ZQX-BRIEFING-MARKER-7f31c2"
 
 GROUP = (
-    "FAIL split.no_group_overlap: No group_id value is in both partitions of a fold."
+    "split.no_group_overlap (FAIL): No group_id value is in both partitions of a fold."
 )
-UNIT = "FAIL split.sampling_unit_disjoint: No unit_id value crosses partitions."
+UNIT = "split.sampling_unit_disjoint (FAIL): No unit_id value crosses partitions."
 REPEATED = (
-    "FAIL split.repeated_measures_rule: v1.1: assessed through an explicit route over rows "
+    "split.repeated_measures_rule (FAIL): v1.1: assessed through an explicit route over rows "
     "participating in the declared folds, from the route's own same-fold witnesses; "
     "aggregate group/unit statuses are never inherited."
 )
 FIT = (
-    "FAIL fit.state_dependencies_within_fold_train: For every use event in fold k "
+    "fit.state_dependencies_within_fold_train (FAIL): For every use event in fold k "
     "(transforms and predictions, on train or eval rows), the dependency rows of the used "
     "state version ⊆ train(k)."
 )
@@ -89,9 +89,9 @@ def test_the_briefing_text_is_exact(label):
     assert H.briefing_text(lines) == EXPECTED[label]
     html = H.briefing(lines, H.Ids(H.run_hash(label)))
     for line in lines:
-        if line.kind == "fail":
-            aid, _, words = line.text[5:].partition(": ")
-            assert H.esc(aid) in html and H.esc(words) in html
+        if line.assertion_id is not None:
+            words = line.text.removeprefix(f"{line.assertion_id} (FAIL): ")
+            assert H.esc(line.assertion_id) in html and H.esc(words) in html
         else:
             assert H.esc(line.text) in html
 
@@ -119,10 +119,10 @@ def test_every_number_in_the_briefing_is_the_files(label):
         (ROOT / "evaluation/assertion_definitions.json").read_text(encoding="utf-8")
     )["definitions"]
     fails = [a["assertion_id"] for a in outcome["assertions"] if a["status"] == "FAIL"]
-    shown = [t for t in text if t.startswith("FAIL ")]
-    assert [t[5:].split(": ", 1)[0] for t in shown] == fails[: H.BRIEF_FAILS]
+    shown = [t for t in text if " (FAIL): " in t]
+    assert [t.split(" (FAIL): ", 1)[0] for t in shown] == fails[: H.BRIEF_FAILS]
     for t in shown:
-        aid, words = t[5:].split(": ", 1)
+        aid, words = t.split(" (FAIL): ", 1)
         plain = defs[aid].replace("`", "").replace("*", "")
         assert plain.startswith(
             words.rstrip(".")
@@ -146,13 +146,13 @@ def test_more_than_four_failing_checks_end_with_the_count():
     finally:
         H._json = original
     text = H.briefing_text(lines)
-    assert text[2] == "FAIL a.0: Zero is defined."
-    assert text[3] == "FAIL a.1: definition not recorded."
-    assert [t for t in text if t.startswith("FAIL ")] == [
-        "FAIL a.0: Zero is defined.",
-        "FAIL a.1: definition not recorded.",
-        "FAIL a.2: definition not recorded.",
-        "FAIL a.3: definition not recorded.",
+    assert text[2] == "a.0 (FAIL): Zero is defined."
+    assert text[3] == "a.1 (FAIL): definition not recorded."
+    assert [t for t in text if " (FAIL): " in t] == [
+        "a.0 (FAIL): Zero is defined.",
+        "a.1 (FAIL): definition not recorded.",
+        "a.2 (FAIL): definition not recorded.",
+        "a.3 (FAIL): definition not recorded.",
     ]
     assert "and 3 more" in text
 

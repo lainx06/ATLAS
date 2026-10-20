@@ -568,22 +568,27 @@ def counts_line(rows: list[dict]) -> str:
     )
 
 
-def assertion_details(outcome: dict | None, rows: list[dict]) -> None:
+def assertion_details(
+    outcome: dict | None, rows: list[dict], source: str = "outcome.json"
+) -> None:
+    """Each required check's recorded fields (status, reason, evidence_valid, limitations,
+    evidence with sha256, observed as rows), drawn like the HUD's inspection frame."""
     for r in A.sort_required(rows):
-        a = A.assertion(outcome, r.get("assertion_id")) or {}
-        label = f"{r.get('status')} {r.get('assertion_id')}"
+        aid = r.get("assertion_id")
+        a = A.assertion(outcome, aid)
+        label = f"{r.get('status')} {aid}"
         if r.get("reason"):
             label += f" ({r['reason']})"
         with st.expander(label):
-            st.markdown("Observed")
-            st.json(a.get("observed") or {}, expanded=1)
-            if a.get("limitations"):
-                st.markdown("Limitations")
-                for x in a["limitations"]:
-                    st.markdown(f"- {x}")
-            if a.get("evidence"):
-                st.markdown("Evidence")
-                st.table(pd.DataFrame(a["evidence"]), hide_index=True)
+            if a is None:
+                st.markdown(f"`{aid}` is not recorded in `{source}`.")
+                continue
+            st.markdown(
+                '<div class="hud hud-detail">'
+                + H.record_body(H.Inspect(str(aid), source, a))
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
 
 def metric_block(outcome: dict | None, key: str) -> None:

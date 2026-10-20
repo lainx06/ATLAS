@@ -13,9 +13,10 @@ state is its final state; animations only start from a blank or unlit frame.
 """
 
 import hashlib
+import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -288,6 +289,167 @@ def flow(run_dir: Path, base: str, verified: frozenset[str]) -> Flow:
     )
 
 
+# -- 10. evidence drill-down (the inspection frame) ------------------------------------------------
+INSPECTED = ("FAIL", "NOT_ASSESSED", "ERROR")
+LIST_SHOWN = 6  # list items shown in a row before "and <k> more"
+_DEPTH = 2  # nested objects become dotted keys this deep; deeper ones are summarised
+
+
+@dataclass(frozen=True)
+class Inspect:
+    """One assertion's record, read from its verified check file (or, when no check file
+    lists it, the evaluated run's verified outcome.json)."""
+
+    assertion_id: str
+    source: str  # the file, relative to the run
+    record: dict
+
+
+def inspect_records(
+    run_dir: Path, base: str, statuses: list[tuple[str, str | None]], verified
+) -> dict[str, Inspect]:
+    """The records of an evaluated run's FAIL, NOT_ASSESSED and ERROR assertions."""
+    wanted = {aid for aid, status in statuses if status in INSPECTED}
+    found: dict[str, Inspect] = {}
+    checks = sorted(
+        p for p in verified if p.startswith(f"{base}/checks/") and p.endswith(".json")
+    )
+    for rel in [*checks, f"{base}/outcome.json"]:
+        doc = _json(run_dir, rel, verified)
+        for aid in sorted(wanted - set(found)):
+            a = _assertion(doc, aid)
+            if a is not None:
+                found[aid] = Inspect(aid, rel, a)
+    return found
+
+
+def _alpha(n: int) -> str:
+    """0 -> a, 25 -> z, 26 -> ba: an ID part that stays letters only (§6)."""
+    out = ""
+    while True:
+        out = chr(97 + n % 26) + out
+        n //= 26
+        if n == 0:
+            return out
+
+
+def _scalar(value) -> str:
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+def _inline(value) -> str:
+    """A list item on one line: scalars as they are, objects as key: value pairs with nested
+    lists and objects summarised by their size."""
+    if isinstance(value, dict):
+        parts = []
+        for k, v in value.items():
+            if isinstance(v, list):
+                parts.append(f"{k}: [{len(v)} items]")
+            elif isinstance(v, dict):
+                parts.append(f"{k}: {{{len(v)} keys}}")
+            else:
+                parts.append(f"{k}: {_scalar(v)}")
+        return "{" + ", ".join(parts) + "}"
+    if isinstance(value, list):
+        return f"[{len(value)} items]"
+    return _scalar(value)
+
+
+def list_text(values: list) -> str:
+    """'<n> items: a; b; c and <k> more': the full count first, then what is shown."""
+    if not values:
+        return "0 items"
+    shown = "; ".join(_inline(v) for v in values[:LIST_SHOWN])
+    more = len(values) - LIST_SHOWN
+    tail = f" and {more} more" if more > 0 else ""
+    return f"{len(values)} item{'s' if len(values) != 1 else ''}: {shown}{tail}"
+
+
+def observed_rows(observed, prefix: str = "", depth: int = 0) -> list[tuple[str, str]]:
+    """The observed object as (key, value) rows (keys relative to `observed`); nested
+    objects as dotted keys."""
+    if not isinstance(observed, dict):
+        value = NOT_RECORDED if observed is None else _inline(observed)
+        return [(prefix or "observed", value)]
+    if not observed:
+        return [(prefix or "observed", "{} (empty)")]
+    rows: list[tuple[str, str]] = []
+    for k, v in observed.items():
+        key = f"{prefix}.{k}" if prefix else str(k)
+        if isinstance(v, dict) and v and depth < _DEPTH:
+            rows += observed_rows(v, key, depth + 1)
+        elif isinstance(v, list):
+            rows.append((key, list_text(v)))
+        else:
+            rows.append((key, _inline(v)))
+    return rows
+
+
+def _field(a: dict, key: str) -> str:
+    return _scalar(a.get(key)) if key in a else NOT_RECORDED
+
+
+def record_body(item: Inspect) -> str:
+    """An assertion's recorded fields: status, reason, evidence_valid, limitations, the
+    evidence artifacts with their sha256, the observed object as rows, and the source."""
+    a = item.record
+    kv = "".join(
+        f"<dt>{key}</dt><dd>{esc(_field(a, key))}</dd>"
+        for key in ("status", "reason", "evidence_valid")
+    )
+    lims = a.get("limitations")
+    if isinstance(lims, list) and lims:
+        limitations = (
+            '<ul class="hud-insp-list">'
+            + "".join(f"<li>{esc(x)}</li>" for x in lims)
+            + "</ul>"
+        )
+    else:
+        limitations = f'<p class="hud-insp-none">{"none (empty list)" if isinstance(lims, list) else NOT_RECORDED}</p>'
+    ev = a.get("evidence")
+    if isinstance(ev, list) and ev:
+        evidence = (
+            '<dl class="hud-insp-kv hud-insp-ev">'
+            + "".join(
+                f"<dt>{esc(e.get('artifact') if isinstance(e, dict) else e)}</dt>"
+                f"<dd>{esc((e.get('sha256') if isinstance(e, dict) else None) or NOT_RECORDED)}</dd>"
+                for e in ev
+            )
+            + "</dl>"
+        )
+    else:
+        evidence = f'<p class="hud-insp-none">{"none (empty list)" if isinstance(ev, list) else NOT_RECORDED}</p>'
+    observed = "".join(
+        f"<dt>{esc(key)}</dt><dd>{esc(val)}</dd>"
+        for key, val in observed_rows(a.get("observed") if "observed" in a else None)
+    )
+    source = f"{item.source} · assertions[assertion_id={item.assertion_id}]"
+    return (
+        f'<dl class="hud-insp-kv">{kv}</dl>'
+        f'<span class="hud-lbl">Limitations</span>{limitations}'
+        f'<span class="hud-lbl">Evidence · artifact, sha256</span>{evidence}'
+        f'<span class="hud-lbl">Observed</span><dl class="hud-insp-kv hud-insp-obs">{observed}</dl>'
+        f'<div class="hud-src">{esc(source)}</div>'
+    )
+
+
+def inspection(item: Inspect, ids: Ids, scope: str, k: int, summary: str) -> str:
+    """A tile that opens its inspection frame: details/summary, so no Streamlit widget and no
+    rerun; Enter and Space toggle it and the browser reports its expanded state. The open
+    frame carries the active-frame corner brackets."""
+    sid = ids("insp", "sum" + _alpha(k), scope)
+    brackets = "".join(
+        f'<span class="hud-br hud-br-{c}" aria-hidden="true"></span>'
+        for c in ("tl", "tr", "bl", "br")
+    )
+    return (
+        f'<details class="hud-insp"><summary class="hud-tile-row" id="{sid}">{summary}'
+        "</summary>"
+        f'<div class="hud-insp-frame" role="group" aria-labelledby="{sid}">{brackets}'
+        f"{record_body(item)}</div></details>"
+    )
+
+
 @dataclass(frozen=True)
 class Outcome:
     """One reticle: an evaluated run's outcome and the line beneath it."""
@@ -328,6 +490,8 @@ class Hud:
     flow_orig: Flow
     flow_cand: Flow | None
     matrix: list[MatrixRow]
+    inspect_orig: dict[str, Inspect] = field(default_factory=dict)
+    inspect_cand: dict[str, Inspect] = field(default_factory=dict)
 
 
 def _statuses(outcome) -> list[tuple[str, str | None]]:
@@ -421,6 +585,7 @@ def build(
     )
     chosen = executed_candidate(run_dir, report, verified) if with_candidate else None
     candidate = cand_base = leak_cand = flow_cand = None
+    inspect_cand: dict[str, Inspect] = {}
     matrix = [MatrixRow(aid, status, None) for aid, status in orig_statuses]
     if chosen is not None:
         cand_base, _entry = chosen
@@ -471,6 +636,9 @@ def build(
         )
         leak_cand = leak(run_dir, cand_base, verified)
         flow_cand = flow(run_dir, cand_base, verified)
+        inspect_cand = inspect_records(
+            run_dir, cand_base, list(cand_status.items()), verified
+        )
     else:
         # Nothing executed comes after it, so it is not headed "before".
         original = Outcome(**{**original.__dict__, "heading": "Original"})
@@ -489,6 +657,8 @@ def build(
         flow_orig=flow(run_dir, "original", verified),
         flow_cand=flow_cand,
         matrix=matrix,
+        inspect_orig=inspect_records(run_dir, "original", orig_statuses, verified),
+        inspect_cand=inspect_cand,
     )
 
 
@@ -864,12 +1034,20 @@ def fit_flow(data: Flow, ids: Ids, scope: str, *, played: bool) -> str:
 
 # -- 3. check matrix ------------------------------------------------------------------------------------------
 def matrix_column(
-    rows: list[MatrixRow], side: str, source: str, *, played: bool, paired: bool = False
+    rows: list[MatrixRow],
+    side: str,
+    source: str,
+    *,
+    played: bool,
+    paired: bool = False,
+    inspect: dict[str, Inspect] | None = None,
+    ids: Ids | None = None,
 ) -> str:
     """One column of assertion tiles (status code + assertion ID); `side` is "orig" or "cand".
-    A changed candidate tile states its direction."""
+    A changed candidate tile states its direction. A FAIL, NOT_ASSESSED or ERROR tile whose
+    record is in `inspect` opens its inspection frame (needs `ids`)."""
     tiles = []
-    for r in rows:
+    for k, r in enumerate(rows):
         status = r.original if side == "orig" else r.candidate
         changed = side == "cand" and r.changed
         move = (
@@ -878,9 +1056,19 @@ def matrix_column(
             else ('<span class="hud-move" aria-hidden="true"></span>' if paired else "")
         )
         anim = _a(played, "hud-a-flip") if changed else ""
+        head = f'{_code(status)}<span class="hud-aid">{esc(r.assertion_id)}</span>'
+        item = (inspect or {}).get(r.assertion_id) if status in INSPECTED else None
+        if item is not None and ids is not None:
+            # The direction and the "Inspect" cue share the tile's end slot.
+            cue = '<span class="hud-insp-cue" aria-hidden="true"></span>'
+            end = f'<span class="hud-tile-end">{move}{cue}</span>'
+            tiles.append(
+                f'<li class="hud-tile hud-tile-insp{" hud-changed" if changed else ""}{anim}">'
+                f"{inspection(item, ids, side, k, head + end)}</li>"
+            )
+            continue
         tiles.append(
-            f'<li class="hud-tile{" hud-changed" if changed else ""}{anim}">'
-            f'{_code(status)}<span class="hud-aid">{esc(r.assertion_id)}</span>{move}</li>'
+            f'<li class="hud-tile{" hud-changed" if changed else ""}{anim}">{head}{move}</li>'
         )
     label = "Required checks · " + (
         "original" if side == "orig" else source.split("/outcome")[0]
@@ -909,6 +1097,8 @@ def evidence(h: Hud, *, played: bool) -> str:
             "original/outcome.json",
             played=played,
             paired=h.candidate is not None,
+            inspect=h.inspect_orig,
+            ids=ids,
         ),
     ]
     if h.candidate is None:
@@ -921,7 +1111,13 @@ def evidence(h: Hud, *, played: bool) -> str:
         leak_map(h.leak_cand, h.rows, ids, "cand", played=played),
         fit_flow(h.flow_cand, ids, "cand", played=played),
         matrix_column(
-            h.matrix, "cand", f"{h.cand_base}/outcome.json", played=played, paired=True
+            h.matrix,
+            "cand",
+            f"{h.cand_base}/outcome.json",
+            played=played,
+            paired=True,
+            inspect=h.inspect_cand,
+            ids=ids,
         ),
     ]
     name = ids("toggle", "group")
@@ -1258,6 +1454,7 @@ class BriefLine:
     text: str
     source: str
     kind: str = "line"  # "line", "fail" (a failing assertion) or "caveat"
+    assertion_id: str | None = None  # a "fail" line's assertion
 
 
 def briefing_lines(
@@ -1303,7 +1500,7 @@ def briefing_lines(
             words = definitions.get(aid)
             lines.append(
                 BriefLine(
-                    f"FAIL {aid}: "
+                    f"{aid} (FAIL): "
                     + (
                         plain_definition(words)
                         if words
@@ -1313,6 +1510,7 @@ def briefing_lines(
                     + aid
                     + " (first sentence)",
                     "fail",
+                    aid,
                 )
             )
         if len(failing) > BRIEF_FAILS:
@@ -1381,11 +1579,13 @@ def briefing(lines: list[BriefLine], ids: Ids) -> str:
     label = ids("brief", "label")
     items = []
     for line in lines:
-        if line.kind == "fail" and line.text.startswith("FAIL "):
-            aid, _, words = line.text[5:].partition(": ")
+        if line.assertion_id is not None:
+            # The same words as the text line: "<assertion> (FAIL): <definition>".
+            aid = line.assertion_id
+            words = line.text.removeprefix(f"{aid} (FAIL): ")
             body = (
-                f'{_code("FAIL")} <span class="hud-brief-aid">{esc(aid)}</span>'
-                f'<span class="hud-brief-def">{esc(words)}</span>'
+                f'<span class="hud-brief-aid">{esc(aid)}</span> ('
+                f'<b class="hud-code hud-c-red">FAIL</b>)&#58; {esc(words)}'
             )
         else:
             body = esc(line.text)
@@ -1438,6 +1638,7 @@ _MOTION = f"""
 .hud-anim .hud-a-draw{{stroke-dasharray:1;animation:hud-draw {int((BEAT3[1] - 0.1) * 1000)}ms ease-out {int(BEAT3[0] * 1000)}ms backwards}}
 .hud-anim .hud-a-head{{animation:hud-fade 100ms ease-out {int((sum(BEAT3) - 0.1) * 1000)}ms backwards}}
 .hud-anim .hud-a-node{{animation:hud-node {NODE_MS}ms ease-out backwards}}
+.hud-insp[open]>.hud-insp-frame{{animation:hud-fade 120ms ease-out}}
 .hud-tg label,.hud-scroll{{transition:background-color 120ms ease-out,color 120ms ease-out,outline-color 120ms ease-out}}
 .hud-panes .hud-pane{{transition:opacity 200ms ease-out,visibility 200ms}}
 }}
@@ -1580,9 +1781,41 @@ CSS = (
     ".hud .hud-tiles-pair li.hud-tile{display:grid;grid-template-columns:7.2em minmax(0,1fr) 7em;"
     "gap:4px 8px}"
     ".hud-tiles-pair .hud-move{text-align:right}"
-    "@container hud (max-width:759px){.hud .hud-tiles-pair li.hud-tile{"
-    "grid-template-columns:7.2em minmax(0,1fr)}"
-    ".hud-tiles-pair .hud-move{grid-column:2;text-align:left}.hud-move:empty{display:none}}"
+    # the inspection frame (a FAIL, NOT_ASSESSED or ERROR tile, opened in place)
+    ".hud li.hud-tile.hud-tile-insp{display:block;padding:0}"
+    ".hud summary.hud-tile-row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;"
+    "padding:4px 8px;cursor:pointer;list-style:none;border-radius:2px}"
+    ".hud summary.hud-tile-row::-webkit-details-marker{display:none}"
+    ".hud summary.hud-tile-row::marker{content:''}"
+    ".hud .hud-tiles-pair summary.hud-tile-row{display:grid;"
+    "grid-template-columns:7.2em minmax(0,1fr) 7em;gap:4px 8px;align-items:baseline}"
+    ".hud-tile-end{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:2px 8px;"
+    "margin-left:auto;text-align:right}"
+    ".hud .hud-tiles-pair li.hud-tile.hud-tile-insp{display:block}"
+    ".hud-insp-cue{font-family:'IBM Plex Sans Condensed',"
+    "sans-serif;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#94A3B8}"
+    ".hud-insp>summary .hud-insp-cue::after{content:'Inspect'}"
+    ".hud-insp[open]>summary .hud-insp-cue::after{content:'Close'}"
+    ".hud summary.hud-tile-row:hover .hud-insp-cue{color:#67E8F9}"
+    ".hud summary.hud-tile-row:focus-visible{outline:2px solid #67E8F9;outline-offset:2px}"
+    ".hud-insp-frame{position:relative;margin:2px 8px 8px;padding:12px 14px 10px;"
+    "background:#0F1720;border:1px solid #1E2A36;border-radius:2px;color:#67E8F9;"
+    "font-family:'IBM Plex Sans',sans-serif}"
+    ".hud-insp-frame .hud-lbl{display:block;margin:8px 0 2px}"
+    ".hud dl.hud-insp-kv{display:grid;grid-template-columns:fit-content(42%) "
+    "minmax(0,1fr);gap:3px 14px;margin:0;font-family:'IBM Plex Mono',monospace;font-size:13px;"
+    "line-height:1.45}"
+    ".hud .hud-insp-kv dt{color:#94A3B8;font-weight:400;overflow-wrap:anywhere;margin:0}"
+    ".hud .hud-insp-kv dd{color:#E2E8F0;margin:0;overflow-wrap:anywhere}"
+    ".hud .hud-insp-ev dd{word-break:break-all}"
+    ".hud ul.hud-insp-list{margin:0;padding-left:18px;font-size:13px;color:#E2E8F0}"
+    ".hud .hud-insp-list li{margin:0 0 2px}"
+    ".hud p.hud-insp-none{margin:0;font-size:13px;color:#94A3B8}"
+    ".hud-insp-frame .hud-src{color:#94A3B8}"
+    "@container hud (max-width:759px){.hud .hud-tiles-pair li.hud-tile,"
+    ".hud .hud-tiles-pair summary.hud-tile-row{grid-template-columns:7.2em minmax(0,1fr)}"
+    ".hud-tiles-pair .hud-move{grid-column:2;text-align:left}.hud-move:empty{display:none}"
+    ".hud-tiles-pair .hud-tile-end{grid-column:2;justify-content:flex-start}}"
     ".hud-aid{color:#E2E8F0;overflow-wrap:anywhere}"
     ".hud-changed{border-left:2px solid #E2E8F0}"
     ".hud-move{margin-left:auto;color:#94A3B8;font-size:11px}"
@@ -1613,12 +1846,9 @@ CSS = (
     "padding:10px 16px 8px}"
     ".hud ul.hud-brief-lines{list-style:none;margin:4px 0 2px;padding:0;display:grid;gap:3px}"
     ".hud ul.hud-brief-lines li{margin:0;font-size:14px;line-height:1.45;color:#E2E8F0}"
-    ".hud li.hud-brief-fail{display:grid;grid-template-columns:3.4em auto minmax(0,1fr);"
-    "gap:0 10px;align-items:baseline;padding-left:12px}"
+    ".hud li.hud-brief-fail{padding-left:16px}"
     ".hud-brief-aid{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#E2E8F0}"
     ".hud li.hud-brief-caveat{font-size:13px;color:#94A3B8}"
-    "@container hud (max-width:759px){.hud li.hud-brief-fail{grid-template-columns:3.4em "
-    "minmax(0,1fr);padding-left:0}.hud-brief-def{grid-column:2}}"
     # full hashes, field labels and HUD state panels
     ".hud.hud-flabel{margin:0 0 -8px}"
     ".hud.hud-hash{font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.5;"
