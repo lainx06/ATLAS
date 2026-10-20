@@ -451,3 +451,9 @@ Builder notes for the lead (Claude Code, 2026-10-19; recorded with the predeclar
 ## Publication decision (user, 2026-10-19)
 
 The repository is published as-is (option A): history, commit hashes and docs/handoff/ unchanged; the commit author email and local Windows paths (DECISIONS.md, docs/TOOLING.md, demo/recorded/) are published. Alternatives considered: rewriting history (breaks every cited commit hash) and a fresh single-commit repository (loses the dated development history supporting the prior-work statement). The repository becomes public after the release review; only main is pushed (never --all or --mirror).
+
+## UI HUD redesign (lead, 2026-10-19/20)
+
+1. The HUD redesign (phases 1 and 2 on branch ui-hud) is approved by the user and the lead: every element and motion is bound to verified run data; no Marvel/Stark/JARVIS names.
+2. The mission briefing is deterministic text from verified files, fixed plain-English assertion labels (src/atlas/ui/assertion_labels.json) and the frozen definitions; it never includes model text. Voice readout is not in the product (browser voices vary by judge); the demo video may narrate the briefing.
+3. The HUD is in the release review's scope (truth rules, briefing provenance, SVG ID uniqueness, the hosted live-track display change).

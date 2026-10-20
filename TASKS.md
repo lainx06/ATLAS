@@ -1982,6 +1982,20 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Build decisions:** `docs/UI_SPEC.md` §12, B1–B24. These include the worker process, the typed browser approval over a file channel, one run per server, and the disabled live mode.
   - **Model:** Opus 5.5 high, not Sonnet medium (DECISIONS.md "Lead decisions, 2026-10-17" item 5).
 
+### T-07b UI HUD redesign
+- **OWNER:** Claude Code (writer); the user and the lead review; the HUD is in the release review's scope (DECISIONS.md "UI HUD redesign (lead, 2026-10-19/20)").
+- **MODEL / EFFORT:** Opus 5.5 high (phases 1 and 2); Sonnet 5.5 high (fix pass 1).
+- **CHANGE:** `src/atlas/ui/hud.py`, `views.py`, `results.py`, `src/atlas/hosted/page.py` (display only), `src/atlas/ui/assertion_labels.json`, vendored IBM Plex and two skills, `docs/UI_DESIGN_HUD.md`, tests.
+- **RESULT (2026-10-19/20): built on branch `ui-hud`; merged into `main` by fast-forward (local only, not pushed).**
+  - **Commits:**
+    - `29fc536` skills vendored; `5b9ffcf` design spec;
+    - `5872013` phase 1 (recorded-run HUD, theme); `0714e4b` part A (phase 1 review fixes);
+    - `faed549` part B (HUD on every view); `374bbed` part C (briefing); `35d9e26` part D (drill-down); `2f5abf1` part E (hosted live track); `a7a68c5` part F and spec;
+    - `cd1baf3` fix pass 1: one integrity count, plain-English briefing labels (the ring and the evidence panel read 49 of 49 while live6's briefing read 46 of 46, because the briefing counted only file hashes and the ring counted every check; now one `hud.integrity_count`: "49 of 49 recorded items verified now (46 file hashes, 3 outcome comparisons)"); the formal definition is in the drill-down as "definition (policy-v1.3)". Docs commit follows it.
+  - **Full suite with Docker required:** phase 1 1705 passed, 4 skipped (`runs/ui-hud/full.log`); phase 2 1762 passed, 4 skipped (`full2.log`); fix pass 1 **1769 passed, 5 skipped** (`runs/ui-hud/full3.log`; the fifth skip is the evidence-only motion capture, `ATLAS_UI_SCREENS` unset; the HAR-data and symlink skips are the known ones). `full3_first_5failed.log` is the first run, with five stale old-wording assertions in two hosted test files, fixed before the final run. Ruff check and format clean.
+  - **Screenshots (settled, 1440x900 and 390x844):** `runs/ui-hud/screens/` (phase 1), `runs/ui-hud/screens2/` (phase 2), `runs/ui-hud/screens3/` (fix pass 1: live6 briefing and hero, HAR flawed briefing, live6 and HAR drill-down with the definition, the BUDGET_EXHAUSTED state).
+  - **No live run, no Nebius call, no Neon connection, no spend, no push, no deployment change.**
+
 ### T-08 Procedures and transfer benchmark
 - **CUT (lead, 2026-10-17;** DECISIONS.md "Lead decisions, 2026-10-17" item 2). The Session 5 scenario is dropped. The entry below is kept as the record of what was planned.
 - **OWNER:** Claude Code (writer); Codex reviews; Gemini reviews the evaluation claims.
