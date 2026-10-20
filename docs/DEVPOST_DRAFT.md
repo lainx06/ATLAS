@@ -40,15 +40,15 @@ Nemotron is the agent's reasoning step, called through the OpenAI-compatible Tok
 - **What the model does.** In a bounded loop it chooses one typed action per reply: list the project's files (`list_project_files`), read one project file (`read_project_file`), inspect the original's recorded evidence for one check family (`inspect_evidence`: split integrity, fit provenance, independent metrics or temporal availability), propose a revision of the entry point (`propose_patch`: a unified `diff` or the complete `new_source`, with a rationale), or finish (`finish`, with a summary). ATLAS itself runs the deterministic checks before any model request and, after a typed human approval, executes an accepted revision in Docker and re-evaluates it; the model can do neither.
 - **Exact reply validation.** The prompt requests one raw JSON object; ATLAS validates the whole reply with strict Pydantic schemas (one action, no duplicate keys, no undeclared fields). No NVIDIA model on Nebius lists `json_mode` or `structured_outputs`, so this is application-validated, not provider-enforced. Replies are never repaired. Up to two consecutive schema failures get a corrective turn built from the schema and fixed text only.
 - **Bounds.** At most 6 requests, 12 tool operations, 2 revisions, 60 s per request, 12,000 input tokens (an ATLAS estimate) and 8,000 output tokens. Estimate cap $0.0648 per run; $0.51 maximum authorized per live run.
-- **Cost accounting.** Each request is reserved before it is sent, settled at provider-reported usage, and held at its ceiling if usage is unknown. Totals are labelled estimates, not billing. Total estimated live spend, runs 1 to 6, the T-11 comparison and the hosted smoke test: about $0.133 ($0.1333011; not billing).
+- **Cost accounting.** Each request is reserved before it is sent, settled at provider-reported usage, and held at its ceiling if usage is unknown. Totals are labelled estimates, not billing. Total estimated live spend, runs 1 to 8, the T-11 comparison and the hosted smoke test: about $0.185 ($0.1853826; not billing).
 - **Pre-run model check.** One free authenticated `GET /models` must list the model with exactly the configured prices and context length, or the run aborts before any completion.
 - **Authority.** A model proposal passes only `validate_diff`, then a typed human approval, then Docker execution, then the trusted evaluator. The model never decides an outcome.
 
 ## Challenges and learnings
 
-<!-- Sources: TASKS.md T-06 "LIVE RUN 1" to "LIVE RUN 6" and "SLICE 4c" to "SLICE 4h RESULT"; DECISIONS.md "Lead decisions, 2026-10-17" items 4, 10-15; STATUS.md; docs/EVALUATION.md "Results (live, 2026-10-19)". -->
+<!-- Sources: TASKS.md T-06 "LIVE RUN 1" to "LIVE RUN 8" and "SLICE 4c" to "SLICE 4h RESULT"; DECISIONS.md "Lead decisions, 2026-10-17" items 4, 10-15, "Live run 7 disposition" and "Live runs 7-8 disposition"; STATUS.md; docs/EVALUATION.md "Results (live, 2026-10-19)". -->
 
-We ran the live agent six times (run 3 was declined at the approval prompt and retried as run 3b). Each failure was recorded as measured, and each fix was a small, reviewed change. We never made the evaluator more lenient to get a pass.
+We ran the live agent eight times (run 3 was declined at the approval prompt and retried as run 3b). Each failure was recorded as measured, and each fix was a small, reviewed change. We never made the evaluator more lenient to get a pass.
 
 | Run | What happened | What the fix changed |
 | --- | --- | --- |
@@ -58,6 +58,8 @@ We ran the live agent six times (run 3 was declined at the approval prompt and r
 | 4 | The first live loop with candidates executed: both approved and run in Docker, both `INCONCLUSIVE`. Each read `X['subject_id']`, which `adapter.load_table()` does not return. The model never saw the traceback. | Slice 4f: a bounded, sanitized, untrusted error summary goes back to the model, plus a fixed adapter reference in the system prompt. |
 | 5 | `ERROR`: an undeclared `summary` field, then a trailing comma (`not_json`), two failures in a row. | Slice 4g: up to two corrective turns, built from the schema and fixed text, never quoting the reply. |
 | 6 | Success: revision 1 `NO_VIOLATION_FOUND`, four checks FAIL -> PASS. Revision 2 was a `syntax_error`, and the run ended `BUDGET_EXHAUSTED` instead of finishing after the success. | Slice 4h: one fixed finish-after-success line and a recorded-run viewer that re-verifies every hash and never re-executes. |
+| 7 (2026-10-20, `har_flawed`, real UCI HAR data) | The original was `VIOLATION_FOUND`; both revisions were rejected as `malformed_source`: the complete source arrived double-escaped (literal backslash-n, no line breaks), so no candidate ran; `BUDGET_EXHAUSTED`; estimated $0.0268920 (not billing). | An exact diagnostic for a double-escaped source (`88332da`); what is accepted is unchanged and nothing is repaired. |
+| 8 (2026-10-20, `har_flawed`) | The original was `VIOLATION_FOUND`; both revisions were again rejected as double-escaped, although the exact diagnostic was returned after revision 1; `ERROR` (`schema_failure: incomplete_length`); estimated $0.0251895 (not billing). | None: no further live attempts on `har_flawed` (below). |
 
 Learnings:
 
@@ -65,6 +67,7 @@ Learnings:
 - **Show the model its own errors.** Run 4's two candidates failed identically because the traceback never reached the model.
 - **Review caught real reporting defects.** Gate 4 (two P2) and a combined review (three P2: a host-path redaction bypass, a missing approval regression test, a CRLF-sensitive byte-exact test) were each fixed and re-verified. T-06 was then accepted within its documented scope.
 - **A capable model finds most flaws by reading.** Our predeclared comparison showed Nemotron alone close to ATLAS on detection for our four development cases (not held-out; ATLAS's checks were built on them, and the flawed projects' own files describe their flaws in plain text). We report it as measured; what the deterministic layer adds is evidence you can re-run (deterministic by design (evaluated once per case here)), no false positive in this comparison, and fixes verified by execution.
+- **Correct logic in the wrong encoding still does not run.** Across runs 7 and 8 Nemotron proposed the correct repair logic for har_flawed four times (subject-grouped folds; scaler and selector fit on training rows only) and returned it double-escaped four times, including after an exact diagnostic. ATLAS does not repair model output, and further prompt tuning until a run succeeds would select results, so there are no further live attempts on `har_flawed`; its case card keeps the verified T-09 audit.
 - **A rising metric is not the goal.** In run 6, after the four violations were removed, the pooled balanced accuracy was lower (0.68125 → 0.675); the difference is descriptive and is not attributed to a single cause.
 - **Guardrails shaped the design.** Because the model is untrusted, the hosted demo never executes project code: it replays hash-verified recorded runs and shows live proposals as "not executed here".
 
@@ -93,13 +96,13 @@ ATLAS was started and built entirely during the submission period. No ATLAS code
 
 ## Token Factory and Nemotron feedback (for the "Most Valuable Feedback" prize)
 
-<!-- Sources: STATUS.md "Nebius smoke" and "Nebius configuration"; TASKS.md T-06 live runs 1-7, Gate 3 (runs/g3w, g3x, g3y); DECISIONS.md "Initial model and response approach"; docs/SPEC.md §11. All observations are from our own records on one model, one project and seven runs; they are not general claims. Provider spend figures are our estimates, not billing. -->
+<!-- Sources: STATUS.md "Nebius smoke" and "Nebius configuration"; TASKS.md T-06 live runs 1-8, Gate 3 (runs/g3w, g3x, g3y); DECISIONS.md "Initial model and response approach"; docs/SPEC.md §11. All observations are from our own records on one model, two projects and eight runs; they are not general claims. Provider spend figures are our estimates, not billing. -->
 
 What worked well:
 
 - **The free `GET /models?verbose=true`** returned price, context length, rate limits and `supported_features` for each model, which made an exact pre-run check possible (model present, prices and context length equal to configuration). It returned HTTP 200 in our checks.
 - **Prompt-requested JSON worked** when the model complied: both smoke calls passed strict validation, and live run 6 had 0 schema failures over 5 requests.
-- **Low cost.** Run 6 cost an estimated $0.0190884; the seven runs, the T-11 comparison and the hosted smoke test about $0.160 in total ($0.1601931; not billing).
+- **Low cost.** Run 6 cost an estimated $0.0190884; live runs 1 to 8, the T-11 comparison and the hosted smoke test about $0.185 in total ($0.1853826; not billing).
 
 Specific observations and suggestions:
 
@@ -108,6 +111,6 @@ Specific observations and suggestions:
 3. **The listing's price-string format.** In the listing, prices are per-token decimal strings (`0.0000003` and `0.0000009`, nine characters each) while the context length is an integer; humans quote the same prices per million tokens ($0.30 / $0.90). We parse them as exact decimals and abort if a listed price differs from configuration, and our review stage range-checks exponent-style strings such as `1E+31` from the decimal's digits and exponent before any formatting; a zero with a large exponent (`0E+200`) is still rejected, failing closed, as a recorded known limitation (DECISIONS.md "Gate 3 re-verification dispositions (lead, 2026-10-17)"). *Suggestion:* state the unit and the allowed string forms in the API reference, and consider also returning a per-million field.
 4. **Request IDs and served-model reporting were useful, and we depend on them.** `GET /models` and completions returned request IDs, and replies report the served model and usage; we log them (only after checking they are plain identifiers that do not contain the key) so a spend or behavior question can be traced to a request. *Suggestion:* keep both stable and documented (the request-ID location and the served-model field), so audit trails like ours stay reliable.
 5. **Usage in error responses.** Our client validates usage on replies and on errors alike and treats a dispatched request with unknown usage as held at its ceiling. A documented guarantee about usage and billing for timeouts and failed requests would let callers release that hold sooner. We have not verified provider-side enforcement of `max_completion_tokens` or billing, and say so.
-6. **Long code inside JSON strings:** in live run 7 the model returned complete source files as JSON strings that were double-escaped (literal backslash-n, no line breaks) twice in a row. A response_format or constrained-decoding option for the Nemotron models would remove this class of failure; we report it as observed on one run.
+6. **Long code inside JSON strings:** in live runs 7 and 8 the model returned complete source files as JSON strings that were double-escaped (literal backslash-n, no line breaks): 4 of 4 complete-source replies in runs 7 and 8, including after an exact diagnostic. Across runs 7 and 8 Nemotron proposed the correct repair logic for har_flawed four times (subject-grouped folds; scaler and selector fit on training rows only) and returned it double-escaped four times, including after an exact diagnostic. A response_format or constrained-decoding option for the Nemotron models would remove this class of failure; we report it as observed on two runs of one project.
 
-Everything above is reproducible from the run records named in TASKS.md T-06 (git-ignored `runs/live1` to `runs/live7`; the recorded bundle `demo/recorded/live6/`).
+Everything above is reproducible from the run records named in TASKS.md T-06 (git-ignored `runs/live1` to `runs/live8`; the recorded bundle `demo/recorded/live6/`).

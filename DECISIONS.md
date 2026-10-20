@@ -468,3 +468,7 @@ The repository is published as-is (option A): history, commit hashes and docs/ha
 ## Live run 7 disposition (lead, 2026-10-20)
 
 The rejection was correct (no repair); the validator detail was inaccurate for double-escaped sources and is replaced by an exact diagnostic (no change to what is accepted). A further live run on har_flawed is authorized only by the user's explicit go-ahead.
+
+## Live runs 7-8 disposition (lead, 2026-10-20)
+
+Across runs 7 and 8 Nemotron proposed the correct repair logic for har_flawed four times (subject-grouped folds; scaler and selector fit on training rows only) and returned it double-escaped four times, including after an exact diagnostic. No further live attempts on har_flawed: ATLAS does not repair model output, and further prompt tuning until a run succeeds would select results. The real-data case card keeps the verified T-09 audit; runs 7 and 8 are reported in README and the Devpost draft.
