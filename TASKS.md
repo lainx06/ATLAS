@@ -2015,6 +2015,22 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Screenshots:** `runs/ui-story/screens/` (39 settled full-page captures at 1440x900, 1280x800 and 390x844).
   - **No live run, no Nebius call, no Neon connection, no spend, no push, no merge, no deployment change.**
 
+### T-07d UI story layout, slice 2
+- **OWNER:** Claude Code (writer); the user and the lead review.
+- **MODEL / EFFORT:** Opus 5.5 high.
+- **CHANGE:** `src/atlas/ui/versus.py`, `limits.py`, `tamper.py` (new), `story.py` (A1 card CSS, A2 approval reason, the tamper panel, the shared Expert view toggle), `copy.py` ("Slice 2" section), `app_pages/agent_vs_model.py`, `app_pages/how_it_works.py`, `docs/UI_DESIGN_HUD.md` §13, tests (`tests/unit/test_ui_slice2.py`, `tests/acceptance/test_scenario14_slice2.py`; slice 1 tests updated for the replaced placeholders, the step 4 summary and the new button). No engine, evaluator, policy, provider, spending, approval, verification, escaping or briefing logic changed.
+- **RESULT (2026-10-20): built on branch `ui-story` in the worktree `atlas-story`; not reviewed.**
+  - **Commits:** `da91cb2` (merge of `main`: live run 7 record and the double-escape diagnostic; STATUS.md conflict resolved as the lead specified), `36e5a0e` (Part 0: live runs 7 and 8 recorded), `1374652` (code with tests), and this docs commit.
+  - **A1:** Streamlit's 1rem pull-up on the card's Markdown container ate the card's 12 px bottom padding, so the label ran 2 px past the card edge. Fixed in CSS; scenario 14 measures label and last line inside the padding at seven widths and for each selected case.
+  - **A2:** step 4 of the two HAR runs reads "No AI agent took part: the audit script approved and ran the original in the isolated Docker runner.", from the recorded approval reason `t09_task_authorized_original` (a renamed copy still matches; another reason does not).
+  - **AI Agent vs. Model Alone:** gated on the SHA-256 of `results.md`, `scores.json` and `suite.json` (README's table) and `expected.json` (suite.json's recorded hash). Chart values from scores.json: ATLAS 8 of 8 assessable, model alone 19 of 20 on the same 8 and 19 of 23 overall; false alarms 0 vs 2; invalid answers none vs 3 of 12. Findings copied exactly from docs/EVALUATION.md; cost $0.0630621 (estimate, not billing); "Claims reviewed by Gemini (2026-10-19)".
+  - **How It Works & Limits:** five steps with a static diagram, six safety items, the 13 README limitations in plain words (Expert view: original wording from README.md), what ATLAS does not do.
+  - **Tamper demo:** files per case: live6 `original/outcome.json`, `candidates/c1/outcome.json`, `original/execution.json`, `agent_log.jsonl`; HAR flawed and HAR clean `original/outcome.json`, `original/execution.json`, `agent_log.jsonl`. The last byte of the chosen file is changed in a `tempfile` copy outside the repository, the real `verify` runs on it ("1 of 49 recorded items differ: the original's recorded result — outcome withheld" on live6), the copy is deleted (also on error), and the original is re-verified with every file hash unchanged. Limits: one at a time, 5 per session per hour, 50 MB, no links. Hashing only; hosted mode needs no execution guard (tested under a subprocess/socket/`refuse_if_hosted` tripwire).
+  - **Full suite with Docker required:** **1917 passed, 6 skipped** (`runs/ui-story/full2.log`; the skips: HAR data absent (2), the archived model listing (1), symlink permission (2, one of them new: the tamper demo's link refusal), the evidence-only motion capture (1)).
+  - **Ruff:** check and format clean. **check_recorded:** unchanged (`runs/ui-story/check_recorded2.txt`).
+  - **Screenshots:** `runs/ui-story/screens2/` (24 settled full-page captures: 8 states at 1440x900, 1280x800 and 390x844).
+  - **No live run, no Nebius call, no Neon connection, no spend, no push.**
+
 ### T-08 Procedures and transfer benchmark
 - **CUT (lead, 2026-10-17;** DECISIONS.md "Lead decisions, 2026-10-17" item 2). The Session 5 scenario is dropped. The entry below is kept as the record of what was planned.
 - **OWNER:** Claude Code (writer); Codex reviews; Gemini reviews the evaluation claims.

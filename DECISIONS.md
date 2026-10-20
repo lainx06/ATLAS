@@ -457,6 +457,7 @@ The repository is published as-is (option A): history, commit hashes and docs/ha
 1. The HUD redesign (phases 1 and 2 on branch ui-hud) is approved by the user and the lead: every element and motion is bound to verified run data; no Marvel/Stark/JARVIS names.
 2. The mission briefing is deterministic text from verified files, fixed plain-English assertion labels (src/atlas/ui/assertion_labels.json) and the frozen definitions; it never includes model text. Voice readout is not in the product (browser voices vary by judge); the demo video may narrate the briefing.
 3. The HUD is in the release review's scope (truth rules, briefing provenance, SVG ID uniqueness, the hosted live-track display change).
+5. Slice 2 (2026-10-20): AI Agent vs. Model Alone page (gated on the recorded result hashes), How It Works & Limits, and a real tamper demo (one byte changed in a temporary copy; the real check run on it; the recording untouched).
 
 ## Release review 1 dispositions (lead, 2026-10-20)
 

@@ -1,6 +1,6 @@
 # ATLAS HUD visual system (UI design pass, phases 1 and 2)
 
-Status: **design spec for the `ui-hud` branch, phases 1 and 2.** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 (§1–§10) covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Phase 2 (§11) rolls the HUD out to every view (the local run, the typed-approval panel, the hosted live session, the failure and honest-empty states, the tables) and adds the deterministic briefing, the evidence drill-down and the live mission track. **Slice 1 of the story layout (§12, branch `ui-story`)** reorganizes the views into four pages and the Overview & Cases story; plain English by default, Expert view on demand.
+Status: **design spec for the `ui-hud` branch, phases 1 and 2, and the story layout slices 1 and 2 on `ui-story` (§12, §13).** It supersedes the palette, type and spacing of `docs/UI_SPEC.md` §7 on this branch only. The truth rules of `docs/UI_SPEC.md` §1 are unchanged and override everything here. Phase 1 (§1–§10) covers the recorded-run viewer (the local "Open a recorded run" view and the hosted "Recorded runs" view, which share `atlas.ui.results.finished_run` and the recorded banner) and the hosted page header and sidebar. Phase 2 (§11) rolls the HUD out to every view (the local run, the typed-approval panel, the hosted live session, the failure and honest-empty states, the tables) and adds the deterministic briefing, the evidence drill-down and the live mission track. **Slice 1 of the story layout (§12, branch `ui-story`)** reorganizes the views into four pages and the Overview & Cases story; plain English by default, Expert view on demand.
 
 Skills read before this spec: Anthropic `frontend-design`, Streamlit `developing-with-streamlit` 1.66.0 (`SKILL.md`, `references/theme.md`), Addy `frontend-ui-engineering` (`docs/TOOLING.md` "UI HUD pass skills").
 
@@ -401,3 +401,76 @@ The three beats in the verdict bar (and step 2's diagrams) play once per case pe
 ### 12.7 Evidence
 
 `runs/ui-story/screens/` (git-ignored; settled full-page captures, top to bottom, at 1440 × 900, 1280 × 800 and 390 × 844): `s12_01_overview_{live6,harflawed,harclean}`, `s12_02_live6_step{1..5}`, `s12_03_live6_expert`, `s12_04_try_it_live_unavailable`, `s12_05_{agent_vs_model,how_it_works}`, `s12_06_tampered_live6`. Full suite: `runs/ui-story/full.log`.
+
+## 13. Slice 2 (2026-10-20; branch `ui-story`)
+
+Everything in §1–§12 still applies. No engine, evaluator, policy, provider, spending, approval or verification logic changed: the tamper demo and the comparison page call the existing `atlas.ui.recorded.verify` and `atlas.ui.artifacts.sha256_file` unchanged. All new copy is in `src/atlas/ui/copy.py` (section "Slice 2"); `test_the_new_modules_carry_no_inline_sentence` checks `versus.py`, `limits.py` and `tamper.py` as slice 1's test checks `story.py` and the page files.
+
+### 13.1 Slice 1 fixes
+
+- **A1, the case card's label.** Streamlit pulls every Markdown block up by 1rem at its bottom (`margin-bottom: -1rem` on `stMarkdownContainer`). That pull-up ate the card's 12 px bottom padding, so "Showing this case" (the card's last line) ran 2 px past the card's bottom edge at 1440 × 900 and 1280 × 800. The card body now keeps its full height (`.st-key-case-body-* [data-testid=stMarkdownContainer] { margin-bottom: 0 }`). Scenario 14 measures, at 1920, 1440, 1366, 1280, 1024, 800 and 390 px wide and for each selected case, that the label and every card's last line end above the card's bottom padding.
+- **A2, step 4 of an audit-script run.** When every recorded approval has the T-09 audit script's approval reason (`t09_task_authorized_original`, `story.SCRIPT_REASONS`), no model proposed anything, the run is not live, and only the original ran, in the isolated Docker runner, the step 4 summary is "No AI agent took part: the audit script approved and ran the original in the isolated Docker runner." The approval line in the body reads "approved by the audit script, without a typed confirmation". The rule follows the recorded reason, not the case name: a renamed copy still matches, and the same run with any other reason does not.
+
+### 13.2 AI Agent vs. Model Alone (`atlas.ui.versus`)
+
+- **Data:** only `evaluation/results/t11-live-20261019/` (`results.md`, `scores.json`, `suite.json`) and `evaluation/expected.json`.
+- **Gate:** before anything is shown, `versus.verify` recomputes each result file's SHA-256 and compares it with the table in that folder's `README.md`. `expected.json` is compared with the hash `suite.json` recorded for it (`inputs`). Any difference, or a missing file, draws only the evidence-changed panel: the code, the count of differing files, their table and the gate note. No result number, chart, caveat, finding, cost or review line appears. This detects changes since recording; it does not authenticate files whose recorded hashes were rewritten too.
+- **Order (plain view):**
+  1. The question.
+  2. One setup sentence.
+  3. **The caveats**, always visible (no expander): development cases; the flaw text the model could read; ATLAS evaluated once per case (deterministic by design); invalid replies unscored; small numbers; data seen by ATLAS but not by the model.
+  4. The chart.
+  5. The data table.
+  6. "What this means": findings 1, 2, 3, 5 and 6 of docs/EVALUATION.md "Findings (descriptive)", **copied exactly** (`copy.T11_FINDINGS`; a test compares them with the document). Expert view shows all seven.
+  7. A line mapping leg (a) and leg (b) to ATLAS and the model alone.
+  8. The cost ("estimate, not billing").
+  9. "Claims reviewed by Gemini (2026-10-19)".
+  10. The intact count.
+- **Expert view adds:** the run folder, model, seed and policy; the file and hash table; the expected IDs per case; ATLAS per case; every model-alone trial; the totals; the sources.
+- **The chart** (dataviz skill, followed):
+  - **Form:** three measures in different units, so the chart is one figure of three small panels, each with its own axis from zero (never a dual axis).
+  - **Panels:** predeclared violations found (as a share: ATLAS 8 of 8 assessable; the model alone 19 of 20 on the same 8 and 19 of 23 overall); false alarms (0 vs 2); invalid answers (none vs 3 of 12, on an axis of the 12 scheduled replies).
+  - **Data:** every value comes from `scores.json` (`versus.figures`). "On the same 8" is the expected IDs minus ATLAS's coverage gaps, scored over the valid trials.
+  - **Colour and labels:** emphasis form, ATLAS in the one accent `#67E8F9` and the model in neutral `#94A3B8`. Values are printed at the bar ends in text colours (inside the bar in dark ink when it would overflow on phones). The legend is always present. Bars are 18 px with a 4 px rounded data end and square at the baseline; hairline solid grid. No 3D, no motion.
+  - **Accessibility:** `role="img"` with `<title>` and a `<desc>` text alternative, a `<title>` tooltip per bar, and the data table.
+  - **Layouts:** two (wide: labels left; narrow, under 640 px: labels above), switched by CSS.
+  - **Palette validator** (`validate_palette.js`, run in a headless browser on #0F1720 and #0A0F14):
+    - pass: CVD separation ΔE 15.2 (deutan), normal-vision ΔE 18.2, contrast 12.4:1 and 7.0:1;
+    - fail, expected for this form: the categorical lightness band and chroma floor (the gray is the de-emphasis colour by design; the accent is the design system's own).
+
+### 13.3 How It Works & Limits (`atlas.ui.limits`)
+
+- **How it works**, in five short steps: the evaluation is run; deterministic checks decide; the AI may propose a revision, which ATLAS does not trust; a human approves by typing the code hash; the revision runs sealed and is re-checked by the same checks.
+- **The diagram:** a static diagram of those steps, labelled "Diagram", with no number. Its only motion is one 400 ms fade the first time it is shown in a session (`limits_diagram_played`), never under reduced motion.
+- **Safety in plain words:** six items. Isolated Docker runner; typed approval bound to the code hash; the AI's text is never evidence; spending reserved before every request, with caps; the hosted demo executes nothing; recorded runs re-verified before display.
+- **Limits:** the 13 README "Limitations" in plain words (`copy.LIMITS_PLAIN`; none weakened; a test checks the count and each item's key terms). Expert view adds each item's original wording, read from README.md at render time so the two cannot drift.
+- **What ATLAS does not do:** it does not prove a claim true; it does not check data collection or labelling; it supports small tabular classification with three claim types.
+- **Expert view** cites each item's README, SPEC or HOSTED_OPERATIONS section.
+
+### 13.4 The tamper demo (`atlas.ui.tamper`; Overview, below the verdict bar)
+
+- **Where:** a bordered "Try tampering" panel, in plain and Expert view, drawn only after the case passed the gate.
+- **Files:** the visitor picks one file from a short fixed list (`copy.TAMPER_FILES`), offered only when the run recorded a hash for it:
+
+  | Case | Files offered |
+  | --- | --- |
+  | live6 | `original/outcome.json`, `candidates/c1/outcome.json`, `original/execution.json`, `agent_log.jsonl` |
+  | HAR flawed and HAR clean | `original/outcome.json`, `original/execution.json`, `agent_log.jsonl` |
+
+- **One run of the demo (`run_demo`):**
+  1. Scan the run without following links. A symbolic link or other reparse point refuses the demo, and so does a total size over 50 MB (fixed messages).
+  2. Verify the original (it must be intact) and hash every file.
+  3. Copy the run to `tempfile.mkdtemp(prefix="atlas-tamper-")`, refused if inside the repository.
+  4. Change the chosen file's **last byte** (a line break becomes a space, which keeps the JSON valid, so exactly that file's hash differs).
+  5. Run `verify` on the copy.
+  6. Delete the temporary directory in a `finally` (also on an error).
+  7. Verify the original again: every file's hash must equal step 2's. Otherwise `OriginalChanged`, and nothing from the demo is shown.
+- **What the page shows:** the real result, for example "1 of 49 recorded items differ: the original's recorded result — outcome withheld". Expert view names the item and shows the recorded and recomputed hashes. Then the statement "This copied the recorded run, changed one byte in the copy, and ran the real check on it. The original recording is untouched.", the byte changed, and the original's re-check ("49 of 49 recorded items verified, and every one of its 85 files is byte-for-byte unchanged"). An error shows one fixed message, never exception text.
+- **Limits:** one demo at a time per session (a non-blocking lock) and at most 5 per session per hour (`tamper.SessionLimit`, in the session state); runs over 50 MB are refused.
+- **Nothing executes except hashing:** no project code, no subprocess, no network. Hosted mode therefore needs no execution guard on this path, and `refuse_if_hosted` is not called, because nothing it guards runs. A test runs the demo with ATLAS_HOSTED=1 under a tripwire on `subprocess`, `os.system`, `socket.connect` and `refuse_if_hosted`.
+
+### 13.5 Evidence
+
+- **Screenshots:** `runs/ui-story/screens2/` (git-ignored; settled full-page captures at 1440 × 900, 1280 × 800 and 390 × 844): `s14_01_overview_live6`, `s14_02_harflawed_step4`, `s14_03_agent_vs_model_{plain,expert}`, `s14_04_how_it_works_{plain,expert}`, `s14_05_tamper_{before,after}_live6`.
+- **Tests:** `tests/unit/test_ui_slice2.py`, `tests/acceptance/test_scenario14_slice2.py`.
+- **Full suite:** `runs/ui-story/full2.log`.
