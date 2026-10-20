@@ -1,6 +1,6 @@
 # Third-party notices
 
-ATLAS itself is Apache-2.0-licensed (see `LICENSE` and `NOTICE`). It depends on the packages below and ships vendored agent skills and cites one dataset. This file is a first draft for the release check (T-13); it is not legal advice.
+ATLAS itself is Apache-2.0-licensed (see `LICENSE` and `NOTICE`). It depends on the packages below, ships vendored agent skills and fonts, and cites one dataset. This file is a first draft for the release check (T-13); it is not legal advice.
 
 How the licenses were read: the runtime list is the 56 pinned lines of `requirements.txt` (`uv export --frozen --no-dev --no-hashes` of `uv.lock`; `docs/HOSTED_OPERATIONS.md` §9). Versions are those pins. Licenses come from each package's installed metadata (`importlib.metadata`, offline, from the Python 3.11 environment), in this order: the `License-Expression` field, else the `License` field, else the license classifier. Where a package gave none of them, the cell says `[TODO]`. A license text that the metadata only names, and that was not read in full, is not reproduced here.
 
@@ -97,6 +97,18 @@ These folders are byte-for-byte copies from pinned upstream commits (`docs/TOOLI
 The shared reference files copied with the Addy skills (`.claude/references/` and `.agents/references/`: `security-checklist.md`, `performance-checklist.md`, `testing-patterns.md`, `accessibility-checklist.md`) carry the same MIT license (`LICENSE` in each folder).
 
 The Streamlit repository also has a `NOTICES` file; it lists third-party software contained in the Streamlit product, none of which is in the vendored skill folder, so it is not copied (`docs/TOOLING.md` "UI HUD pass skills").
+
+## Fonts (vendored, served by the app)
+
+The UI's typefaces are vendored in `static/fonts/` and served by Streamlit's static file serving (`[server] enableStaticServing = true`, `[[theme.fontFaces]]` in `.streamlit/config.toml`); nothing is fetched at runtime. The files are unmodified copies of the `fonts/complete/woff2/` files in IBM's npm packages, each tarball checked against the registry's published sha1 and sha512 integrity before extraction (2026-10-19). The OFL text is the packages' `LICENSE.txt` (identical in all three), copied byte-for-byte as `static/fonts/OFL.txt` (marked `-text` in `.gitattributes`).
+
+| Family | Files | Source | License |
+| --- | --- | --- | --- |
+| IBM Plex Sans | `IBMPlexSans-Regular`, `-Italic`, `-Medium`, `-SemiBold` (`.woff2`) | `@ibm/plex-sans` 1.1.0 (npm sha1 `44a45a8e269870221c431eb4e8023dca6ed21ceb`) | SIL Open Font License 1.1 |
+| IBM Plex Mono | `IBMPlexMono-Regular`, `-Medium`, `-SemiBold` | `@ibm/plex-mono` 2.5.0 (npm sha1 `152c0b1dda619ef5f032db258bda798cf278125e`) | SIL Open Font License 1.1 |
+| IBM Plex Sans Condensed | `IBMPlexSansCondensed-Medium`, `-SemiBold` | `@ibm/plex-sans-condensed` 2.0.0 (npm sha1 `f63bd37ab0028a15948bdf913ba88260c3809d63`) | SIL Open Font License 1.1 |
+
+Copyright © 2017 IBM Corp. with Reserved Font Name "Plex". The files are distributed unmodified and under their own name, as the OFL's Reserved Font Name clause requires; they are not sold by themselves. Repository: https://github.com/IBM/plex.
 
 ## Data
 

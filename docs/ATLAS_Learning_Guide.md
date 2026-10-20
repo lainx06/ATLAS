@@ -589,6 +589,7 @@ These were bounded reproductions. The review did not demonstrate a container esc
 | `scripts/nebius_smoke.py` | How does a bounded model request work? |
 | `benchmarks/t01/`, `benchmarks/t02/` | Which small synthetic fixtures demonstrate each rule? |
 | `tests/unit/`, `tests/integration/` | What behavior has executable evidence? |
+| `src/atlas/ui/hud.py`, `docs/UI_DESIGN_HUD.md` | How does the recorded-run page draw its "HUD" (integrity ring, outcome reticles, leak map, fit-scope flow) only from hash-verified files? (Branch `ui-hud`, phase 1: implemented and self-tested, **not reviewed**) |
 
 Do not start by reading every line. Trace one input to one output. For each function, identify its inputs, return value, side effects, callers, assumptions and failure cases.
 

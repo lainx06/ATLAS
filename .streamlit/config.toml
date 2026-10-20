@@ -1,4 +1,5 @@
-# ATLAS UI theme (docs/UI_SPEC.md §7). Native theming; the only CSS is views.CSS.
+# ATLAS UI theme: the HUD visual system (docs/UI_DESIGN_HUD.md §2). Native theming plus the
+# documented st-key-* CSS in views.CSS and the HUD's own markup (atlas.ui.hud).
 
 [browser]
 gatherUsageStats = false  # no telemetry: the UI makes no outbound calls
@@ -7,49 +8,118 @@ gatherUsageStats = false  # no telemetry: the UI makes no outbound calls
 headless = true
 address = "localhost"  # local only; also skips Streamlit's external-IP lookup at startup
 runOnSave = false
+enableStaticServing = true  # serves static/ (the vendored IBM Plex fonts) at app/static/
 
 [client]
 toolbarMode = "minimal"
 
 [theme]
-base = "light"
-primaryColor = "#1D4ED8"
-backgroundColor = "#FAFAF9"
-secondaryBackgroundColor = "#F5F5F4"
-textColor = "#1C1917"
-borderColor = "#E7E5E4"
-linkColor = "#1D4ED8"
-codeBackgroundColor = "#F5F5F4"
-codeTextColor = "#1C1917"
-# Streamlit's bundled faces (served locally, no web-font fetch; UI_SPEC §12).
-font = "sans-serif"
-codeFont = "monospace"
+base = "dark"
+primaryColor = "#67E8F9"  # the one accent: interactive elements and "verified" signals
+backgroundColor = "#0A0F14"
+secondaryBackgroundColor = "#0F1720"
+textColor = "#E2E8F0"
+borderColor = "#1E2A36"
+linkColor = "#67E8F9"
+codeBackgroundColor = "#0A0F14"
+codeTextColor = "#E2E8F0"
+# Vendored IBM Plex (SIL OFL 1.1, static/fonts/OFL.txt); nothing is fetched at runtime.
+font = "IBM Plex Sans, sans-serif"
+headingFont = "IBM Plex Sans, sans-serif"
+codeFont = "IBM Plex Mono, monospace"
 baseFontSize = 15
 codeFontSize = "13px"
 headingFontSizes = ["22px", "18px", "16px", "15px", "14px", "13px"]
 headingFontWeights = [600, 600, 600, 600, 600, 600]
-baseRadius = "6px"
-buttonRadius = "6px"
+baseRadius = "4px"
+buttonRadius = "4px"
 showWidgetBorder = true
 showSidebarBorder = true
 linkUnderline = false
-# Status colours (meaning only; always printed with their code).
-redColor = "#B91C1C"
-greenColor = "#15803D"
-orangeColor = "#B45309"
-violetColor = "#7E22CE"
-grayColor = "#44403C"
-blueColor = "#1D4ED8"
-# Text in these colours uses the exact spec values (Streamlit otherwise derives darker
-# shades; NOT_SUPPORTED rendered near-black). All pass 4.5:1 on white.
-redTextColor = "#B91C1C"
-greenTextColor = "#15803D"
-orangeTextColor = "#B45309"
-violetTextColor = "#7E22CE"
-grayTextColor = "#44403C"
-blueTextColor = "#1D4ED8"
-dataframeBorderColor = "#E7E5E4"
+paddingTop = "0.5rem"
+# Status colours (meaning only; always printed with their code). Text in these colours uses
+# the exact spec values; badge and alert backgrounds are the colour at 14 % over the panel.
+redColor = "#F87171"
+greenColor = "#4ADE80"
+orangeColor = "#FBBF24"
+violetColor = "#C084FC"
+grayColor = "#A8A29E"
+redTextColor = "#F87171"
+greenTextColor = "#4ADE80"
+orangeTextColor = "#FBBF24"
+violetTextColor = "#C084FC"
+grayTextColor = "#A8A29E"
+redBackgroundColor = "#30242B"
+greenBackgroundColor = "#17332D"
+orangeBackgroundColor = "#302F21"
+violetBackgroundColor = "#28263F"
+grayBackgroundColor = "#242A32"
+# Blue carries no meaning here (LIVE RUN, Recorded run, stage labels): the neutral text
+# colour, so the accent stays reserved.
+blueColor = "#E2E8F0"
+blueTextColor = "#E2E8F0"
+blueBackgroundColor = "#2D343D"
+dataframeBorderColor = "#1E2A36"
 
 [theme.sidebar]
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#FAFAF9"
+backgroundColor = "#0F1720"
+secondaryBackgroundColor = "#0A0F14"
+codeBackgroundColor = "#0A0F14"
+textColor = "#E2E8F0"
+borderColor = "#1E2A36"
+primaryColor = "#67E8F9"
+linkColor = "#67E8F9"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-Regular.woff2"
+weight = 400
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-Italic.woff2"
+weight = 400
+style = "italic"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-Medium.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans"
+url = "app/static/fonts/IBMPlexSans-SemiBold.woff2"
+weight = 600
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Mono"
+url = "app/static/fonts/IBMPlexMono-Regular.woff2"
+weight = 400
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Mono"
+url = "app/static/fonts/IBMPlexMono-Medium.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Mono"
+url = "app/static/fonts/IBMPlexMono-SemiBold.woff2"
+weight = 600
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans Condensed"
+url = "app/static/fonts/IBMPlexSansCondensed-Medium.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "IBM Plex Sans Condensed"
+url = "app/static/fonts/IBMPlexSansCondensed-SemiBold.woff2"
+weight = 600
+style = "normal"

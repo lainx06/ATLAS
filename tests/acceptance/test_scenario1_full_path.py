@@ -212,17 +212,17 @@ def test_banner_cost_and_export_hashes(finished):
 
 
 def test_the_documented_css_hooks_apply(finished):
-    """UI_SPEC §7 and §12: white cards and the tinted model-written panel, via st-key-* only."""
+    """UI_DESIGN_HUD §2 and UI_SPEC §12: panel cards and the inset model-written frame, via
+    st-key-* only."""
     page, *_ = finished
     style = "el => getComputedStyle(el).backgroundColor"
-    assert page.locator(".st-key-card-finding").evaluate(style) == "rgb(255, 255, 255)"
+    assert page.locator(".st-key-card-finding").evaluate(style) == "rgb(15, 23, 32)"
     assert (
-        page.locator(".st-key-model-rationale-1").evaluate(style)
-        == "rgb(245, 245, 244)"
+        page.locator(".st-key-model-rationale-1").evaluate(style) == "rgb(10, 15, 20)"
     )
     red = (
         page.locator(".st-key-headline-original h2")
         .get_by_text("VIOLATION_FOUND", exact=True)
         .evaluate("el => getComputedStyle(el).color")
     )
-    assert red == "rgb(185, 28, 28)"  # #B91C1C, always next to the printed code
+    assert red == "rgb(248, 113, 113)"  # #F87171, always next to the printed code

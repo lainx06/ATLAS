@@ -1,9 +1,10 @@
 """Page sections for app.py. Each renders artifact values with the spec's labels (§1, §4).
 
-Styling is Streamlit's theme (`.streamlit/config.toml`) plus the one documented CSS block in
-`inject_css`, which targets only `st-key-*` classes (a container's `key` becomes the class
-`st-key-<key>`, per `st.container`'s documentation). Status colours always sit next to the
-printed code, never instead of it.
+Styling is Streamlit's theme (`.streamlit/config.toml`, the HUD visual system of
+docs/UI_DESIGN_HUD.md) plus the documented CSS block in `inject_css`, which targets only
+`st-key-*` classes (a container's `key` becomes the class `st-key-<key>`, per `st.container`'s
+documentation), and the HUD's own markup (`atlas.ui.hud`). Status colours always sit next to
+the printed code, never instead of it.
 """
 
 import json
@@ -14,17 +15,28 @@ import streamlit as st
 
 from atlas.agent.approval import CONFIRM_CHARS, inert
 from atlas.ui import artifacts as A
+from atlas.ui import hud as H
 from atlas.ui.recorded import CHANGED
 
 CSS = """
 <style>
-/* Cards: white surface on the #FAFAF9 page (UI_SPEC §7). Only st-key-* hooks. */
-[class*="st-key-card-"] { background: #FFFFFF; padding: 16px 24px 20px; }
-/* Model-written text: tinted panel (#F5F5F4) with its tag (UI_SPEC §1.2, §7). */
-[class*="st-key-model-"] { background: #F5F5F4; padding: 12px 16px; border-radius: 6px; }
+/* Cards: the #0F1720 panel on the #0A0F14 page, with the theme's 1 px #1E2A36 hairline
+   (UI_DESIGN_HUD §2). Only st-key-* hooks. */
+[class*="st-key-card-"] { background: #0F1720; padding: 16px 20px 20px; }
+/* Model-written text: a subdued dashed frame on the page colour; the full amber only on the
+   header badge (UI_SPEC §1.2, UI_DESIGN_HUD §4.6). Diffs are model-written too. */
+[class*="st-key-model-"], [class*="st-key-scroll-diff-"] { background: #0A0F14;
+  border: 1px dashed rgba(251, 191, 36, 0.35); border-radius: 4px; padding: 12px 16px; }
 /* The blocking approval panel: accent outline so it cannot be mistaken for a result. */
-.st-key-approval-panel { background: #FFFFFF; outline: 2px solid #1D4ED8;
+.st-key-approval-panel { background: #0F1720; outline: 2px solid #67E8F9;
   outline-offset: -2px; padding: 16px 24px 20px; }
+/* The banner: a compact strip; the recorded page sits tighter so its hero fits the first
+   viewport (UI_DESIGN_HUD §3.1). */
+.st-key-banner { background: #0F1720; gap: 2px; padding: 6px 14px; }
+.st-key-hud-page { gap: 0.75rem; }
+.st-key-hud-page h1 { padding: 0.25rem 0 0; }
+/* Primary buttons: dark text on the accent (Streamlit draws white text, 1.45:1). */
+[class*="st-key-primary-"] button, [class*="st-key-primary-"] button p { color: #0A0F14; }
 /* Wide diffs and tables scroll inside their own region (UI_SPEC §7 viewports). */
 [class*="st-key-scroll-"] { overflow-x: auto; }
 /* Hashes in trace and export tables wrap instead of being clipped (never truncated). */
@@ -35,6 +47,7 @@ CSS = """
 
 def inject_css() -> None:
     st.html(CSS)
+    st.html(H.CSS)
 
 
 def _count(value) -> str:
@@ -72,32 +85,49 @@ def banner(report: dict | None, run_name: str | None, mode: str | None) -> None:
             st.caption(f"Run `{run_name}`")
 
 
-def recorded_banner(report: dict | None, label: str, finished_utc: str | None) -> None:
-    """A recorded run's own LIVE or NON-LIVE label, and that it is not re-executed here."""
+def recorded_banner(
+    report: dict | None,
+    label: str,
+    finished_utc: str | None,
+    notes: tuple[str, ...] = (),
+) -> None:
+    """A recorded run's own LIVE or NON-LIVE label, and that it is not re-executed here.
+    `notes` (the hosted replay disclosure, a dataset citation) follow as captions; with a
+    note, the run line is shortened, since the replay disclosure says nothing runs here."""
     with st.container(key="banner", border=True):
         if report is not None:
             live = report.get("live") is True
             tag = ":blue-badge[LIVE RUN]" if live else ":gray-badge[NON-LIVE RUN]"
-            st.markdown(
-                f"{tag} mode `{report.get('mode')}`, live `{report.get('live')}`"
-            )
-            st.caption(report.get("banner", ""))
+            mode = f"{tag} mode `{report.get('mode')}`, live `{report.get('live')}`"
         else:
-            st.markdown(":gray-badge[Deterministic audit: no model]")
+            mode = ":gray-badge[Deterministic audit: no model]"
+        # One line: the run's own LIVE or NON-LIVE label, then the recorded label.
         with st.container(key="recorded-label"):
             st.markdown(
-                f":violet-badge[Recorded run] Recorded run, finished "
+                f"{mode} &ensp; :blue-badge[Recorded run] Recorded run, finished "
                 f"{A.short_time(finished_utc)}; not re-executed here"
             )
-        st.caption(
-            f"Run `{label}`, opened read-only: nothing executes and no approval is asked."
-        )
+        if report is not None:
+            st.caption(report.get("banner", ""))
+        if notes:
+            st.caption(f"Run `{label}`. {notes[0]}")
+            for note in notes[1:]:
+                st.caption(note)
+        else:
+            st.caption(
+                f"Run `{label}`, opened read-only: nothing executes and no approval is "
+                "asked."
+            )
 
 
-def integrity(checks: list, ok: bool) -> None:
-    """The recorded hashes, recomputed from the files on disk before anything is shown."""
+def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
+    """The recorded hashes, recomputed from the files on disk before anything is shown.
+    `ring` is the HUD integrity ring's markup (`atlas.ui.hud.ring`), shown first."""
     with st.container(key="card-integrity", border=True):
         st.subheader("Recorded evidence")
+        if ring is not None:
+            with st.container(key="hud-ring"):
+                st.markdown(ring, unsafe_allow_html=True)
         rows = [
             {
                 "result": c.status,
@@ -152,8 +182,10 @@ def outcome_headline(code: str | None, key: str, title: str) -> None:
 
 
 def model_text(text: str, label: str, key: str) -> None:
+    """Model-written text in its frame: a native header (badge and the engine's label), then
+    the untrusted text as a plain `st.text` element, never parsed as HTML or Markdown."""
     with st.container(key=key):
-        st.markdown(":gray-badge[model-written]")
+        st.markdown(H.MODEL_BADGE_MARKDOWN)
         st.caption(label)
         st.text(text)
 
@@ -203,27 +235,15 @@ def trace(
     report: dict | None,
     approvals_seen: list[dict],
     collapsed: bool | None = None,
+    summary: bool = True,
 ) -> None:
-    """Stages and budget always; the tables inline (collapsed None) or in an expander."""
+    """Stages and budget (unless `summary` is False: the HUD mission track shows them), then
+    the tables inline (collapsed None) or in an expander."""
     t = A.trace(events)
     limits = ((report or {}).get("budget") or {}).get("limits") or {}
     used = ((report or {}).get("budget") or {}).get("used") or {}
-    with st.container(key="trace-stages"):
-        st.markdown("**Stages**")
-        st.markdown(
-            " ".join(state_badge(s["state"]) for s in t.states) or "Not started yet."
-        )
-    cols = st.columns(3)
-    attempts = used.get("attempts", len(t.attempts))
-    cols[0].metric("Model attempts", f"{attempts} of {limits.get('model_attempts', 6)}")
-    cols[1].metric(
-        "Tool operations",
-        f"{used.get('tool_operations', len(t.tools))} of {limits.get('tool_operations', 12)}",
-    )
-    cols[2].metric(
-        "Revisions",
-        f"{used.get('revisions', 0)} of {limits.get('candidate_revisions', 2)}",
-    )
+    if summary:
+        _trace_summary(t, limits, used)
     if report is not None:
         budget = report.get("budget") or {}
         st.caption(
@@ -249,6 +269,25 @@ def trace(
             "Agent trace: model attempts, tool calls, approvals", expanded=not collapsed
         ):
             trace_tables(t)
+
+
+def _trace_summary(t: "A.Trace", limits: dict, used: dict) -> None:
+    with st.container(key="trace-stages"):
+        st.markdown("**Stages**")
+        st.markdown(
+            " ".join(state_badge(s["state"]) for s in t.states) or "Not started yet."
+        )
+    cols = st.columns(3)
+    attempts = used.get("attempts", len(t.attempts))
+    cols[0].metric("Model attempts", f"{attempts} of {limits.get('model_attempts', 6)}")
+    cols[1].metric(
+        "Tool operations",
+        f"{used.get('tool_operations', len(t.tools))} of {limits.get('tool_operations', 12)}",
+    )
+    cols[2].metric(
+        "Revisions",
+        f"{used.get('revisions', 0)} of {limits.get('candidate_revisions', 2)}",
+    )
 
 
 def trace_tables(t: "A.Trace") -> None:
@@ -368,7 +407,8 @@ def approval_panel(channel: Path, pending: dict) -> None:
                 "anything else declines",
                 key=f"{form_key}-typed",
             )
-            submitted = st.form_submit_button("Submit confirmation", type="primary")
+            with st.container(key="primary-submit-confirmation"):
+                submitted = st.form_submit_button("Submit confirmation", type="primary")
         if submitted:
             answer(channel, pending["seq"], typed)
             st.rerun()

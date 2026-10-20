@@ -21,9 +21,9 @@ from helpers import (
     wait_finished,
 )
 
-GREEN = "rgb(21, 128, 61)"  # #15803D, the PASS / NO_VIOLATION_FOUND colour
-AMBER = "rgb(180, 83, 9)"  # #B45309, INCONCLUSIVE / NOT_ASSESSED
-STONE = "rgb(68, 64, 60)"  # #44403C, NOT_SUPPORTED
+GREEN = "rgb(74, 222, 128)"  # #4ADE80, the PASS / NO_VIOLATION_FOUND colour
+AMBER = "rgb(251, 191, 36)"  # #FBBF24, INCONCLUSIVE / NOT_ASSESSED
+STONE = "rgb(168, 162, 158)"  # #A8A29E, NOT_SUPPORTED
 
 
 def agent_run(page, app, project: str, approvals: int = 1):

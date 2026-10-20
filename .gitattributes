@@ -4,5 +4,7 @@ tests/fixtures/** -text
 *.jpg binary
 *.parquet binary
 *.zip binary
+*.woff2 binary
 demo/recorded/** -text
 evaluation/results/** -text
+static/fonts/OFL.txt -text

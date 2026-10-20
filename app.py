@@ -314,7 +314,7 @@ with st.container(key="card-claim", border=True):
                     type="primary",
                     disabled=running or unavailable is not None,
                     on_click=start_run,
-                    key="confirm-run",
+                    key="primary-confirm-run",
                 )
                 st.button(
                     "Agent, live",

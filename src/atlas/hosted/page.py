@@ -97,6 +97,8 @@ def main() -> None:
     reason = hs.availability(secret)
     handle: LiveHandle | None = st.session_state.get("hosted_live")
     running = handle is not None and handle.active
+    runs = {r.label: r for r in bundle.list_bundle()}
+    run = None
     with st.sidebar:
         st.markdown("## ATLAS")
         st.caption("Checks whether an evaluation supports its deployment claim.")
@@ -109,8 +111,13 @@ def main() -> None:
             ),
             disabled=running,
         )
+        # The run picker sits here so the recorded run's hero fits the first viewport.
+        if st.session_state.hosted_view == RECORDED_VIEW and runs:
+            run = runs[
+                st.selectbox("Recorded run", list(runs), key="hosted_recorded_run")
+            ]
         st.markdown("**Capability**")
-        st.markdown(":violet-badge[Hosted demo: limited]")
+        st.markdown(":blue-badge[Hosted demo: limited]")
         st.caption(
             f"Candidate code is {NOT_EXECUTED_HERE}; the full workflow runs locally."
         )
@@ -120,23 +127,21 @@ def main() -> None:
             st.markdown(":gray-badge[Live: unavailable]")
             st.caption(hs.UNAVAILABLE_MESSAGE)
     if st.session_state.hosted_view == RECORDED_VIEW:
-        recorded_view()
+        recorded_view(run)
     else:
         live_view(secret, reason, handle)
 
 
-def recorded_view() -> None:
-    runs = {r.label: r for r in bundle.list_bundle()}
-    with st.container(key="hosted-replay", border=True):
-        st.markdown(":violet-badge[Recorded runs] " + REPLAY_DISCLOSURE)
-        if not runs:
+def recorded_view(run: RR.RecordedRun | None) -> None:
+    """The replay disclosure (and the HAR citation for HAR runs) sits in the run's banner, so
+    the hero fits the first viewport."""
+    if run is None:
+        with st.container(key="hosted-replay"):
+            st.markdown(":blue-badge[Recorded runs] " + REPLAY_DISCLOSURE)
             st.markdown("No recorded runs are bundled.")
-            return
-        choice = st.selectbox("Recorded run", list(runs), key="hosted_recorded_run")
-    run = runs[choice]
-    if run.project.startswith("har_"):
-        st.caption(HAR_CITATION)
-    R.recorded_page(run)
+        return
+    har = (HAR_CITATION,) if run.project.startswith("har_") else ()
+    R.recorded_page(run, bundled=True, notes=(REPLAY_DISCLOSURE, *har))
 
 
 def _label() -> str:
@@ -217,7 +222,10 @@ def _start_form(secret, reason: str | None, intact: bool) -> None:
                 type="password",
                 help="Judges use their private code; leave it empty for the public demo.",
             )
-            submitted = st.form_submit_button("Start the live session", type="primary")
+            with st.container(key="primary-start-live"):
+                submitted = st.form_submit_button(
+                    "Start the live session", type="primary"
+                )
         if submitted:
             handle = LiveHandle(hs.runs_root() / uuid.uuid4().hex[:12])
             st.session_state.hosted_live = handle

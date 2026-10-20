@@ -4,7 +4,9 @@ value is read from the run's own files; nothing here executes or decides an outc
 
 The cards render into one clearable placeholder (T-12 fix pass 2). If rendering raises, the
 placeholder is cleared, so no headline or partial result remains, and one fixed error is shown
-instead; the event is logged by a fixed code only. The saved run record is never touched.
+instead; the event is logged by a fixed code only. The saved run record is never touched. A
+recorded run's HUD (`atlas.ui.hud`: the hero, the leak map, the fit-scope flow, the check
+matrix) renders inside the same placeholder, so a failure clears it too.
 """
 
 import logging
@@ -14,6 +16,7 @@ from pathlib import Path
 import streamlit as st
 
 from atlas.ui import artifacts as A
+from atlas.ui import hud as H
 from atlas.ui import recorded as R
 from atlas.ui import views as V
 from atlas.ui.catalogue import BY_NAME
@@ -25,22 +28,76 @@ RENDER_FAILED = (
     "recorded-run viewer."
 )
 RENDER_FAILED_EVENT = "results_render_failed"
+HUD_PLAYED = "hud_played"  # session key: the run IDs whose first-load motion has played
 _log = logging.getLogger(__name__)
 
 
-def recorded_page(run: R.RecordedRun) -> None:
-    """A recorded run, read-only: integrity first, then the same cards as a finished run."""
+def recorded_page(
+    run: R.RecordedRun, *, bundled: bool = False, notes: tuple[str, ...] = ()
+) -> None:
+    """A recorded run, read-only: integrity first, then the HUD and the same cards as a
+    finished run. `bundled`: the run is in the hosted demo bundle (the ring's caption says so);
+    `notes` go into the banner (the hosted replay disclosure and dataset citation).
+
+    The first-load motion plays once per run per session: the run's ID is remembered in the
+    session, and every later rerun renders the final state."""
     report = (
         A.read_json(run.path / "agent_report.json") if run.kind == R.AGENT else None
     )
     checks = R.verify(run.path, report)
     ok = R.intact(checks)
     finished_utc, _source = R.finished(run, report)
-    V.recorded_banner(report, run.label, finished_utc)
-    st.title("Does the evaluation support the claim?")
-    V.integrity(checks, ok)
-    if not ok:
-        return  # nothing from changed evidence, and no outcome headline
+    played_runs = st.session_state.setdefault(HUD_PLAYED, set())
+    played = run.label in played_runs
+    with st.container(key="hud-page"):
+        if not played:
+            st.html(H.once_css(played))
+        V.recorded_banner(report, run.label, finished_utc, notes)
+        st.title("Does the evaluation support the claim?")
+        if not ok:
+            # Nothing from changed evidence: the ring and the table, no outcome, no diagram.
+            ring = H.ring(
+                checks,
+                H.Ids(H.run_hash(run.label)),
+                played=played,
+                phrase=_ring_phrase(bundled),
+            )
+            V.integrity(checks, ok, ring=ring)
+            played_runs.add(run.label)
+            return
+        hud = (
+            H.build(run.path, report, checks, run.label, bundled=bundled)
+            if run.kind == R.AGENT
+            else None
+        )
+        if hud is None:
+            V.integrity(checks, ok)
+        fixture = BY_NAME.get(run.project)
+        finished_run(
+            run.path,
+            report,
+            run.kind,
+            decisions=R.logged_decisions(A.read_log(run.path)),
+            notes=fixture.notes if fixture else (),
+            hud=hud,
+            played=played,
+            preamble=lambda: _recorded_preamble(run, checks, hud is not None),
+        )
+    played_runs.add(run.label)
+
+
+def _ring_phrase(bundled: bool) -> str:
+    return (
+        "recomputed now from the bundled files"
+        if bundled
+        else "recomputed now from the run's files"
+    )
+
+
+def _recorded_preamble(run: R.RecordedRun, checks: list, with_integrity: bool) -> None:
+    """Below the HUD: the integrity record (when the HUD shows the ring) and the claim."""
+    if with_integrity:
+        V.integrity(checks, True)
     with st.container(key="card-claim", border=True):
         st.subheader("1. Claim")
         source = R.claim_source(run)
@@ -61,14 +118,6 @@ def recorded_page(run: R.RecordedRun) -> None:
             )
             with st.expander("Claim fields (read-only, from the recorded manifest)"):
                 V.claim_fields(claim)
-    fixture = BY_NAME.get(run.project)
-    finished_run(
-        run.path,
-        report,
-        run.kind,
-        decisions=R.logged_decisions(A.read_log(run.path)),
-        notes=fixture.notes if fixture else (),
-    )
 
 
 def finished_run(
@@ -81,11 +130,16 @@ def finished_run(
     compare: tuple | None = None,
     on_restart: Callable[[], None] | None = None,
     original_title: str = "Original, trusted evaluator",
+    hud: H.Hud | None = None,
+    played: bool = True,
+    preamble: Callable[[], None] | None = None,
 ) -> None:
     """`compare` is (this fixture, the related fixture) for the descriptive protocol
     comparison; `on_restart` is None where nothing may be started (a recorded run).
     `original_title` labels the original's headline (the hosted page names the recorded
-    trusted evaluation, SPEC §13).
+    trusted evaluation, SPEC §13). `hud` (a recorded run's verified HUD values) draws the hero
+    and the evidence block first, with first-load motion unless `played`; `preamble` draws
+    what sits between them and the cards (the recorded run's integrity record and claim).
 
     All or nothing: a rendering failure clears every card drawn so far and shows only the
     fixed RENDER_FAILED error (no exception text). Streamlit's stop and rerun signals are not
@@ -102,6 +156,9 @@ def finished_run(
                 compare=compare,
                 on_restart=on_restart,
                 original_title=original_title,
+                hud=hud,
+                played=played,
+                preamble=preamble,
             )
     except Exception:  # noqa: BLE001 - never a partial result; the record is unchanged
         slot.empty()
@@ -119,7 +176,17 @@ def _cards(
     compare: tuple | None,
     on_restart: Callable[[], None] | None,
     original_title: str,
+    hud: H.Hud | None,
+    played: bool,
+    preamble: Callable[[], None] | None,
 ) -> None:
+    if hud is not None:
+        with st.container(key="hud-hero"):
+            st.markdown(H.hero(hud, played=played), unsafe_allow_html=True)
+        with st.container(key="hud-evidence"):
+            st.markdown(H.evidence(hud, played=played), unsafe_allow_html=True)
+    if preamble is not None:
+        preamble()
     terminal = report.get("terminal_state") if report else None
     terminal_reason = report.get("terminal_reason") if report else None
     comp = (report or {}).get("comparison") or {}
@@ -163,11 +230,17 @@ def _cards(
                 terminal in A.FAILED_STATES or terminal is None
             ):
                 st.button("Start a new run", on_click=on_restart, key="restart")
+            if hud is not None and report is not None:
+                with st.container(key="hud-track"):
+                    st.markdown(H.track(report, hud.ids), unsafe_allow_html=True)
+                with st.container(key="hud-gauge"):
+                    st.markdown(H.gauge(report, hud.ids), unsafe_allow_html=True)
             V.trace(
                 A.read_log(run_dir) if run_dir else [],
                 report,
                 decisions,
                 collapsed=terminal not in A.FAILED_STATES,
+                summary=hud is None,
             )
 
     # -- 3. Finding ---------------------------------------------------------------------------
