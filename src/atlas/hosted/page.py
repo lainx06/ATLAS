@@ -22,6 +22,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from atlas.agent.budget import DECIDED_SLICE4
 from atlas.agent.controller import NOT_EXECUTED_HERE, recorded_label
 from atlas.hosted import bundle, secrets
 from atlas.hosted import session as hs
@@ -256,7 +257,17 @@ def _start_form(secret, reason: str | None, intact: bool) -> None:
             st.rerun()
 
 
+LIVE_LIMITS = "budget.DECIDED_SLICE4 (the limits this session runs with)"
+LIT = (
+    "hosted_track_lit"  # session key: stages already lit on this page, per session run
+)
+
+
 def _follow(handle: LiveHandle) -> None:
+    """While the session runs: its mission track and budget gauge from its own log, read by
+    the page's existing one-second fragment (display only; the session is not touched). Each
+    stage lights once when it first appears. When the session ends, the fragment reruns the
+    page, which renders the finished session without it, so polling stops."""
     with st.container(key="card-analysis", border=True):
         st.subheader("Live session")
         st.markdown(
@@ -268,9 +279,34 @@ def _follow(handle: LiveHandle) -> None:
             if not handle.active:
                 st.rerun()
             d = handle.run_dir()
-            V.trace(A.read_log(d) if d else [], None, [])
+            events = A.read_log(d) if d else []
+            live_progress(events, d.name if d else handle.started_utc)
+            V.trace(events, None, [])
 
         trace()
+
+
+def live_progress(events: list[dict], run_id: str) -> None:
+    """The track and the gauge of a session still going, from its log so far."""
+    ids = HUD.Ids(HUD.run_hash(run_id), "l")
+    lit = st.session_state.setdefault(LIT, {})
+    with st.container(key="hud-track"):
+        st.markdown(
+            HUD.track_live(events, ids, lit_from=lit.get(run_id, 0)),
+            unsafe_allow_html=True,
+        )
+    with st.container(key="hud-gauge"):
+        st.markdown(
+            HUD.gauge_live(
+                events,
+                ids,
+                max_attempts=DECIDED_SLICE4["max_attempts"],
+                cap_usd=str(DECIDED_SLICE4["estimate_cap_usd"]),
+                caps_source=LIVE_LIMITS,
+            ),
+            unsafe_allow_html=True,
+        )
+    lit[run_id] = len(HUD.log_progress(events)[0])
 
 
 def _finished(handle: LiveHandle, label: str) -> None:
