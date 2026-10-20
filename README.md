@@ -167,10 +167,10 @@ Copied from `docs/SPEC.md` §15 and the acceptance records; not softened.
 - A green outcome means only that the listed assertions passed within the stated coverage.
 - Held-out cases (T-10) were cut for the submission; every detection result here is on development cases (DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)").
 - Container isolation reduces risk; it is not proof of safety, provenance integrity or scientific correctness.
-- T-06 (the live agent) was accepted within its scope with these limitations: the input-token figure is an estimate and provider enforcement and billing are unverified; model format reliability varies (schema failures in 3 of 6 live runs); raw replies are stored only from live run 3b onward; candidate-output redaction is best-effort; tested on one Windows host only.
+- T-06 (the live agent) was accepted within its scope with these limitations: the input-token figure is an estimate and provider enforcement and billing are unverified; model format reliability varies (schema failures in 5 of 8 live runs (runs 1 to 8)); raw replies are stored only from live run 3b onward; candidate-output redaction is best-effort; tested on one Windows host only.
 - The HAR containment declaration is documented, not verified; the upstream normalization's fit scope is not established; both HAR projects are ATLAS-authored and are not independent benchmark evidence (`docs/T09_CONTAINMENT.md` §9).
 - Scope: small tabular classification, CPU scikit-learn, exactly three claim types (`same_population`, `unseen_group`, `future_time`); any other claim is `NOT_SUPPORTED`. No final-holdout label store exists yet.
-- Not established for the hosted build until deployment: Nebius connectivity and the locked build on the host, a signed-out smoke test, and availability through 2026-12-15.
+- Established on 2026-10-19 for the private hosted app: Nebius connectivity and the locked build on the host, and a smoke test on the public and judge routes. Not yet established: a signed-out check of the public app and availability through 2026-12-15 (both at publication).
 - Procedures (saving and reusing evaluation procedures) were cut from V1 (DECISIONS.md "Lead decisions, 2026-10-17" item 2).
 
 ## License, data and acknowledgements

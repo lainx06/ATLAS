@@ -1908,7 +1908,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **reviews:** Gates 1-3 PASS (`8c79e5a`, `f327565`); Gate 4 FAIL (`runs/g4/review.md`) resolved by slices 4c-4h; combined review 1 FAIL (`runs/cr1/review.md`) resolved: the re-verification (`runs/cr2/review.md`) closed F2 and F3; F1 is closed by the lead re-running the reviewer's probes after the end-of-line fix.
   - **Limitations:**
     - the input-token figure is an estimate; provider enforcement and billing are unverified;
-    - model format reliability varies (schema failures in 3 of 6 live runs);
+    - model format reliability varies (schema failures in 5 of 8 live runs (runs 1 to 8));
     - raw replies are stored only from live run 3b onward;
     - candidate-output redaction is best-effort, with the documented limits (SPEC §11);
     - tested on this Windows host only;
