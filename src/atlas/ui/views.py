@@ -24,12 +24,48 @@ CSS = """
    (UI_DESIGN_HUD §2). Only st-key-* hooks. */
 [class*="st-key-card-"] { background: #0F1720; padding: 16px 20px 20px; }
 /* Model-written text: a subdued dashed frame on the page colour; the full amber only on the
-   header badge (UI_SPEC §1.2, UI_DESIGN_HUD §4.6). Diffs are model-written too. */
-[class*="st-key-model-"], [class*="st-key-scroll-diff-"] { background: #0A0F14;
+   header badge (UI_SPEC §1.2, UI_DESIGN_HUD §4.6). Diffs are model-written too, and sit in
+   their own st-key-model-* frame. */
+[class*="st-key-model-"] { background: #0A0F14;
   border: 1px dashed rgba(251, 191, 36, 0.35); border-radius: 4px; padding: 12px 16px; }
-/* The blocking approval panel: accent outline so it cannot be mistaken for a result. */
-.st-key-approval-panel { background: #0F1720; outline: 2px solid #67E8F9;
-  outline-offset: -2px; padding: 16px 24px 20px; }
+/* The blocking approval panel: the active frame (UI_DESIGN_HUD §2.3, phase 2). Its accent
+   corner brackets are eight solid marks painted as background layers under the 1 px hairline
+   (3 px wide, so 2 px show inside it; solid colour, not a visual gradient), so no markup is
+   needed around native widgets. */
+.st-key-approval-panel { border: 1px solid #1E2A36; border-radius: 2px;
+  padding: 20px 24px 24px; gap: 12px; background:
+  linear-gradient(#67E8F9 0 0) left top / 18px 3px, linear-gradient(#67E8F9 0 0) left top / 3px 18px,
+  linear-gradient(#67E8F9 0 0) right top / 18px 3px, linear-gradient(#67E8F9 0 0) right top / 3px 18px,
+  linear-gradient(#67E8F9 0 0) left bottom / 18px 3px, linear-gradient(#67E8F9 0 0) left bottom / 3px 18px,
+  linear-gradient(#67E8F9 0 0) right bottom / 18px 3px, linear-gradient(#67E8F9 0 0) right bottom / 3px 18px,
+  #0F1720; background-repeat: no-repeat; background-origin: border-box; }
+/* The decision: its own inset, apart from the request it answers; closing without deciding
+   sits below a hairline, away from the confirmation. */
+.st-key-approval-decision { background: #0A0F14; border: 1px solid #1E2A36; border-radius: 4px;
+  padding: 12px 16px 16px; gap: 8px; }
+.st-key-approval-close { border-top: 1px solid #1E2A36; padding-top: 12px; }
+/* Failure and honest-empty states: the status colour on the left edge, next to the printed
+   code; never success styling. */
+[class*="st-key-state-"] { background: #0F1720; border: 1px solid #1E2A36;
+  border-left: 2px solid #A8A29E; border-radius: 4px; padding: 10px 14px; gap: 4px; }
+[class*="st-key-state-red-"] { border-left-color: #F87171; }
+[class*="st-key-state-amber-"] { border-left-color: #FBBF24; }
+[class*="st-key-state-violet-"] { border-left-color: #C084FC; }
+/* Data tables (trace, checks, comparison, integrity, export): hairline rows, Plex Mono data
+   in the neutral text colour, a readable row height; HUD labels for the column heads. */
+:is([class*="st-key-trace-"], .st-key-export, .st-key-finding-checks,
+  .st-key-hosted-original-checks, [class*="st-key-status-changes-"],
+  [class*="st-key-scroll-comparison-"], .st-key-protocol-comparison) table td {
+  font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.45;
+  color: #E2E8F0; padding: 7px 12px; border-color: #1E2A36; vertical-align: top; }
+:is([class*="st-key-trace-"], .st-key-export, .st-key-finding-checks,
+  .st-key-hosted-original-checks, [class*="st-key-status-changes-"],
+  [class*="st-key-scroll-comparison-"], .st-key-protocol-comparison) table th {
+  font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 11px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; color: #94A3B8; padding: 7px 12px;
+  border-color: #1E2A36; vertical-align: bottom; }
+/* The Route line and other single data lines in Plex Mono. */
+.st-key-route p { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #E2E8F0; }
 /* The banner: a compact strip; the recorded page sits tighter so its hero fits the first
    viewport (UI_DESIGN_HUD §3.1). */
 .st-key-banner { background: #0F1720; gap: 2px; padding: 6px 14px; }
@@ -41,6 +77,10 @@ CSS = """
 .st-key-hud-page h1 { padding: 0 0 0.75rem; }
 /* Primary buttons: dark text on the accent (Streamlit draws white text, 1.45:1). */
 [class*="st-key-primary-"] button, [class*="st-key-primary-"] button p { color: #0A0F14; }
+/* Disabled buttons are transparent: the muted token keeps their words readable (7.04:1 on a
+   panel) instead of dark text on nothing, or Streamlit's 40 % text. */
+[class*="st-key-primary-"] button:disabled, [class*="st-key-primary-"] button:disabled p,
+.st-key-live-disabled button p { color: #94A3B8; }
 /* Wide diffs and tables scroll inside their own region (UI_SPEC §7 viewports). */
 [class*="st-key-scroll-"] { overflow-x: auto; }
 /* Hashes in trace and export tables wrap instead of being clipped (never truncated). */
@@ -60,6 +100,23 @@ def _count(value) -> str:
 
 def badge(code: str, colors: dict) -> str:
     return f":{colors.get(code, 'gray')}-badge[{code}]"
+
+
+STATE_BADGE = {"red": "red", "amber": "orange", "violet": "violet", "stone": "gray"}
+STATE_TONE = {"ERROR": "violet", "NEEDS_INPUT": "amber", "BUDGET_EXHAUSTED": "amber"}
+
+
+def state_panel(
+    key: str, tone: str, code: str, reason: str, action: str | None = None
+) -> None:
+    """A failure or honest-empty state (UI_DESIGN_HUD phase 2): the code as a status-coloured
+    badge, the reason, then the next action, in a state frame (st-key-state-<tone>-*: the
+    status colour on its left edge). Native elements, rendered in one pass. `reason` and
+    `action` are Markdown written by ATLAS; callers wrap engine codes in backticks."""
+    with st.container(key=f"state-{tone}-{key}"):
+        st.markdown(f":{STATE_BADGE[tone]}-badge[{code}] {reason}")
+        if action:
+            st.markdown(f"**Next action:** {action}")
 
 
 # -- banner and labels ---------------------------------------------------------------------
@@ -156,10 +213,14 @@ def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
         else:
             bad = [r for r in rows if r["result"] != "matches"]
             with st.container(key="integrity-failed"):
-                st.error(
+                state_panel(
+                    "integrity",
+                    "red",
+                    "EVIDENCE CHANGED",
                     f"**{CHANGED}**: {len(bad)} of {len(rows)} recorded items differ from "
                     "the files on disk, so no outcome is shown.",
-                    icon=":material/gpp_bad:",
+                    "restore the run's files from the recording (or copy the run again) and "
+                    "open it again; the table lists each differing item.",
                 )
             with (
                 st.container(key="scroll-integrity"),
@@ -172,6 +233,40 @@ def integrity(checks: list, ok: bool, ring: str | None = None) -> None:
             "recording; it does not authenticate a run whose files and recorded hashes were "
             "both rewritten."
         )
+
+
+def unverified(checks: list) -> None:
+    """A run finished on this page whose recorded hashes no longer all match: no HUD and no
+    briefing; the cards below are read from the files as they are now."""
+    bad = [c for c in checks if not c.ok]
+    with st.container(key="card-integrity", border=True):
+        st.subheader("Recorded evidence")
+        with st.container(key="integrity-unverified"):
+            state_panel(
+                "integrity",
+                "red",
+                "EVIDENCE CHANGED",
+                f"**{CHANGED}**: {len(bad)} of {len(checks)} recorded items differ from the "
+                "files on disk. The HUD and the briefing are not drawn; the cards below are "
+                "read from the files as they are now.",
+                "treat the results below as unverified; the table lists each differing "
+                "item.",
+            )
+        with st.container(key="scroll-integrity"), st.container(key="trace-integrity"):
+            st.table(
+                pd.DataFrame(
+                    [
+                        {
+                            "result": c.status,
+                            "item": c.item,
+                            "recorded": c.recorded or "",
+                            "recomputed now": c.recomputed or "",
+                        }
+                        for c in bad
+                    ]
+                ),
+                hide_index=True,
+            )
 
 
 def outcome_headline(code: str | None, key: str, title: str) -> None:
@@ -225,12 +320,12 @@ def claim_fields(claim) -> None:
 
 
 def not_supported(reason: str | None, key: str = "not-supported") -> None:
-    with st.container(key=key):
+    with st.container(key=key), st.container(key=f"state-stone-{key}"):
         st.markdown("## :gray[NOT_SUPPORTED]")
         st.markdown(f"**{A.OUTCOME_LABELS['NOT_SUPPORTED']}**")
         st.caption(A.CAVEAT)
         st.markdown(f"Reason: `{reason}`")
-        st.markdown(f"Next action: {A.next_action_for_intake(reason)}")
+        st.markdown(f"**Next action:** {A.next_action_for_intake(reason)}")
 
 
 # -- trace ---------------------------------------------------------------------------------
@@ -239,15 +334,12 @@ def trace(
     report: dict | None,
     approvals_seen: list[dict],
     collapsed: bool | None = None,
-    summary: bool = True,
 ) -> None:
-    """Stages and budget (unless `summary` is False: the HUD mission track shows them), then
-    the tables inline (collapsed None) or in an expander."""
+    """The trace below the HUD mission track (which shows the stages and the budget): the
+    active time, declined approvals, refused requests, then the tables inline (collapsed
+    None) or in an expander."""
     t = A.trace(events)
     limits = ((report or {}).get("budget") or {}).get("limits") or {}
-    used = ((report or {}).get("budget") or {}).get("used") or {}
-    if summary:
-        _trace_summary(t, limits, used)
     if report is not None:
         budget = report.get("budget") or {}
         st.caption(
@@ -273,25 +365,6 @@ def trace(
             "Agent trace: model attempts, tool calls, approvals", expanded=not collapsed
         ):
             trace_tables(t)
-
-
-def _trace_summary(t: "A.Trace", limits: dict, used: dict) -> None:
-    with st.container(key="trace-stages"):
-        st.markdown("**Stages**")
-        st.markdown(
-            " ".join(state_badge(s["state"]) for s in t.states) or "Not started yet."
-        )
-    cols = st.columns(3)
-    attempts = used.get("attempts", len(t.attempts))
-    cols[0].metric("Model attempts", f"{attempts} of {limits.get('model_attempts', 6)}")
-    cols[1].metric(
-        "Tool operations",
-        f"{used.get('tool_operations', len(t.tools))} of {limits.get('tool_operations', 12)}",
-    )
-    cols[2].metric(
-        "Revisions",
-        f"{used.get('revisions', 0)} of {limits.get('candidate_revisions', 2)}",
-    )
 
 
 def trace_tables(t: "A.Trace") -> None:
@@ -363,8 +436,19 @@ def trace_tables(t: "A.Trace") -> None:
 
 
 # -- approval panel -------------------------------------------------------------------------
+def _label(text: str) -> str:
+    """A HUD label (Plex Sans Condensed, uppercase, muted) for a native block below it."""
+    return f'<p class="hud hud-flabel"><span class="hud-lbl">{H.esc(text)}</span></p>'
+
+
 def approval_panel(channel: Path, pending: dict) -> None:
-    """Exactly the ApprovalRequest the engine passed (UI_SPEC §4.5), and one submission."""
+    """Exactly the ApprovalRequest the engine passed (UI_SPEC §4.5), and one submission.
+
+    The active frame (accent corner brackets, st-key-approval-panel): the request (what runs,
+    the entry point, both hashes in full), the model-written rationale and diff in the
+    model-written frame, then the decision in its own inset, with closing without deciding
+    below a hairline. The rule, the timeouts and the declines are the engine's
+    (`atlas.ui.approver`), unchanged."""
     from atlas.ui.approver import answer
 
     kind = pending.get("kind")
@@ -379,23 +463,29 @@ def approval_panel(channel: Path, pending: dict) -> None:
                 "**Run this CANDIDATE revision in the isolated Docker runner.**"
             )
         st.markdown(f"Entry point: `{inert(pending.get('entry_point') or '')}`")
-        st.markdown("Snapshot hash")
+        st.markdown(_label("Snapshot hash"), unsafe_allow_html=True)
         with st.container(key="approval-snapshot-hash"):
-            st.code(pending.get("base_snapshot_hash"), language=None, wrap_lines=True)
-        st.markdown("Code hash")
+            st.markdown(
+                H.hash_block(pending.get("base_snapshot_hash")), unsafe_allow_html=True
+            )
+        st.markdown(_label("Code hash"), unsafe_allow_html=True)
         with st.container(key="approval-code-hash"):
-            st.code(pending.get("candidate_hash"), language=None, wrap_lines=True)
+            st.markdown(
+                H.hash_block(pending.get("candidate_hash")), unsafe_allow_html=True
+            )
         if kind != "original":
             model_text(
                 inert(pending.get("model_rationale") or "(none)"),
                 "Rationale: model-written (untrusted)",
                 "model-approval-rationale",
             )
-            st.markdown(
-                "Proposed diff (untrusted; control characters shown as escapes)"
-            )
-            with st.container(key="scroll-approval-diff"):
-                st.code(inert(pending.get("diff") or ""), language="diff")
+            with st.container(key="model-approval-diff"):
+                st.markdown(H.MODEL_BADGE_MARKDOWN)
+                st.caption(
+                    "Proposed diff (untrusted; control characters shown as escapes)"
+                )
+                with st.container(key="scroll-approval-diff"):
+                    st.code(inert(pending.get("diff") or ""), language="diff")
         form_key = (
             f"approve-{pending.get('seq')}-{(pending.get('candidate_hash') or '')[:16]}"
         )
@@ -405,24 +495,30 @@ def approval_panel(channel: Path, pending: dict) -> None:
                 icon=":material/hourglass_top:",
             )
             return
-        with st.form(form_key, clear_on_submit=True):
-            typed = st.text_input(
-                f"Type the first {CONFIRM_CHARS} characters of the code hash to approve; "
-                "anything else declines",
-                key=f"{form_key}-typed",
-            )
-            with st.container(key="primary-submit-confirmation"):
-                submitted = st.form_submit_button("Submit confirmation", type="primary")
-        if submitted:
-            answer(channel, pending["seq"], typed)
-            st.rerun()
-        if st.button(
-            "Close without deciding",
-            help="Nothing executes; the run ends NEEDS_INPUT.",
-            key=f"{form_key}-close",
-        ):
-            answer(channel, pending["seq"], None)
-            st.rerun()
+        with st.container(key="approval-decision"):
+            st.markdown(_label("Your decision"), unsafe_allow_html=True)
+            with st.form(form_key, clear_on_submit=True, border=False):
+                typed = st.text_input(
+                    f"Type the first {CONFIRM_CHARS} characters of the code hash to approve; "
+                    "anything else declines",
+                    key=f"{form_key}-typed",
+                )
+                with st.container(key="primary-submit-confirmation"):
+                    submitted = st.form_submit_button(
+                        "Submit confirmation", type="primary"
+                    )
+            if submitted:
+                answer(channel, pending["seq"], typed)
+                st.rerun()
+            with st.container(key="approval-close"):
+                if st.button(
+                    "Close without deciding",
+                    help="Nothing executes; the run ends NEEDS_INPUT.",
+                    key=f"{form_key}-close",
+                ):
+                    answer(channel, pending["seq"], None)
+                    st.rerun()
+                st.caption("Nothing executes; the run ends NEEDS_INPUT.")
 
 
 # -- finding ---------------------------------------------------------------------------------
@@ -663,7 +759,7 @@ def proposal(view: A.ProposalView, index: int) -> None:
         "rejected": "red",
         "declined": "orange",
         "unavailable": "orange",
-        "not_executed_here": "violet",  # hosted mode (T-12)
+        "not_executed_here": "gray",  # hosted mode (T-12): not run, not an error
     }
     with st.container(key=f"proposal-{index}", border=True):
         st.markdown(
@@ -684,13 +780,15 @@ def proposal(view: A.ProposalView, index: int) -> None:
         files_label = r.get("files_label", "model-written (untrusted)")
         if view.diff_text is not None:
             match = "matches" if view.diff_hash_matches else "DOES NOT match"
-            st.markdown(f"Diff, {files_label}: `{r.get('diff_path')}`")
-            st.caption(
-                f"SHA-256 {view.diff_file_sha256} (recomputed from the file; {match} the "
-                f"recorded diff_sha256)"
-            )
-            with st.container(key=f"scroll-diff-{index}"):
-                st.code(inert(view.diff_text), language="diff")
+            with st.container(key=f"model-diff-{index}"):
+                st.markdown(H.MODEL_BADGE_MARKDOWN)
+                st.markdown(f"Diff, {files_label}: `{r.get('diff_path')}`")
+                st.caption(
+                    f"SHA-256 {view.diff_file_sha256} (recomputed from the file; {match} "
+                    f"the recorded diff_sha256)"
+                )
+                with st.container(key=f"scroll-diff-{index}"):
+                    st.code(inert(view.diff_text), language="diff")
         elif r.get("diff_sha256"):
             st.caption(
                 f"Diff not stored (over the size limit); recorded SHA-256 {r['diff_sha256']}"
@@ -698,7 +796,11 @@ def proposal(view: A.ProposalView, index: int) -> None:
         else:
             st.caption("No diff could be generated from this proposal.")
         if view.new_source_text is not None:
-            with st.expander(f"Complete file sent by the model, {files_label}"):
+            with (
+                st.expander(f"Complete file sent by the model, {files_label}"),
+                st.container(key=f"model-source-{index}"),
+            ):
+                st.markdown(H.MODEL_BADGE_MARKDOWN)
                 st.caption(f"SHA-256 {view.new_source_file_sha256}")
                 st.code(inert(view.new_source_text), language="python")
 
@@ -805,7 +907,7 @@ def comparison(report: dict, run_dir: Path) -> None:
             styled = frame.style.apply(
                 lambda row: (
                     [
-                        "background-color: #EFF6FF; font-weight: 600"
+                        "background-color: #2D343D; font-weight: 600"
                         if row["change"] != "unchanged"
                         else ""
                     ]

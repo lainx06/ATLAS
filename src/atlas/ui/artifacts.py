@@ -54,6 +54,16 @@ NEXT_ACTIONS = {
     "unimplemented_assertion": "This check is not implemented in V1; the result cannot "
     "cover it.",
 }
+# The next action under a run that ended without a full result (UI_SPEC §1.7: never success
+# styling). Worded for a recorded run as well as one started on this page.
+TERMINAL_ACTIONS = {
+    "ERROR": "read the reason code and the agent trace for the attempt the run ended on; a "
+    "new run starts from the beginning.",
+    "NEEDS_INPUT": "an approval was declined or closed, so nothing more executed; a new run "
+    "asks again.",
+    "BUDGET_EXHAUSTED": "the run stopped at a recorded limit (the counters below); what it "
+    "recorded before that stands. A new run starts with fresh limits.",
+}
 INTAKE_ACTIONS = (
     (
         "is not supported in V1 (combined or unknown)",

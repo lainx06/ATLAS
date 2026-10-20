@@ -86,6 +86,37 @@ def recorded_page(
     played_runs.add(run.label)
 
 
+def finished_verified(
+    run_dir: Path | None, report: dict | None, mode: str, *, run_id: str, **kwargs
+) -> None:
+    """A run that finished on this page (a local run, or a hosted live session): every hash
+    it recorded is recomputed first, as for a recorded run. When intact, the HUD (hero,
+    evidence, track) and the integrity record lead its cards, with first-load motion once
+    per run per session; when not, an evidence-changed state says the cards below are read
+    from the files as they are now, and no HUD is drawn from them."""
+    checks = R.verify(run_dir, report if mode == AGENT else None) if run_dir else []
+    ok = bool(checks) and R.intact(checks)
+    hud = (
+        H.build(run_dir, report, checks, run_id)
+        if ok and mode == AGENT and report is not None
+        else None
+    )
+    played_runs = st.session_state.setdefault(HUD_PLAYED, set())
+    played = run_id in played_runs
+    if not played and hud is not None:
+        st.html(H.once_css(played))
+    if not checks:
+        preamble = None
+    elif ok:
+        preamble = lambda: V.integrity(checks, True)
+    else:
+        preamble = lambda: V.unverified(checks)
+    finished_run(
+        run_dir, report, mode, hud=hud, played=played, preamble=preamble, **kwargs
+    )
+    played_runs.add(run_id)
+
+
 def _ring_phrase(bundled: bool) -> str:
     return (
         "recomputed now from the bundled files"
@@ -213,9 +244,19 @@ def _cards(
         with st.container(key="card-analysis", border=True):
             st.subheader("2. Analysis")
             with st.container(key="terminal"):
-                st.markdown(f"Terminal state {V.state_badge(terminal)}")
-                if terminal_reason:
-                    st.markdown(f"Reason: `{terminal_reason}`")
+                if terminal in A.FAILED_STATES:
+                    V.state_panel(
+                        "terminal",
+                        V.STATE_TONE[terminal],
+                        terminal,
+                        "Terminal state"
+                        + (f". Reason: `{terminal_reason}`" if terminal_reason else ""),
+                        A.TERMINAL_ACTIONS[terminal],
+                    )
+                else:
+                    st.markdown(f"Terminal state {V.state_badge(terminal)}")
+                    if terminal_reason:
+                        st.markdown(f"Reason: `{terminal_reason}`")
             if report is None:
                 st.error(
                     "No agent_report.json was written for this run.",
@@ -230,17 +271,17 @@ def _cards(
                 terminal in A.FAILED_STATES or terminal is None
             ):
                 st.button("Start a new run", on_click=on_restart, key="restart")
-            if hud is not None and report is not None:
+            if report is not None:
+                ids = hud.ids if hud is not None else H.Ids(H.run_hash(str(run_dir)))
                 with st.container(key="hud-track"):
-                    st.markdown(H.track(report, hud.ids), unsafe_allow_html=True)
+                    st.markdown(H.track(report, ids), unsafe_allow_html=True)
                 with st.container(key="hud-gauge"):
-                    st.markdown(H.gauge(report, hud.ids), unsafe_allow_html=True)
+                    st.markdown(H.gauge(report, ids), unsafe_allow_html=True)
             V.trace(
                 A.read_log(run_dir) if run_dir else [],
                 report,
                 decisions,
                 collapsed=terminal not in A.FAILED_STATES,
-                summary=hud is None,
             )
 
     # -- 3. Finding ---------------------------------------------------------------------------
@@ -294,9 +335,16 @@ def _cards(
             V.required_table(rows, "finding-checks")
             V.next_actions(rows)
             if coverage:
-                st.warning(
-                    "Incomplete coverage: " + ", ".join(coverage),
-                    icon=":material/warning:",
+                V.state_panel(
+                    "coverage",
+                    "amber",
+                    "incomplete_coverage",
+                    "Required checks without a PASS or FAIL: "
+                    + ", ".join(f"`{c}`" for c in coverage)
+                    + ".",
+                    "the next actions above name what is missing for each reason code."
+                    if any(r.get("status") in ("NOT_ASSESSED", "ERROR") for r in rows)
+                    else "see the check details for what is missing.",
                 )
             with st.expander("Check details: observed values, limitations, evidence"):
                 V.assertion_details(outcome, rows)

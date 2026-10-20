@@ -26,6 +26,7 @@ from atlas.agent.controller import NOT_EXECUTED_HERE, recorded_label
 from atlas.hosted import bundle, secrets
 from atlas.hosted import session as hs
 from atlas.ui import artifacts as A
+from atlas.ui import hud as HUD
 from atlas.ui import recorded as RR
 from atlas.ui import results as R
 from atlas.ui import views as V
@@ -162,10 +163,26 @@ def _original_card():
         if not ok:
             V.integrity(checks, ok)
             return False, label
-        outcome = A.read_json(path / "original" / "outcome.json") or {}
-        V.outcome_headline(
-            outcome.get("outcome"), "hosted-original", f"Original: {label}"
+        hud = HUD.build(
+            path,
+            report,
+            checks,
+            bundle.LIVE_ORIGINAL_RUN,
+            bundled=True,
+            instance="o",
+            with_candidate=False,
         )
+        with st.container(key="hosted-original"):
+            st.caption(f"Original: {label}")
+            if hud is not None:
+                st.markdown(
+                    HUD.hero(
+                        hud,
+                        played=True,
+                        head="The recorded original evaluation: this session's findings",
+                    ),
+                    unsafe_allow_html=True,
+                )
         st.caption(
             f"From the recorded run `{bundle.LIVE_ORIGINAL_RUN}`, re-verified now "
             f"({len(checks)} items). The original is not executed here."
@@ -179,6 +196,11 @@ def _original_card():
 
 
 def live_view(secret, reason: str | None, handle: LiveHandle | None) -> None:
+    with st.container(key="hud-page"):
+        _live_view(secret, reason, handle)
+
+
+def _live_view(secret, reason: str | None, handle: LiveHandle | None) -> None:
     with st.container(key="banner", border=True):
         st.markdown(":blue-badge[HOSTED LIVE SESSION] Limited hosted mode")
         st.caption(LIVE_INTRO)
@@ -214,7 +236,7 @@ def _start_form(secret, reason: str | None, intact: bool) -> None:
         st.subheader("Live session")
         if reason is not None or not intact:
             with st.container(key="live-unavailable"):
-                st.info(hs.UNAVAILABLE_MESSAGE, icon=":material/cloud_off:")
+                _unavailable(hs.UNAVAILABLE_MESSAGE)
             return
         with st.form("live-start", clear_on_submit=True, border=False):
             typed = st.text_input(
@@ -254,40 +276,63 @@ def _follow(handle: LiveHandle) -> None:
 def _finished(handle: LiveHandle, label: str) -> None:
     outcome = handle.outcome
     if handle.crash is not None or outcome is None:
-        with st.container(key="live-crash", border=True):
-            st.error(
-                f"The live session stopped with an internal error ({handle.crash}). "
+        with st.container(key="live-crash"):
+            V.state_panel(
+                "live-crash",
+                "violet",
+                "ERROR",
+                f"The live session stopped with an internal error (`{handle.crash}`). "
                 "Recorded runs remain available.",
-                icon=":material/error:",
+                "open Recorded runs in the sidebar.",
             )
         return
     if outcome.status == "exhausted" or outcome.code == "exhausted":
         with st.container(key="live-exhausted"):
-            st.warning(hs.EXHAUSTED_MESSAGE, icon=":material/savings:")
+            V.state_panel(
+                "live-exhausted",
+                "amber",
+                "BUDGET_EXHAUSTED",
+                hs.EXHAUSTED_MESSAGE,
+                "open Recorded runs in the sidebar; they do not use the live budget.",
+            )
     if outcome.status == "unavailable":
         with st.container(key="live-unavailable"):
-            st.info(
-                f"{hs.UNAVAILABLE_MESSAGE} ({hs.REASONS.get(outcome.code, 'unavailable')})",
-                icon=":material/cloud_off:",
+            _unavailable(
+                f"{hs.UNAVAILABLE_MESSAGE} ({hs.REASONS.get(outcome.code, 'unavailable')})"
             )
         return
     if outcome.status != "ran" or outcome.run_dir is None:
         return
-    st.caption(
-        "Route: judge pool (access code accepted)."
-        if outcome.route == "judge"
-        else "Route: public demo budget."
-    )
+    with st.container(key="route"):
+        st.caption(
+            "Route: judge pool (access code accepted)."
+            if outcome.route == "judge"
+            else "Route: public demo budget."
+        )
     report = A.read_json(outcome.run_dir / "agent_report.json")
     st.caption(
         f"Proposals marked '{NOT_EXECUTED_HERE}' pass ATLAS validation; nothing here "
         "validates them beyond that."
     )
-    R.finished_run(
+    R.finished_verified(
         outcome.run_dir,
         report,
         R.AGENT,
+        run_id=outcome.run_dir.name,
         decisions=[],
         notes=(),
         original_title=f"Original: {label}",
+    )
+
+
+def _unavailable(message: str) -> None:
+    """Live calls unavailable (the kill switch, a missing setting, the budget store or the
+    pre-run check): a state, never an error styled as a result."""
+    V.state_panel(
+        "live-unavailable",
+        "stone",
+        "LIVE UNAVAILABLE",
+        message,
+        "open Recorded runs in the sidebar; the full workflow, with execution, runs "
+        "locally.",
     )

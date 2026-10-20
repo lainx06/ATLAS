@@ -15,6 +15,7 @@ state is its final state; animations only start from a blank or unlit frame.
 import hashlib
 import math
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from atlas.ui import artifacts as A
@@ -68,6 +69,7 @@ MODEL_BADGE = "MODEL-WRITTEN · UNTRUSTED"
 BEAT1_END = 0.4
 BEAT2 = (0.4, 0.3)  # start, duration: changed tiles flip
 BEAT3 = (0.4, 0.8)  # start, duration: leak cells light fold by fold, flow lines draw
+NODE_MS = 300  # a live mission-track node that has just appeared lights once
 
 # -- escaping ------------------------------------------------------------------------------------
 # HTML specials, Markdown and Streamlit directive characters, and line breaks become character
@@ -393,9 +395,12 @@ def build(
     *,
     bundled: bool = False,
     instance: str = "h",
+    with_candidate: bool = True,
 ) -> Hud | None:
     """Everything the HUD shows, read only from verified files; None unless the run is intact
-    (a tampered run shows no outcome and no diagram) or it is not an agent run."""
+    (a tampered run shows no outcome and no diagram) or it is not an agent run.
+    `with_candidate=False` reads the original only (the hosted live session's starting
+    point, taken from a recorded run whose revision is not part of that session)."""
     if report is None or not checks or not R.intact(checks):
         return None
     run_dir = Path(run_dir)
@@ -412,7 +417,7 @@ def build(
         detail=_counts_line(orig_statuses),
         detail_source="original/outcome.json · assertions[].status",
     )
-    chosen = executed_candidate(run_dir, report, verified)
+    chosen = executed_candidate(run_dir, report, verified) if with_candidate else None
     candidate = cand_base = leak_cand = flow_cand = None
     matrix = [MatrixRow(aid, status, None) for aid, status in orig_statuses]
     if chosen is not None:
@@ -464,6 +469,9 @@ def build(
         )
         leak_cand = leak(run_dir, cand_base, verified)
         flow_cand = flow(run_dir, cand_base, verified)
+    else:
+        # Nothing executed comes after it, so it is not headed "before".
+        original = Outcome(**{**original.__dict__, "heading": "Original"})
     leak_orig = leak(run_dir, "original", verified)
     return Hud(
         run_id=run_id,
@@ -584,14 +592,16 @@ def reticle(o: Outcome, *, played: bool) -> str:
     )
 
 
-def hero(h: Hud, *, played: bool) -> str:
-    """The ring and the reticles: the first row of the hero."""
+def hero(h: Hud, *, played: bool, head: str | None = None) -> str:
+    """The ring and the reticles: the first row of the hero. `head` is its accessible name
+    when the default ("before → verified revision", or "no executed revision in this run")
+    does not describe it."""
     phrase = (
         "recomputed now from the bundled files"
         if h.bundled
         else "recomputed now from the run's files"
     )
-    head = (
+    head = head or (
         "Before → verified revision"
         if h.candidate is not None
         else "Original evaluation · no executed revision in this run"
@@ -931,64 +941,137 @@ def evidence(h: Hud, *, played: bool) -> str:
 
 
 # -- 4. mission track and 5. budget gauge ------------------------------------------------------------------------
-def track(report: dict, ids: Ids) -> str:
-    """The run's recorded stages, in order, and its budget counters. Renders whatever stages
-    are recorded so far (phase 2 feeds it live); settled on recorded runs."""
-    states = [
-        s for s in report.get("states") or [] if isinstance(s, dict) and s.get("state")
-    ]
-    terminal = report.get("terminal_state")
+TERMINAL_STATES = (
+    "REPORT",
+    "ERROR",
+    "BUDGET_EXHAUSTED",
+    "NEEDS_INPUT",
+    "NOT_SUPPORTED",
+)
+
+
+def _stage_items(
+    states: list[dict], terminal: str | None, lit_from: int | None, *, live: bool
+) -> list[str]:
+    """One node per recorded stage. The terminal stage shows its code in its colour; on a
+    live track the latest stage of a run still going is marked current. Nodes from index
+    `lit_from` on light once (a stage that has just appeared); None renders settled."""
     items = []
     for i, s in enumerate(states):
         state = str(s["state"])
-        is_end = i == len(states) - 1 and state == terminal
+        last = i == len(states) - 1
+        is_end = last and (state == terminal or (live and state in TERMINAL_STATES))
+        now = live and last and not is_end
         tip = " · ".join(
             str(x) for x in (s.get("detail"), A.short_time(s.get("time_utc"))) if x
         )
-        if is_end:
-            body = _code(state)
-        else:
-            body = f'<span class="hud-stage-n">{esc(state)}</span>'
-        items.append(
-            f'<li class="hud-stage{" hud-stage-end" if is_end else ""}" '
-            f'title="{esc(tip)}">{body}</li>'
+        body = (
+            _code(state) if is_end else f'<span class="hud-stage-n">{esc(state)}</span>'
         )
+        cls = "hud-stage" + (" hud-stage-end" if is_end else "")
+        cls += " hud-stage-now" if now else ""
+        cls += " hud-a-node" if lit_from is not None and i >= lit_from else ""
+        current = ' aria-current="step"' if now else ""
+        items.append(f'<li class="{cls}"{current} title="{esc(tip)}">{body}</li>')
     if not states:
         items.append(
             f'<li class="hud-stage"><span class="hud-stage-n">states: {NOT_RECORDED}</span></li>'
         )
+    return items
+
+
+def _counter(label: str, used, limit, source: str) -> str:
+    """'<used> of <limit>' with one cell per unit of the limit; '<used> so far' when no limit
+    is recorded yet (a run still going)."""
+    if not isinstance(used, int) or isinstance(used, bool):
+        return (
+            f'<div class="hud-cnt"><span class="hud-lbl">{label}</span>'
+            f'<span class="hud-cnt-v">{NOT_RECORDED}</span></div>'
+        )
+    if limit is None:
+        return (
+            f'<div class="hud-cnt" title="{esc(source)}"><span class="hud-lbl">{label}</span>'
+            f'<span class="hud-cnt-v">{used} so far</span></div>'
+        )
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+        return (
+            f'<div class="hud-cnt"><span class="hud-lbl">{label}</span>'
+            f'<span class="hud-cnt-v">{NOT_RECORDED}</span></div>'
+        )
+    cells = "".join(
+        f'<span class="{"on" if k < used else ""}"></span>'
+        for k in range(min(limit, 24))
+    )
+    return (
+        f'<div class="hud-cnt" title="{esc(source)}"><span class="hud-lbl">{label}</span>'
+        f'<span class="hud-cnt-v">{used} of {limit}</span>'
+        f'<span class="hud-cells" aria-hidden="true">{cells}</span></div>'
+    )
+
+
+def _track(
+    items: list[str], n: int, counters: str, source: str, ids: Ids, lit: bool
+) -> str:
+    label = ids("track", "label")
+    return (
+        f'<div class="hud hud-track{_anim(not lit)}"><div class="hud-ph">'
+        f'<span class="hud-lbl" id="{label}">Mission track · {n} recorded stages</span></div>'
+        f'<ol class="hud-stages" aria-labelledby="{label}">{"".join(items)}</ol>'
+        f'<div class="hud-cnts">{counters}</div><div class="hud-src">{esc(source)}</div></div>'
+    )
+
+
+def track(report: dict, ids: Ids, *, lit_from: int | None = None) -> str:
+    """A finished run's recorded stages, in order, and its budget counters, from its report.
+    Settled unless `lit_from` names the first stage to light."""
+    states = [
+        s for s in report.get("states") or [] if isinstance(s, dict) and s.get("state")
+    ]
     budget = report.get("budget") or {}
     used, limits = budget.get("used") or {}, budget.get("limits") or {}
 
     def counter(label: str, u_key: str, l_key: str) -> str:
-        u, lim = used.get(u_key), limits.get(l_key)
-        if not isinstance(u, int) or not isinstance(lim, int) or lim <= 0:
-            return (
-                f'<div class="hud-cnt"><span class="hud-lbl">{label}</span>'
-                f'<span class="hud-cnt-v">{NOT_RECORDED}</span></div>'
-            )
-        cells = "".join(
-            f'<span class="{"on" if k < u else ""}"></span>'
-            for k in range(min(lim, 24))
-        )
-        return (
-            f'<div class="hud-cnt" title="agent_report.json · budget.used.{u_key} of '
-            f'budget.limits.{l_key}"><span class="hud-lbl">{label}</span>'
-            f'<span class="hud-cnt-v">{u} of {lim}</span>'
-            f'<span class="hud-cells" aria-hidden="true">{cells}</span></div>'
+        src = f"agent_report.json · budget.used.{u_key} of budget.limits.{l_key}"
+        limit = limits.get(l_key)
+        return _counter(
+            label, used.get(u_key), NOT_RECORDED if limit is None else limit, src
         )
 
-    label = ids("track", "label")
-    return (
-        f'<div class="hud hud-track"><div class="hud-ph"><span class="hud-lbl" id="{label}">'
-        f"Mission track · {len(states)} recorded stages</span></div>"
-        f'<ol class="hud-stages" aria-labelledby="{label}">{"".join(items)}</ol>'
-        f'<div class="hud-cnts">{counter("Model attempts", "attempts", "model_attempts")}'
-        f"{counter('Tool operations', 'tool_operations', 'tool_operations')}"
-        f"{counter('Revisions', 'revisions', 'candidate_revisions')}</div>"
-        f'<div class="hud-src">agent_report.json · states[], budget.used, budget.limits</div>'
-        "</div>"
+    counters = (
+        counter("Model attempts", "attempts", "model_attempts")
+        + counter("Tool operations", "tool_operations", "tool_operations")
+        + counter("Revisions", "revisions", "candidate_revisions")
     )
+    items = _stage_items(states, report.get("terminal_state"), lit_from, live=False)
+    source = "agent_report.json · states[], budget.used, budget.limits"
+    lit = lit_from is not None and lit_from < len(states)
+    return _track(items, len(states), counters, source, ids, lit)
+
+
+def log_progress(events: list[dict]) -> tuple[list[dict], int, int]:
+    """What a run's log records so far: (its state events, model attempts, tool operations)."""
+    states = [
+        e
+        for e in events
+        if e.get("event") == "state" and isinstance(e.get("state"), str)
+    ]
+    attempts = sum(1 for e in events if e.get("event") == "model_attempt")
+    tools = sum(1 for e in events if e.get("event") == "tool")
+    return states, attempts, tools
+
+
+def track_live(events: list[dict], ids: Ids, *, lit_from: int | None = None) -> str:
+    """The stages a run still going has recorded so far, from its own log (agent_log.jsonl),
+    and its counters so far (the limits are recorded with the report at the end)."""
+    states, attempts, tools = log_progress(events)
+    src = "agent_log.jsonl · events so far"
+    counters = _counter("Model attempts", attempts, None, src) + _counter(
+        "Tool operations", tools, None, src
+    )
+    items = _stage_items(states, None, lit_from, live=True)
+    source = "agent_log.jsonl · event state, model_attempt, tool (recorded so far)"
+    lit = lit_from is not None and lit_from < len(states)
+    return _track(items, len(states), counters, source, ids, lit)
 
 
 def _usd(value) -> float | None:
@@ -998,13 +1081,29 @@ def _usd(value) -> float | None:
         return None
 
 
-def gauge(report: dict, ids: Ids) -> str:
-    cost, spending = report.get("cost") or {}, report.get("spending") or {}
+def _bar(name: str, used, cap, value: str, source: str) -> str:
+    fill = ""
+    if used is not None and cap is not None and cap > 0:
+        pct = max(0.0, min(100.0, 100 * used / cap))
+        fill = f'<span style="width:{pct:.1f}%"></span>'
+    return (
+        f'<div class="hud-gb" title="{esc(source)}"><span class="hud-lbl">{name}</span>'
+        f'<span class="hud-gb-v">{esc(value)}</span>'
+        f'<span class="hud-bar" aria-hidden="true">{fill}</span></div>'
+    )
+
+
+def _gauge_head(ids: Ids) -> tuple[str, str]:
     label = ids("gauge", "label")
-    head = (
+    return label, (
         f'<div class="hud-ph"><span class="hud-lbl" id="{label}">Budget · estimate, '
         "not billing</span></div>"
     )
+
+
+def gauge(report: dict, ids: Ids) -> str:
+    cost, spending = report.get("cost") or {}, report.get("spending") or {}
+    label, head = _gauge_head(ids)
     if not cost.get("applicable"):
         reason = cost.get("reason") or NOT_RECORDED
         return (
@@ -1012,21 +1111,6 @@ def gauge(report: dict, ids: Ids) -> str:
             f'<p class="hud-nr">{esc(reason)}</p>'
             '<div class="hud-src">agent_report.json · cost.reason</div></div>'
         )
-
-    def bar(name: str, used, cap, used_text: str, cap_text: str, source: str) -> str:
-        if used is None or cap is None or cap <= 0:
-            fill = ""
-            value = f"{used_text} of {cap_text}"
-        else:
-            pct = max(0.0, min(100.0, 100 * used / cap))
-            fill = f'<span style="width:{pct:.1f}%"></span>'
-            value = f"{used_text} of {cap_text}"
-        return (
-            f'<div class="hud-gb" title="{esc(source)}"><span class="hud-lbl">{name}</span>'
-            f'<span class="hud-gb-v">{esc(value)}</span>'
-            f'<span class="hud-bar" aria-hidden="true">{fill}</span></div>'
-        )
-
     entries = cost.get("entries")
     requests = len(entries) if isinstance(entries, list) else None
     cap = spending.get("max_attempts")
@@ -1035,26 +1119,98 @@ def gauge(report: dict, ids: Ids) -> str:
         _usd(cost.get("estimated_total_usd")),
         _usd(spending.get("estimate_cap_usd")),
     )
+    requests_text = NOT_RECORDED if requests is None else str(requests)
+    cap_text = NOT_RECORDED if cap is None else str(cap)
     return (
         f'<div class="hud hud-gauge" role="group" aria-labelledby="{label}">{head}'
-        + bar(
+        + _bar(
             "Provider requests",
             requests,
             cap,
-            NOT_RECORDED if requests is None else str(requests),
-            NOT_RECORDED if cap is None else str(cap),
+            f"{requests_text} of {cap_text}",
             "agent_report.json · cost.entries[] of spending.max_attempts",
         )
-        + bar(
+        + _bar(
             "Estimated cost (USD)",
             est,
             est_cap,
-            esc(cost.get("estimated_total_usd") or NOT_RECORDED),
-            esc(spending.get("estimate_cap_usd") or NOT_RECORDED) + " estimate cap",
+            f"{cost.get('estimated_total_usd') or NOT_RECORDED} of "
+            f"{spending.get('estimate_cap_usd') or NOT_RECORDED} estimate cap",
             "agent_report.json · cost.estimated_total_usd of spending.estimate_cap_usd",
         )
         + '<div class="hud-src">agent_report.json · cost, spending (estimate, not billing)</div>'
         "</div>"
+    )
+
+
+def log_spend(events: list[dict]) -> tuple[int, Decimal | None]:
+    """Provider requests so far and their estimated cost so far, from the log's
+    model_attempt events: known plus held (unresolved) USD, as the engine records them.
+    The cost is None when an attempt's cost is not a recorded amount."""
+    attempts = [e for e in events if e.get("event") == "model_attempt"]
+    total = Decimal(0)
+    for e in attempts:
+        cost = e.get("cost")
+        if not isinstance(cost, dict):
+            return len(attempts), None
+        try:
+            total += Decimal(str(cost.get("known_usd"))) + Decimal(
+                str(cost.get("unresolved_usd"))
+            )
+        except (InvalidOperation, ValueError):
+            return len(attempts), None
+    return len(attempts), total
+
+
+def gauge_live(
+    events: list[dict], ids: Ids, *, max_attempts: int, cap_usd: str, caps_source: str
+) -> str:
+    """A session still going: its requests and estimated cost so far, from its own log,
+    against the limits it was started with (`caps_source` names them)."""
+    label, head = _gauge_head(ids)
+    requests, spent = log_spend(events)
+    cap = _usd(cap_usd)
+    spent_text = NOT_RECORDED if spent is None else format(spent.normalize(), "f")
+    return (
+        f'<div class="hud hud-gauge" role="group" aria-labelledby="{label}">{head}'
+        + _bar(
+            "Provider requests so far",
+            requests,
+            max_attempts,
+            f"{requests} of {max_attempts}",
+            f"agent_log.jsonl · model_attempt events; limit {caps_source}",
+        )
+        + _bar(
+            "Estimated cost so far (USD)",
+            None if spent is None else float(spent),
+            cap,
+            f"{spent_text} of {cap_usd} estimate cap",
+            "agent_log.jsonl · model_attempt[].cost.known_usd + unresolved_usd; cap "
+            + caps_source,
+        )
+        + f'<div class="hud-src">agent_log.jsonl so far; limits {esc(caps_source)} '
+        "(estimate, not billing)</div></div>"
+    )
+
+
+def hash_block(value) -> str:
+    """A full hash, never truncated: Plex Mono in the neutral text colour, wrapping."""
+    text = esc(value) if value else NOT_RECORDED
+    return f'<p class="hud hud-hash">{text}</p>'
+
+
+def state_panel(tone: str, code: str, reason: str, action: str | None) -> str:
+    """A failure or honest-empty state as HUD markup (used where AppTest reads no text):
+    the code in its status colour, the reason, the next action. Never celebratory."""
+    nxt = (
+        f'<p class="hud-state-next"><span class="hud-lbl">Next action</span> {esc(action)}</p>'
+        if action
+        else ""
+    )
+    return (
+        f'<div class="hud hud-state hud-state-{tone}" role="status">'
+        f'<b class="hud-code hud-c-{tone}">{esc(code)}</b>'
+        f'<p class="hud-state-why">{esc(reason)}</p>{nxt}</div>'
     )
 
 
@@ -1080,6 +1236,7 @@ _KEYFRAMES = """
 @keyframes hud-flip{from{transform:perspective(420px) rotateX(90deg)}}
 @keyframes hud-light{from{opacity:0}}
 @keyframes hud-draw{from{stroke-dashoffset:1}}
+@keyframes hud-node{from{opacity:0}}
 """
 
 _MOTION = f"""
@@ -1096,6 +1253,7 @@ _MOTION = f"""
 .hud-anim .hud-a-light{{animation-name:hud-light;animation-timing-function:ease-out;animation-fill-mode:backwards}}
 .hud-anim .hud-a-draw{{stroke-dasharray:1;animation:hud-draw {int((BEAT3[1] - 0.1) * 1000)}ms ease-out {int(BEAT3[0] * 1000)}ms backwards}}
 .hud-anim .hud-a-head{{animation:hud-fade 100ms ease-out {int((sum(BEAT3) - 0.1) * 1000)}ms backwards}}
+.hud-anim .hud-a-node{{animation:hud-node {NODE_MS}ms ease-out backwards}}
 .hud-tg label,.hud-scroll{{transition:background-color 120ms ease-out,color 120ms ease-out,outline-color 120ms ease-out}}
 .hud-panes .hud-pane{{transition:opacity 200ms ease-out,visibility 200ms}}
 }}
@@ -1256,6 +1414,7 @@ CSS = (
     "letter-spacing:0.08em;color:#E2E8F0;border:1px solid #1E2A36;border-radius:2px;"
     "padding:2px 6px}"
     ".hud-stage-end .hud-code{border:1px solid currentColor;border-radius:2px;padding:1px 6px}"
+    ".hud-stage-now .hud-stage-n{border-color:#E2E8F0}"
     ".hud-cnts{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:10px}"
     ".hud-cnt{display:flex;align-items:center;gap:8px}"
     ".hud-cnt-v,.hud-gb-v{font-family:'IBM Plex Mono',monospace;font-size:13px;color:#E2E8F0}"
@@ -1265,6 +1424,18 @@ CSS = (
     "margin:4px 0}"
     ".hud-bar{grid-column:1/-1;display:block;height:6px;background:#1E2A36;border-radius:1px;"
     "overflow:hidden}.hud-bar span{display:block;height:100%;background:#E2E8F0}"
+    # full hashes, field labels and HUD state panels
+    ".hud.hud-flabel{margin:0 0 -8px}"
+    ".hud.hud-hash{font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.5;"
+    "color:#E2E8F0;overflow-wrap:anywhere;word-break:break-all;margin:0;background:#0A0F14;"
+    "border:1px solid #1E2A36;border-radius:2px;padding:8px 12px}"
+    ".hud-state{background:#0F1720;border:1px solid #1E2A36;border-left:2px solid #A8A29E;"
+    "border-radius:4px;padding:10px 14px}"
+    ".hud-state-red{border-left-color:#F87171}.hud-state-amber{border-left-color:#FBBF24}"
+    ".hud-state-violet{border-left-color:#C084FC}.hud-state-stone{border-left-color:#A8A29E}"
+    ".hud-state .hud-code{font-size:13px}"
+    ".hud .hud-state-why,.hud .hud-state-next{margin:4px 0 0;color:#E2E8F0;font-size:14px}"
+    ".hud-state-next .hud-lbl{margin-right:6px}"
     + _MOTION.replace("\n", "")
     + "</style>"
 )
@@ -1353,4 +1524,15 @@ CONTRAST_PAIRS = [
     (TEXT, BADGE_BG["blue"], "neutral badge (LIVE RUN, Recorded run)"),
     (CAPTION[PANEL], PANEL, "Streamlit caption in a card"),
     (CAPTION[BG], BG, "Streamlit caption on the page"),
+    # phase 2
+    (TEXT, BADGE_BG["blue"], "changed row of the per-assertion table"),
+    (MUTED, PANEL, "disabled button text (transparent button on a card)"),
+    (MUTED, BG, "HUD labels in the decision inset and the inspection frame"),
+    (TEXT, BG, "full hashes, the decision inset, the inspection frame's values"),
+    (AMBER, BG, "state-panel edge and code beside the page colour"),
+    (
+        ACCENT,
+        PANEL,
+        "approval and inspection frame corner brackets (non-text, 3:1 needed)",
+    ),
 ]
