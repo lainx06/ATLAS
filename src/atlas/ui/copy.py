@@ -35,7 +35,6 @@ PAGE_OVERVIEW = "Overview & Cases"
 PAGE_LIVE = "Try It Live"
 PAGE_AGENT = "AI Agent vs. Model Alone"
 PAGE_LIMITS = "How It Works & Limits"
-PLACEHOLDER = "Coming in slice 2"
 RUN_WAITING = "A run is waiting for your approval."
 RUN_WAITING_LINK = "Open Try It Live"
 
@@ -225,6 +224,12 @@ DRILLDOWN_TITLE = "Evidence drill-down · {side}"
 # step 4 (summary)
 TYPED_APPROVALS = {1: "1 typed approval", "n": "{n} typed approvals"}
 UNTYPED_ONLY = "Approved without a typed confirmation"
+# A run whose only approvals were given by the T-09 audit script (its recorded approval
+# reason; no typed confirmation, no AI agent): the whole step 4 summary (slice 2, A2).
+SCRIPT_ONLY = (
+    "No AI agent took part: the audit script approved and ran the original in the isolated "
+    "Docker runner."
+)
 MIXED_APPROVALS = "{t} typed and {u} untyped approvals"
 NO_APPROVAL = "No approval recorded"
 RAN_ORIGINAL = "the original ran in the isolated Docker runner"
@@ -244,6 +249,7 @@ WHO_REVISION = "Revision {n}"
 WHO_REVISION_UNKNOWN = "A revision"
 APPROVED_TYPED = "{who}: approved by typing the start of its code hash."
 APPROVED_UNTYPED = "{who}: approved without a typed confirmation."
+APPROVED_SCRIPT = "{who}: approved by the audit script, without a typed confirmation."
 NOT_APPROVED = "{who}: not approved, so it did not run."
 EXEC_ISOLATED = "{who} ran in the isolated Docker runner"
 EXEC_WITH = " with {facts}"
@@ -354,3 +360,446 @@ def plural(table: dict, count: int, **fields) -> str:
 # -- the local page (atlas.ui.local_page): the recorded-runs folder, never as a local path ----------
 RECORDED_ROOT_REPO = "the repository's `{path}/` folder"
 RECORDED_ROOT_ENV = "the folder named by ATLAS_UI_RECORDED_DIR"
+
+
+# ================================================================================================
+# Slice 2 (2026-10-20): AI Agent vs. Model Alone, How It Works & Limits, the tamper demo.
+# ================================================================================================
+
+# -- shared ------------------------------------------------------------------------------------
+EVIDENCE_CHANGED_CODE = "EVIDENCE CHANGED"
+SOURCE_LABEL = "Source"
+DIAGRAM_LABEL = "Diagram"
+
+# -- AI Agent vs. Model Alone (atlas.ui.versus) --------------------------------------------------
+# Every number on this page comes from the tracked T-11 result files (evaluation/results/
+# t11-live-20261019/) and evaluation/expected.json, after their SHA-256 match the recorded ones.
+VS_QUESTION = (
+    "Does ATLAS's deterministic checking add anything over the same AI model reading the "
+    "same files?"
+)
+VS_SETUP = (
+    "The same AI model (Nemotron) read the same project files, with no executable checks and "
+    "no ATLAS results, and said which of each project's listed checks are violated: {r} tries "
+    "for each of {c} development projects. ATLAS audited the same {c} projects once each."
+)
+VS_CHANGED = (
+    "**evidence changed since recording**: {d} of {t} recorded result files differ, so no "
+    "result is shown."
+)
+VS_CHANGED_ACTION = (
+    "restore the files in `evaluation/results/t11-live-20261019/` and `evaluation/expected.json` "
+    "from the repository and open this page again; the table lists each differing file."
+)
+VS_GATE_NOTE = (
+    "Each result file's SHA-256 is recomputed now and compared with the value recorded in "
+    "evaluation/results/t11-live-20261019/README.md (and expected.json with the hash recorded "
+    "in suite.json). This detects changes since recording; it does not authenticate files "
+    "whose recorded hashes were rewritten too."
+)
+VS_INTACT = "Result files intact: {v} of {t} recomputed now."
+# The chart
+VS_CHART_TITLE = "What each found, on the same {c} development projects"
+VS_SERIES_ATLAS = "ATLAS"
+VS_SERIES_MODEL = "Model alone"
+VS_PANELS = {
+    "found": "Predeclared violations found",
+    "false": "False alarms",
+    "invalid": "Invalid answers",
+}
+VS_PANEL_NOTES = {
+    "found": "share of the predeclared violations each could be scored on",
+    "false": "violations named that were not predeclared",
+    "invalid": "replies that broke the answer format and were not scored",
+}
+VS_ROW_SAME = "Model alone, same {m}"
+VS_ROW_ALL = "Model alone, all {n}"
+VS_FOUND_ATLAS = "{k} of {n} assessable"
+VS_FOUND_SAME = "{k} of {n} on the same {m}"
+VS_FOUND_ALL = "{k} of {n} overall"
+VS_NONE = "none"
+VS_OF = "{k} of {n}"
+VS_ALT = (
+    "Bar chart in three panels. Predeclared violations found: ATLAS {fa}; model alone {fs} "
+    "and {fo}. False alarms: ATLAS {xa}; model alone {xm}. Invalid answers: ATLAS {ia}; "
+    "model alone {im}."
+)
+VS_TABLE_MEASURE = "Measure"
+VS_TABLE_SEP = "; "
+# What this means: the reviewed findings, copied exactly from docs/EVALUATION.md, "Results
+# (live, 2026-10-19)", "Findings (descriptive)" (a test compares them). Plain view shows the
+# findings at VS_FINDINGS_PLAIN; Expert view shows all of them.
+VS_MEANS_HEAD = "What this means"
+T11_FINDINGS = (
+    (
+        "On these four development cases, Nemotron alone, reading the same files with no "
+        "executable checks, named 19 of the 23 predeclared violations across its 9 valid trials "
+        "(recall 0.83), with 2 false positives (fit.coverage_complete, twice, on har_flawed) and "
+        "no false violation on either clean control (0 in 4 valid clean trials)."
+    ),
+    (
+        "ATLAS's deterministic audit found all 8 assessable predeclared violations with no false "
+        "positive and no false violation on the clean controls. It left split.no_window_overlap "
+        "NOT_ASSESSED on har_flawed (missing window metadata), which the scoring rules exclude "
+        "from leg (a)'s FN (8/8 = 1.0000 recall on assessable violations, or 8/9 = 0.8889 against "
+        "all 9 expected violations), whereas leg (b) counts it as 3 of its 4 FNs (19/23 = 0.8261 "
+        "overall, or 19/20 = 0.9500 on the 8 ATLAS-assessable violations). Nemotron alone did not "
+        "name it in any of its 3 valid har_flawed trials."
+    ),
+    (
+        "Nemotron alone varied between repetitions (s01_faulty: 4 of 4, then 3 of 4) and 3 of its "
+        "12 replies (including 2 of the 6 clean-control trials) were invalid (rationale_too_long, "
+        "over 600 characters) and excluded from scoring, which could change leg (b)'s rates; "
+        "ATLAS's checks are deterministic by design (evaluated once per case here: 3 recorded "
+        "runs, 1 re-run) and rest on executed evidence."
+    ),
+    (
+        "har_flawed reports balanced accuracy 0.9064, which ATLAS reproduces for the mean over "
+        "folds (0.9064; pooled 0.9063) against har_clean's 0.8752 (pooled 0.8746); for s01_faulty "
+        "(no metric reported), ATLAS recomputes 0.6824 (pooled 0.6812) against s02_clean's 0.6688 "
+        "(pooled 0.6687). The gaps are descriptive protocol comparisons."
+    ),
+    (
+        "These are development cases on which ATLAS's checks were built: not held-out, small in "
+        "number, and not evidence of generalization. The comparison evaluates violation detection "
+        "only and does not test repair; repair evidence is reported separately (TASKS.md T-06, "
+        "live run 6)."
+    ),
+    (
+        "Two asymmetries the reader needs: the files given to leg (b) describe the project's "
+        "deliberate flaws in plain text (s01_faulty: `benchmarks/t01/s01_faulty/evaluate.py:1`, "
+        "and the comment at line 12; har_flawed: `benchmarks/real_sensor/har_flawed/evaluate.py:4`, "
+        "and `benchmarks/real_sensor/har_flawed/atlas_manifest.json:586`), which leg (b) can read "
+        "and which leg (a)'s executed checks do not use, so leg (b)'s detection on those cases may "
+        "be helped by that text; and leg (a) executes the evaluation against the data in Docker, "
+        "whereas leg (b) reads only the manifest and source, without the data table."
+    ),
+    (
+        "Amendment 1 (leg (b) input ceiling 40,000, made before any live trial) prevented the two "
+        "HAR cases from being refused before dispatch; leg (b) receives the files in one prompt, "
+        "whereas the agent reads them through bounded tools."
+    ),
+)
+VS_FINDINGS_PLAIN = (0, 1, 2, 4, 5)
+VS_FINDINGS_SOURCE = (
+    'Copied exactly from docs/EVALUATION.md, "Results (live, 2026-10-19)", "Findings '
+    '(descriptive)". In the findings, leg (a) is ATLAS and leg (b) is the model alone.'
+)
+VS_LEGS_PLAIN = "In the findings, leg (a) is ATLAS and leg (b) is the model alone."
+# The caveats, in plain words, always visible (sources: docs/EVALUATION.md §9 and the findings)
+VS_CAVEATS_HEAD = "Read these before the numbers"
+VS_CAVEATS = (
+    (
+        "Development cases, not held-out: ATLAS's checks were built and debugged on these "
+        "projects, so its results on them are not evidence that it works on new projects."
+    ),
+    (
+        "The flawed projects' own files describe their flaws in plain text, and the model could "
+        "read that text; ATLAS's executed checks do not use it."
+    ),
+    (
+        "ATLAS evaluated each project once ({rec} recorded runs, {rerun} re-run): its checks are "
+        "deterministic by design, and this comparison did not repeat them. The model's answers "
+        "varied between tries."
+    ),
+    (
+        "Invalid replies were not scored: {k} of the model's {n} replies broke the answer format, "
+        "which could change its rates."
+    ),
+    "Small numbers: {c} projects and {r} tries each support descriptive observations only.",
+    (
+        "ATLAS ran each evaluation against its data in an isolated container; the model alone read "
+        "only the manifest and the code, without the data table."
+    ),
+)
+VS_COST = "Estimated cost of this comparison: ${usd} (estimate, not billing)."
+VS_REVIEW = "Claims reviewed by Gemini (2026-10-19)"
+VS_REVIEW_FULL = (
+    "Claims review: Gemini Argon (high effort), 2026-10-19, SUPPORTED WITH CHANGES; changes "
+    "applied."
+)
+# Expert view
+VS_EXPERT_RUN = (
+    "Run `{run_dir}` (git-ignored), model `{model}`, seed {seed}, policy {policy}; {r} "
+    "repetitions per case, at most {q} requests per case run."
+)
+VS_FILES_HEAD = "Result files and their hashes"
+VS_EXPECTED_HEAD = (
+    "Expected violated assertion IDs (predeclared, evaluation/expected.json)"
+)
+VS_ATLAS_HEAD = "ATLAS deterministic audit, per case (scores.json)"
+VS_TRIALS_HEAD = "Model alone, every trial (scores.json)"
+VS_TOTALS_HEAD = "Totals (scores.json)"
+VS_SOURCES = (
+    "Sources: evaluation/results/t11-live-20261019/scores.json (the chart, the tables), "
+    "suite.json (run settings, sources, cost), results.md, evaluation/expected.json; protocol "
+    "and findings: docs/EVALUATION.md."
+)
+
+# -- How It Works & Limits (atlas.ui.limits) -----------------------------------------------------
+HOW_HEAD = "How it works"
+HOW_INTRO = "Five steps, in order. Only the deterministic checks decide an outcome."
+HOW_STEPS = (
+    (
+        "The evaluation is run",
+        (
+            "ATLAS runs the project's own evaluation in an isolated container and records what "
+            "happened: which rows each step learned from, which rows were tested, and the "
+            "predictions."
+        ),
+        "docs/SPEC.md §4.3, §10",
+    ),
+    (
+        "Deterministic checks decide",
+        (
+            "Fixed checks read that record and decide whether the evaluation breaks a rule of "
+            "the claim, for example the same person on both sides of the split. No AI model "
+            "takes part in this decision."
+        ),
+        "docs/SPEC.md §5, §6; README.md, Roles",
+    ),
+    (
+        "The AI may propose a revision, which ATLAS does not trust",
+        (
+            "An AI model (Nemotron) may read the project and propose a revised evaluation script. "
+            "The proposal is only checked for allowed changes, and the model's text is never "
+            "evidence."
+        ),
+        "docs/SPEC.md §9 items 1-3, §11; README.md, Roles",
+    ),
+    (
+        "A human approves by typing the code hash",
+        (
+            "A person approves one exact revision by typing the start of its code hash. Any "
+            "change to the code needs a new approval."
+        ),
+        "docs/SPEC.md §9 item 5; README.md, Safety controls and their reviews",
+    ),
+    (
+        "The revision runs sealed and is re-checked",
+        (
+            "The approved revision runs sealed in the isolated container, and the same checks "
+            "judge it again. The model never declares success."
+        ),
+        "docs/SPEC.md §9 item 6, §6",
+    ),
+)
+HOW_DIAGRAM_ALT = (
+    "Diagram of the five steps in order: the evaluation is run, deterministic checks decide, "
+    "the AI may propose a revision (untrusted), a human approves by typing the code hash, the "
+    "revision runs sealed and is re-checked by the same checks."
+)
+HOW_DIAGRAM_SHORT = (
+    "Evaluation is run",
+    "Checks decide",
+    "AI proposes (untrusted)",
+    "Human approves",
+    "Sealed run, re-checked",
+)
+SAFETY_HEAD = "Safety, in plain words"
+SAFETY = (
+    (
+        (
+            "Isolated Docker runner: no network, a non-root user and a read-only filesystem, with "
+            "limits on memory, CPU, processes and time. If isolation is unavailable, nothing runs "
+            "on the computer itself."
+        ),
+        "docs/SPEC.md §10; README.md, Safety and honesty rules",
+    ),
+    (
+        (
+            "Typed approval bound to the code hash: an approval names one exact revision, and "
+            "the runner refuses to run any other code."
+        ),
+        "docs/SPEC.md §9 item 5; README.md, Safety controls and their reviews",
+    ),
+    (
+        (
+            "The AI's text is never evidence: its diffs, explanations and raw replies are "
+            "labelled untrusted, and outcomes come only from the trusted evaluator."
+        ),
+        "README.md, Safety and honesty rules and Roles",
+    ),
+    (
+        (
+            "Spending is reserved before every request, with caps: per run locally, and per "
+            "session, per day and per route on the hosted demo. Totals are estimates, not "
+            "billing."
+        ),
+        (
+            "README.md, How ATLAS uses NVIDIA Nemotron (Cost accounting); "
+            "docs/HOSTED_OPERATIONS.md §1, §4"
+        ),
+    ),
+    (
+        (
+            "The hosted demo executes nothing: it replays recorded runs and shows the AI's "
+            "proposals as not executed here."
+        ),
+        "docs/HOSTED_OPERATIONS.md §1; docs/SPEC.md §13",
+    ),
+    (
+        (
+            "Recorded runs are re-verified before display: every recorded hash is recomputed "
+            'from the files, and a changed file shows "evidence changed" instead of a result. '
+            "This detects changes since recording; it does not authenticate a run whose files "
+            "and recorded hashes were both rewritten."
+        ),
+        "docs/HOSTED_OPERATIONS.md §1; README.md, Architecture",
+    ),
+)
+LIMITS_HEAD = "Limits"
+LIMITS_INTRO = (
+    "The README's limitations, in plain words; none is softened. Expert view shows the "
+    "original wording."
+)
+LIMITS_SOURCE = (
+    'README.md, "Limitations" (copied from docs/SPEC.md §15 and the acceptance records)'
+)
+# The plain wording of each README "Limitations" item, in the README's order (a test checks
+# that every README item has exactly one plain counterpart and its original wording).
+LIMITS_PLAIN = (
+    (
+        "ATLAS can trace which rows each step learned from only for the supported steps. Its "
+        "recorder runs inside the project's own process and is not tamper-proof; its "
+        "fingerprints do not prove that every kind of preprocessing was observed; and a missing "
+        "trace does not prove that a step did not happen."
+    ),
+    (
+        "Tracing starts at the feature table the project supplies. How those features were "
+        "extracted or normalised before that is not checked."
+    ),
+    (
+        "ATLAS cannot detect a dependence between rows (for example, the same person) that the "
+        "project did not declare. Some declared dependences have no rule in this version and are "
+        "reported as not assessed."
+    ),
+    (
+        "Without IDs for the original observations, duplicate detection only compares exact "
+        "values, and it can leave possible duplicates unresolved."
+    ),
+    (
+        "The time-based checks verify only the availability and separation rules the project "
+        "declares, and the window check verifies only the declared recording streams and window "
+        "intervals. None of them proves that training and test data are statistically "
+        "independent."
+    ),
+    "A green result means only that the listed checks passed, within the coverage stated.",
+    (
+        "There are no held-out test projects: they were cut for the submission, so every "
+        "detection result here is on the development projects ATLAS was built on."
+    ),
+    (
+        "Running code in an isolated container reduces risk. It does not prove that the code is "
+        "safe, that the recorded traces are intact, or that the science is correct."
+    ),
+    (
+        "The live AI agent was accepted within its scope with these limits: the input-token "
+        "figure is ATLAS's own estimate, and the provider's enforcement and billing are not "
+        "verified; the model's reply format is not always reliable (format failures in 3 of 6 "
+        "live runs); raw replies are stored only from live run 3b onward; hiding secrets in a "
+        "revision's output is best-effort; and it was tested on one Windows computer only."
+    ),
+    (
+        "For the real-data (UCI HAR) projects, the declaration of how the recordings are "
+        "contained is documented, not verified; whether the dataset's own normalisation was fit "
+        "only on training data is not established; and both HAR projects were written by ATLAS's "
+        "authors, so they are not independent benchmark evidence."
+    ),
+    (
+        "ATLAS supports only small tabular classification projects with scikit-learn on a CPU, "
+        "and exactly three kinds of claim: the same population, groups (such as people) not seen "
+        "in training, and future time. Any other claim is reported as not supported. There is no "
+        "store for final held-out labels yet."
+    ),
+    (
+        "Until deployment, these were not established for the hosted build: that it reaches "
+        "Nebius and builds from the locked dependencies on the host, a signed-out smoke test, "
+        "and availability through 15 December 2026."
+    ),
+    "Saving and reusing evaluation procedures was cut from this version.",
+)
+NOT_DO_HEAD = "What ATLAS does not do"
+NOT_DO = (
+    (
+        (
+            "It does not prove a claim true: a clean result means only that the listed checks "
+            "passed within the coverage shown."
+        ),
+        'README.md, "Limitations"; docs/SPEC.md §15',
+    ),
+    (
+        (
+            "It does not check how the data was collected or labelled: its tracing starts at the "
+            "feature table the project supplies."
+        ),
+        'README.md, "Limitations" (provenance begins at the supplied feature table)',
+    ),
+    (
+        (
+            "It supports only small tabular classification, with three claim types (same "
+            "population, unseen group, future time)."
+        ),
+        'README.md, "Limitations" (Scope)',
+    ),
+)
+
+# -- the tamper demo (atlas.ui.tamper; on the Overview, below the verdict bar) ---------------------
+TAMPER_HEAD = "Try tampering"
+TAMPER_INTRO = (
+    "Pick one of this run's recorded files. ATLAS copies the recorded run to a temporary "
+    "folder outside the repository, changes one byte in the copy, and runs the same check "
+    "this page ran before showing anything."
+)
+TAMPER_PICK = "File to change in the copy"
+# The files the demo may change, in this order, offered only when the run recorded a hash for
+# them: (path in the run, plain label).
+TAMPER_FILES = (
+    ("original/outcome.json", "the original's recorded result"),
+    ("candidates/c1/outcome.json", "the revision's recorded result"),
+    ("original/execution.json", "the original's sealed-run record"),
+    ("agent_log.jsonl", "the run's event log (approvals included)"),
+)
+TAMPER_ITEM_OUTCOME = "a reported outcome"
+TAMPER_ITEM_FILE = "a recorded file"
+TAMPER_BUTTON = "Change one byte in a copy and check it"
+TAMPER_STATEMENT = (
+    "This copied the recorded run, changed one byte in the copy, and ran the real check on "
+    "it. The original recording is untouched."
+)
+TAMPER_RESULT = {
+    1: "1 of {t} recorded items differ: {items} — outcome withheld",
+    "n": "{d} of {t} recorded items differ: {items} — outcome withheld",
+}
+TAMPER_NOT_DETECTED = "0 of {t} recorded items differ: the change was not detected."
+TAMPER_BYTE = "Changed in the copy: the last byte of {label}, {old} into {new}."
+TAMPER_BYTE_EXPERT = (
+    "Changed in the copy: byte {offset} of `{rel}`, 0x{old:02x} → 0x{new:02x}."
+)
+TAMPER_BYTE_NAMES = {0x0A: "a line break", 0x20: "a space"}
+TAMPER_BYTE_OTHER = "byte 0x{value:02x}"
+TAMPER_ORIGINAL_OK = (
+    "The original recording, checked again after the demo: {v} of {t} recorded items "
+    "verified, and every one of its {f} files is byte-for-byte unchanged."
+)
+TAMPER_DELETED = "The temporary copy was deleted."
+TAMPER_TABLE_HEAD = "Differing items in the copy"
+TAMPER_BUSY = "A tamper demo is already running in this session; wait for it to finish."
+TAMPER_RATE = (
+    "Limit reached: at most {n} tamper demos per session per hour. Try again later."
+)
+TAMPER_TOO_LARGE = (
+    "This recorded run is larger than {mb} MB, so it is not copied for the demo."
+)
+TAMPER_LINK = "This recorded run contains a link, so it is not copied for the demo."
+TAMPER_NOT_INTACT = "The original recording does not verify, so no copy was made and nothing was changed."
+TAMPER_ORIGINAL_CHANGED = "The original recording no longer verifies after the demo. Nothing from the demo is shown."
+TAMPER_UNKNOWN_FILE = "That file is not one the demo may change."
+TAMPER_FAILED = (
+    "The demo could not run, so no result is shown. The temporary copy was deleted and the "
+    "original recording is unchanged."
+)
+TAMPER_LIMITS = (
+    "One demo at a time per session, at most {n} per session per hour, and only for recorded "
+    "runs up to {mb} MB. Nothing executes except hashing: no project code, no network."
+)

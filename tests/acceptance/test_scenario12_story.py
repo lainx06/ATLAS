@@ -172,7 +172,7 @@ def test_each_step_of_live6_and_expert_view(app, page):
     full_page(page, "s12_03_live6_expert")
 
 
-def test_try_it_live_and_the_placeholder_pages(app, page):
+def test_try_it_live_and_the_slice_2_pages(app, page):
     open_overview(page, app)
     page.get_by_role("link", name=C.PAGE_LIVE).click()
     state = page.locator(".st-key-live-unavailable")
@@ -185,6 +185,8 @@ def test_try_it_live_and_the_placeholder_pages(app, page):
         (C.PAGE_LIMITS, "how_it_works"),
     ):
         page.get_by_role("link", name=title).click()
-        page.locator(".st-key-placeholder").get_by_text(C.PLACEHOLDER).wait_for()
+        page.locator(
+            ".st-key-vs-chart" if name == "agent_vs_model" else ".st-key-lim-limits"
+        ).wait_for()
         wait_idle(page)
         full_page(page, f"s12_05_{name}")

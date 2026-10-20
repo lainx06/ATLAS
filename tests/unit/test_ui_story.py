@@ -342,20 +342,28 @@ def test_the_gate_also_stops_the_story_on_the_other_pages(mode, tmp_path, monkey
         at.switch_page(f"app_pages/{page}.py")
         at.run()
         assert not at.exception, page
-        assert not at.toggle and not [e for e in at.expander if "·" in e.label]
+        # Slice 2 pages carry only the session-wide Expert view toggle.
+        assert [t.label for t in at.toggle] == (
+            [] if page == "try_it_live" else [C.EXPERT_TOGGLE]
+        )
+        assert not [e for e in at.expander if "·" in e.label]
         assert "hud-verdict" not in "\n".join(str(m.value) for m in at.markdown)
 
 
-def test_the_placeholder_pages_say_only_coming_in_slice_2(mode):
-    for page, title in (
-        ("agent_vs_model", C.PAGE_AGENT),
-        ("how_it_works", C.PAGE_LIMITS),
+def test_the_slice_2_pages_replace_the_placeholders(mode):
+    """Slice 2: the two pages that said "Coming in slice 2" now carry their content
+    (tests/unit/test_ui_slice2.py tests it)."""
+    for page, title, marker in (
+        ("agent_vs_model", C.PAGE_AGENT, story.md(C.VS_QUESTION)),
+        ("how_it_works", C.PAGE_LIMITS, C.LIMITS_HEAD),
     ):
         at = AppTest.from_file(APP, default_timeout=60)
         at.switch_page(f"app_pages/{page}.py")
         at.run()
+        assert not at.exception, page
         assert [t.value for t in at.title] == [title]
-        assert [m.value for m in at.main.markdown] == [C.PLACEHOLDER]
+        assert "Coming in slice 2" not in texts(at)
+        assert marker in texts(at)
 
 
 # -- plain and expert ----------------------------------------------------------------------------
@@ -385,8 +393,10 @@ def test_plain_mode_hides_hashes_paths_ids_and_costs(mode, key):
     assert "mode `" not in shown and "live `True`" not in shown  # no debug banner
     assert LOCAL_PATH.search(shown) is None, LOCAL_PATH.search(shown)
     assert str(ROOT) not in shown
-    # Each step offers its one line of expert detail.
-    labels = [b.label for b in at.button][3:]
+    # Each step offers its one line of expert detail (after the case cards and, slice 2,
+    # the tamper demo's button).
+    assert [b.label for b in at.button][3] == C.TAMPER_BUTTON
+    labels = [b.label for b in at.button][4:]
     assert labels == [
         C.SHOW_EXPERT,
         C.SHOW_EVIDENCE,
@@ -468,20 +478,14 @@ SUMMARIES = {
         ),
         "4 of 11 required checks FAIL in the original evaluation; 1 could not be assessed",
         "No revision was proposed.",
-        (
-            "Approved without a typed confirmation; the original ran in the isolated "
-            "Docker runner"
-        ),
+        C.SCRIPT_ONLY,  # slice 2, A2: from the recorded approval reason
         "Evidence intact: 21 of 21 recorded items verified now",
     ],
     "harclean": [
         "The activity classifier works on people absent from training.",
         "All 10 required checks PASS in the original evaluation",
         "No revision was proposed.",
-        (
-            "Approved without a typed confirmation; the original ran in the isolated "
-            "Docker runner"
-        ),
+        C.SCRIPT_ONLY,  # slice 2, A2: from the recorded approval reason
         "Evidence intact: 21 of 21 recorded items verified now",
     ],
 }

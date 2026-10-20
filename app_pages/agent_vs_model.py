@@ -1,10 +1,6 @@
-"""AI Agent vs. Model Alone: a placeholder until slice 2 (no content is invented here)."""
+"""AI Agent vs. Model Alone: the T-11 live comparison, gated on the recorded result hashes
+(`atlas.ui.versus`)."""
 
-import streamlit as st
+from atlas.ui import versus
 
-from atlas.ui import copy as C
-
-with st.container(key="hud-page"):
-    st.title(C.PAGE_AGENT)
-    with st.container(key="placeholder"):
-        st.markdown(C.PLACEHOLDER)
+versus.page()

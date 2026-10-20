@@ -13,6 +13,7 @@ hashes, run-relative paths, sources, costs and request counts, and the full reco
 Local filesystem paths are never shown in either mode.
 """
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +27,7 @@ from atlas.ui import copy as C
 from atlas.ui import hud as H
 from atlas.ui import recorded as R
 from atlas.ui import results as RS
+from atlas.ui import tamper as T
 from atlas.ui import views as V
 from atlas.ui.catalogue import ROOT
 
@@ -37,6 +39,13 @@ BUNDLE_ROOT = ROOT / "demo" / "recorded"
 EXPERT = "expert"  # session key: Expert view on (plain key; the widget writes it)
 EXPERT_WIDGET = "expert_widget"
 CASE = "story_case"  # session key: the selected case
+# Recorded approval reasons of the T-09 audit script's approver (benchmarks/real_sensor/
+# run_audit.py, OriginalOnly): the original approved by the script, no typed confirmation.
+SCRIPT_REASONS = frozenset({"t09_task_authorized_original"})
+TAMPER_LIMIT = "tamper_limit"  # session key: the tamper demo's SessionLimit
+TAMPER_RESULTS = "tamper_results"  # session key: the last demo result per case
+TAMPER_EVENT = "tamper_demo_failed"
+_log = logging.getLogger(__name__)
 _MD = set(
     "\\`*_[]<>#|$~"
 )  # marks that can start Markdown, a link or a directive inline
@@ -68,8 +77,11 @@ CSS = """
   text-align: left; width: 100%; }
 [class*="st-key-case-btn-"] button::after { content: ""; position: absolute; inset: 0;
   border-radius: 4px; }
-/* The card's text lets clicks through to the stretched button below it. */
+/* The card's text lets clicks through to the stretched button below it. Streamlit pulls each
+   Markdown block up by 1rem at its bottom, which ate the card's bottom padding and clipped the
+   last line ("Showing this case"); the card body keeps its full height instead (slice 2, A1). */
 [class*="st-key-case-body-"] { pointer-events: none; }
+[class*="st-key-case-body-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
 [class*="st-key-case-btn-"] button:focus-visible { outline: none; }
 [class*="st-key-case-card-"]:has(button:focus-visible) { outline: 2px solid #67E8F9;
   outline-offset: 2px; }
@@ -115,6 +127,17 @@ def md(text) -> str:
     backslash-escaped, line breaks as spaces."""
     flat = " ".join(str(text).split())
     return "".join("\\" + c if c in _MD else c for c in flat)
+
+
+def code_html(text) -> str:
+    """Fixed copy as HTML: every character escaped, `backtick` spans as <code>."""
+    parts = str(text).split("`")
+    if len(parts) % 2 == 0:  # an unpaired backtick: no code spans
+        return esc(text)
+    return "".join(
+        f"<code>{esc(part)}</code>" if i % 2 else esc(part)
+        for i, part in enumerate(parts)
+    )
 
 
 def expert() -> bool:
@@ -319,6 +342,7 @@ class Facts:
     exec_sources: list[str] = field(default_factory=list)
     typed: int = 0
     untyped: int = 0
+    script: int = 0  # approvals by the T-09 audit script (its recorded approval reason)
     ran_isolated: int = 0  # evaluated runs (the original first) in the isolated runner
     original_runner: str | None = None
     not_here: int = 0
@@ -428,6 +452,12 @@ def facts(run: R.RecordedRun, report: dict, checks: list, hud: H.Hud) -> Facts:
         if e.get("decision") == "approved" and e.get("approver_reason") == "confirmed":
             f.typed += 1
             f.approvals.append(C.APPROVED_TYPED.format(who=who))
+        elif (
+            e.get("decision") == "approved"
+            and e.get("approver_reason") in SCRIPT_REASONS
+        ):
+            f.script += 1
+            f.approvals.append(C.APPROVED_SCRIPT.format(who=who))
         elif e.get("decision") == "approved":
             f.untyped += 1
             f.approvals.append(C.APPROVED_UNTYPED.format(who=who))
@@ -559,11 +589,16 @@ def summaries(hud: H.Hud, f: Facts, checks: list) -> dict[int, str]:
             parts=parts,
         )
     # 4. approval and the sealed run
-    if f.typed and f.untyped:
-        approval = C.MIXED_APPROVALS.format(t=f.typed, u=f.untyped)
+    if script_only(f):
+        out[4] = C.SCRIPT_ONLY
+        out[5] = _proof(hud, checks)
+        return out
+    untyped = f.untyped + f.script
+    if f.typed and untyped:
+        approval = C.MIXED_APPROVALS.format(t=f.typed, u=untyped)
     elif f.typed:
         approval = C.plural(C.TYPED_APPROVALS, f.typed, n=f.typed)
-    elif f.untyped:
+    elif untyped:
         approval = C.UNTYPED_ONLY
     else:
         approval = C.NO_APPROVAL
@@ -579,17 +614,37 @@ def summaries(hud: H.Hud, f: Facts, checks: list) -> dict[int, str]:
     if f.not_here:
         line += C.plural(C.NOT_HERE_SUFFIX, f.not_here, n=f.not_here)
     out[4] = line
-    # 5. verified proof
+    out[5] = _proof(hud, checks)
+    return out
+
+
+def script_only(f: Facts) -> bool:
+    """Every recorded approval was the T-09 audit script's (by its recorded approval reason),
+    no model proposed anything, and only the original ran, in the isolated Docker runner: no
+    AI agent took part."""
+    return (
+        f.script > 0
+        and not f.typed
+        and not f.untyped
+        and len(f.approvals) == f.script
+        and not (f.report.get("proposals") or [])
+        and f.report.get("live") is not True
+        and f.original_runner == "docker_isolated"
+        and f.ran_isolated == 1
+        and not f.not_here
+    )
+
+
+def _proof(hud: H.Hud, checks: list) -> str:
+    """Step 5's summary: the checks that moved, and the integrity count."""
     count = H.integrity_count(checks)
     v, t = count.total - count.differ, count.total
     if hud.candidate is not None:
         moved = sum(
             1 for r in hud.matrix if r.original == "FAIL" and r.candidate == "PASS"
         )
-        out[5] = C.plural(C.PROOF_MOVED, moved, k=moved, v=v, t=t)
-    else:
-        out[5] = C.PROOF_INTACT.format(v=v, t=t)
-    return out
+        return C.plural(C.PROOF_MOVED, moved, k=moved, v=v, t=t)
+    return C.PROOF_INTACT.format(v=v, t=t)
 
 
 # -- the verdict bar and the steps ------------------------------------------------------------------
@@ -614,6 +669,7 @@ def case(
     plain = not expert()
     f = facts(run, report, checks, hud)
     verdict_bar(hud, f, played=played, plain=plain)
+    tamper_section(run, checks, plain)
     told = summaries(hud, f, checks)
     bodies = {
         1: lambda: step_claim(f, plain),
@@ -645,15 +701,144 @@ def verdict_bar(hud: H.Hud, f: Facts, *, played: bool, plain: bool) -> None:
                     + "</p>",
                     unsafe_allow_html=True,
                 )
-            if EXPERT_WIDGET not in st.session_state:
-                st.session_state[EXPERT_WIDGET] = expert()
-            st.toggle(
-                C.EXPERT_TOGGLE,
-                key=EXPERT_WIDGET,
-                on_change=_sync_expert,
-                help=C.EXPERT_HELP,
-                width="content",
+            expert_toggle()
+
+
+def expert_toggle() -> None:
+    """The one session-wide Expert view toggle (the same setting on every page)."""
+    if EXPERT_WIDGET not in st.session_state:
+        st.session_state[EXPERT_WIDGET] = expert()
+    st.toggle(
+        C.EXPERT_TOGGLE,
+        key=EXPERT_WIDGET,
+        on_change=_sync_expert,
+        help=C.EXPERT_HELP,
+        width="content",
+    )
+
+
+# -- the tamper demo (slice 2, part D; atlas.ui.tamper) ---------------------------------------------
+def _limit() -> T.SessionLimit:
+    limit = st.session_state.get(TAMPER_LIMIT)
+    if not isinstance(limit, T.SessionLimit):
+        limit = st.session_state[TAMPER_LIMIT] = T.SessionLimit()
+    return limit
+
+
+def attempt(run: R.RecordedRun, rel: str) -> object:
+    """One demo under the session's limits: a `tamper.Demo`, or a fixed message (str)."""
+    limit = _limit()
+    refusal = limit.acquire()
+    if refusal is not None:
+        return refusal
+    try:
+        return T.run_demo(run.path, rel)
+    except T.Refused as exc:
+        return exc.message
+    except T.OriginalChanged:
+        _log.error(TAMPER_EVENT)
+        return C.TAMPER_ORIGINAL_CHANGED
+    except Exception:  # noqa: BLE001 - a fixed message only; the copy is already deleted
+        _log.error(TAMPER_EVENT)
+        return C.TAMPER_FAILED
+    finally:
+        limit.release()
+
+
+def _byte_name(value: int) -> str:
+    return C.TAMPER_BYTE_NAMES.get(value) or C.TAMPER_BYTE_OTHER.format(value=value)
+
+
+def tamper_result(demo: T.Demo, plain: bool) -> None:
+    bad = demo.differing
+    t = len(demo.checks)
+    items = ", ".join(dict.fromkeys(T.label(c.item) if plain else c.item for c in bad))
+    head = (
+        C.plural(C.TAMPER_RESULT, len(bad), d=len(bad), t=t, items=items)
+        if bad
+        else C.TAMPER_NOT_DETECTED.format(t=t)
+    )
+    with st.container(key="tamper-result"):
+        st.markdown(
+            f":red-badge[{md(C.EVIDENCE_CHANGED_CODE)}] **{md(head)}**"
+            if bad
+            else f":orange-badge[{md(C.EVIDENCE_CHANGED_CODE)}] **{md(head)}**"
+        )
+        with st.container(key="tamper-statement"):
+            st.markdown(md(C.TAMPER_STATEMENT))
+        if plain:
+            byte = C.TAMPER_BYTE.format(
+                label=T.label(demo.rel),
+                old=_byte_name(demo.old),
+                new=_byte_name(demo.new),
             )
+        else:
+            byte = C.TAMPER_BYTE_EXPERT.format(
+                offset=demo.offset, rel=demo.rel, old=demo.old, new=demo.new
+            )
+        st.caption(byte if not plain else md(byte))
+        count = H.integrity_count(list(demo.original_checks))
+        with st.container(key="tamper-original"):
+            st.caption(
+                md(
+                    C.TAMPER_ORIGINAL_OK.format(
+                        v=count.total - count.differ,
+                        t=count.total,
+                        f=demo.original_files,
+                    )
+                )
+                + " "
+                + md(C.TAMPER_DELETED)
+            )
+        if not plain and bad:
+            with st.container(key="tamper-table"):
+                st.caption(md(C.TAMPER_TABLE_HEAD))
+                st.table(
+                    pd.DataFrame(
+                        [
+                            {
+                                "result": c.status,
+                                "item": c.item,
+                                "recorded": c.recorded or "",
+                                "recomputed now": c.recomputed or "",
+                            }
+                            for c in bad
+                        ]
+                    ),
+                    hide_index=True,
+                )
+
+
+def tamper_section(run: R.RecordedRun, checks: list, plain: bool) -> None:
+    """Below the verdict bar: pick one of the run's fixed files, change one byte in a
+    temporary copy, run the real check on the copy, show its result (atlas.ui.tamper)."""
+    files = T.options(checks)
+    if not files:
+        return
+    tag = H.run_hash(run.label)
+    results = st.session_state.setdefault(TAMPER_RESULTS, {})
+    with st.container(key="tamper", border=True):
+        st.markdown(f"**{md(C.TAMPER_HEAD)}**")
+        st.caption(md(C.TAMPER_INTRO))
+        with st.container(
+            key="tamper-controls", horizontal=True, vertical_alignment="bottom"
+        ):
+            rel = st.selectbox(
+                C.TAMPER_PICK,
+                files,
+                format_func=lambda r: T.label(r) if plain else r,
+                key=f"tamper-file-{tag}",
+            )
+            clicked = st.button(C.TAMPER_BUTTON, key=f"tamper-go-{tag}")
+        if clicked:
+            results[run.label] = attempt(run, rel)
+        st.caption(md(C.TAMPER_LIMITS.format(n=T.PER_HOUR, mb=T.MAX_MB)))
+        shown = results.get(run.label)
+        if isinstance(shown, T.Demo):
+            tamper_result(shown, plain)
+        elif isinstance(shown, str):
+            with st.container(key="tamper-refused"):
+                st.warning(md(shown), icon=":material/block:")
 
 
 def expert_line(n: int, label: str = C.SHOW_EXPERT) -> None:
