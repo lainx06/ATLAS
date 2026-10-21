@@ -113,11 +113,15 @@ def mode(request, monkeypatch, tmp_path):
     return request.param
 
 
-def overview(case: str | None = None, *, expert: bool = False) -> AppTest:
+def overview(
+    case: str | None = None, *, expert: bool = False, show_all: bool = False
+) -> AppTest:
+    """The Overview; `show_all`: plain view's "Show all steps" (the five expanders)."""
     at = AppTest.from_file(APP, default_timeout=60)
     if case is not None:
         at.session_state[story.CASE] = case
     at.session_state[story.EXPERT] = expert
+    at.session_state[story.SHOW_ALL] = show_all
     at.run()
     assert not at.exception, at.exception
     return at
@@ -327,9 +331,13 @@ def test_a_tampered_bundle_shows_evidence_changed_and_no_verdict_bar_or_step(
     for other in (k for k in CASES if k != key):
         assert H.esc(C.CARD_CHANGED) not in card(at, other)
     # Only the evidence-changed panel: no verdict bar, step, toggle, outcome or briefing.
+    # (The banner above the gate keeps the HAR runs' "Data licence details", as before.)
     text = texts(at)
     assert ":red-badge[EVIDENCE CHANGED]" in text and "so no outcome is shown" in text
-    assert not at.expander and not at.toggle
+    assert [e.label for e in at.expander] == (
+        [C.HAR_DETAILS] if key == "harflawed" else []
+    )
+    assert not at.toggle
     assert [b.label for b in at.button] == [c.title for c in C.CASES]
     markup = "\n".join(str(m.value) for m in at.markdown)
     for absent in ("hud-hero", "hud-ret", "hud-verdict", "hud-brief", "hud-leak"):
@@ -372,10 +380,7 @@ def test_the_slice_2_pages_replace_the_placeholders(mode):
 
 
 # -- plain and expert ----------------------------------------------------------------------------
-@pytest.mark.parametrize("key", list(CASES))
-def test_plain_mode_hides_hashes_paths_ids_and_costs(mode, key):
-    at = overview(key)
-    shown = texts(at, untrusted=False)  # model-written frames are shown verbatim
+def _no_expert_detail(shown: str) -> None:
     assert HASH.search(shown) is None, HASH.search(shown)
     for absent in (
         "original/",
@@ -398,6 +403,23 @@ def test_plain_mode_hides_hashes_paths_ids_and_costs(mode, key):
     assert "mode `" not in shown and "live `True`" not in shown  # no debug banner
     assert LOCAL_PATH.search(shown) is None, LOCAL_PATH.search(shown)
     assert str(ROOT) not in shown
+
+
+@pytest.mark.parametrize("key", list(CASES))
+def test_plain_mode_hides_hashes_paths_ids_and_costs(mode, key):
+    """The stepper, at every step, and "Show all steps" (the five expanders)."""
+    at = overview(key)
+    labels = [b.label for b in at.button][3:]
+    assert labels == [C.STEP_BACK, C.STEP_NEXT, C.SHOW_EVIDENCE, C.TAMPER_BUTTON]
+    for n in range(1, 6):
+        at.session_state[story.step_key(key)] = n
+        at.run()
+        assert not at.exception
+        _no_expert_detail(texts(at, untrusted=False))
+        expert = [b.label for b in at.button if b.key and b.key.startswith("expert-on")]
+        assert expert == [C.SHOW_EVIDENCE if n == 2 else C.SHOW_EXPERT], n
+    at = overview(key, show_all=True)
+    _no_expert_detail(texts(at, untrusted=False))  # model-written frames are verbatim
     # Each step offers its one line of expert detail (after the case cards); the tamper
     # demo's button follows the steps (slice 3, C1).
     labels = [b.label for b in at.button][3:]
@@ -438,7 +460,7 @@ def test_the_expert_setting_is_one_session_wide_switch(mode):
     assert at.toggle(key=story.EXPERT_WIDGET).value is True
     at.toggle(key=story.EXPERT_WIDGET).set_value(False).run()
     assert at.session_state[story.EXPERT] is False
-    assert at.button(key="expert-on-1")
+    assert at.button(key="expert-on-2")  # plain view again: the stepper's step 2
 
 
 def test_no_local_path_on_the_try_it_live_pages(monkeypatch, tmp_path):
@@ -509,16 +531,16 @@ def test_the_verdict_line_and_step_summaries_are_deterministic(mode, key):
     _run, _report, checks, hud, f = facts_of(CASES[key])
     assert " ".join(story.verdict(hud, f)) == VERDICTS[key]
     assert list(story.summaries(hud, f, checks).values()) == SUMMARIES[key]
-    at = overview(key)
+    at = overview(key, show_all=True)  # the five expanders, as before
     verdict = next(str(m.value) for m in at.markdown if "hud-verdict" in str(m.value))
     assert H.esc(VERDICTS[key]) in verdict
-    labels = [e.label for e in at.expander]
+    labels = [e.label for e in at.expander if e.label != C.HAR_DETAILS]
     assert labels == [
         C.STEP_LABEL.format(n=n, title=story.md(C.STEP_TITLES[n]), summary=story.md(s))
         for n, s in enumerate(SUMMARIES[key], start=1)
     ] + [story.md(C.TAMPER_HEAD)]  # slice 3: the tamper demo, collapsed, after step 5
     # Step 2 open by default; the others collapsed (their headers tell the story).
-    assert [e.proto.expanded for e in at.expander] == [
+    assert [e.proto.expanded for e in at.expander if e.label != C.HAR_DETAILS] == [
         False,
         True,
         False,

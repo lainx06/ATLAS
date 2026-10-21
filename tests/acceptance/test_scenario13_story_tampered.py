@@ -46,6 +46,8 @@ def test_a_changed_bundle_shows_only_the_evidence_changed_panel(app, page):
     for absent in (
         ".st-key-verdict-bar",
         "[class*='st-key-step-']",
+        ".st-key-stepper",
+        ".st-key-claim-line",
         ".hud-ret",
         ".hud-brief",
     ):

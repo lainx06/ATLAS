@@ -21,7 +21,7 @@ from pathlib import Path
 
 import a11y
 from helpers import settle, wait_idle
-from test_scenario12_story import SIZES, full_page, open_overview
+from test_scenario12_story import SIZES, full_page, go_step, open_more, open_overview
 
 from atlas.ui import copy as C
 
@@ -60,7 +60,8 @@ def test_tamper_after_step_5_collapsed_and_the_switch_top_right(app, page):
     order = page.evaluate(
         """() => {
           const t = document.querySelector('.st-key-tamper');
-          const s5 = document.querySelector('.st-key-step-5');
+          // Plain view (readability pass): the stepper holds step 5.
+          const s5 = document.querySelector('.st-key-stepper');
           const bar = document.querySelector('.st-key-verdict-bar');
           return {afterStep5: !!(s5.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING),
                   afterBar: !!(bar.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING),
@@ -68,11 +69,11 @@ def test_tamper_after_step_5_collapsed_and_the_switch_top_right(app, page):
         }"""
     )
     assert order["afterStep5"] and order["afterBar"] and order["open"] is False
-    # Nothing of the demo sits between the verdict bar and step 1.
+    # Nothing of the demo sits between the verdict bar and the stepper.
     gap = page.evaluate(
         """() => {
           const bar = document.querySelector('.st-key-verdict-bar').getBoundingClientRect();
-          const s1 = document.querySelector('.st-key-step-1').getBoundingClientRect();
+          const s1 = document.querySelector('.st-key-stepper').getBoundingClientRect();
           const t = document.querySelector('.st-key-tamper').getBoundingClientRect();
           return {barBottom: bar.bottom, s1Top: s1.top, tTop: t.top};
         }"""
@@ -196,12 +197,13 @@ def full_page_file(page, name: str) -> None:
 def test_comparison_and_limits_screens(app, page):
     open_overview(page, app)
     page.get_by_role("link", name=C.PAGE_AGENT).click()
+    page.locator(".st-key-vs-means-detail summary").first.click()  # readability pass
     page.locator(".st-key-vs-means").wait_for(timeout=30_000)
     wait_idle(page)
     means = page.locator(".st-key-vs-means").inner_text()
     for item in C.VS_MEANS_PLAIN:
         assert item in " ".join(means.split())
-    assert page.locator(".st-key-vs-caveats").is_visible()
+    assert page.locator(".st-key-vs-caveat-line").is_visible()
     full_page(page, "s15_03_agent_vs_model_plain")
     expert(page, True)
     page.locator(".st-key-vs-trials").wait_for(timeout=30_000)
@@ -211,6 +213,7 @@ def test_comparison_and_limits_screens(app, page):
     full_page(page, "s15_03_agent_vs_model_expert")
     expert(page, False)
     page.get_by_role("link", name=C.PAGE_LIMITS).click()
+    page.locator(".st-key-lim-all-limits summary").first.click()  # readability pass
     page.locator(".st-key-lim-limits").wait_for(timeout=30_000)
     wait_idle(page)
     text = " ".join(page.locator(".st-key-lim-limits").inner_text().split())
@@ -250,8 +253,53 @@ def states(app):
         ("try_it_live_hosted", at("/try_it_live", ".st-key-live-unavailable")),
         ("agent_vs_model_plain", at("/agent_vs_model", ".st-key-vs-chart")),
         ("agent_vs_model_expert", at("/agent_vs_model", ".st-key-vs-chart", True)),
-        ("how_it_works_plain", at("/how_it_works", ".st-key-lim-limits")),
-        ("how_it_works_expert", at("/how_it_works", ".st-key-lim-limits", True)),
+        ("how_it_works_plain", at("/how_it_works", ".st-key-lim-steps")),
+        ("how_it_works_expert", at("/how_it_works", ".st-key-lim-steps", True)),
+    ]
+
+    # Readability pass: the stepper at steps 1, 3 and 5 (Show more open), "Show all steps",
+    # the glossary popover open, and every plain expander open.
+    def ov_step(case, n, more=False):
+        def go(page):
+            open_overview(page, app, case)
+            go_step(page, n)
+            if more:
+                open_more(page, n)
+
+        return go
+
+    def ov_show_all(page):
+        open_overview(page, app)
+        page.get_by_text(C.SHOW_ALL_STEPS, exact=True).click()
+        page.locator(".st-key-step-5").wait_for(timeout=30_000)
+        wait_idle(page)
+
+    def ov_glossary(page):
+        open_overview(page, app)
+        page.get_by_role("button", name=C.GLOSSARY_BUTTON).click()
+        page.get_by_text("Training data:", exact=False).wait_for(timeout=30_000)
+
+    def at_open(path, selector):
+        def go(page):
+            page.goto(app.url + path)
+            page.locator(selector).first.wait_for(timeout=60_000)
+            wait_idle(page)
+            for summary in page.locator(
+                "[data-testid='stMain'] details > summary"
+            ).all():
+                summary.click()
+            wait_idle(page)
+
+        return go
+
+    out += [
+        ("overview_live6_step1", ov_step("live6", 1)),
+        ("overview_live6_step5_more", ov_step("live6", 5, more=True)),
+        ("overview_harflawed_step3_more", ov_step("harflawed", 3, more=True)),
+        ("overview_live6_show_all", ov_show_all),
+        ("overview_glossary_open", ov_glossary),
+        ("agent_vs_model_plain_open", at_open("/agent_vs_model", ".st-key-vs-chart")),
+        ("how_it_works_plain_open", at_open("/how_it_works", ".st-key-lim-steps")),
     ]
     return out
 

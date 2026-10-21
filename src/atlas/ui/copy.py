@@ -913,3 +913,163 @@ REPORT_MODEL_TEXT_NOTE = (
     "model."
 )
 REPORT_SEP = " · "
+
+
+# ================================================================================================
+# Readability pass (2026-10-21): headline first, one idea per screen (docs/UI_DESIGN_HUD.md §16).
+# Plain view only; Expert view is unchanged. Each sentence's source is listed in
+# runs/ui-story/copy_changes2.md.
+# ================================================================================================
+
+# -- R1: the glossary (Overview, beside the tagline) ----------------------------------------------
+GLOSSARY_BUTTON = "New to this? 4 terms"
+GLOSSARY = (
+    ("Training data", "the examples a model learns from."),
+    ("Test data", "examples held back to score the model on cases it has not seen."),
+    (
+        "Fold",
+        (
+            "one round of a repeated train-then-test split; each round tests on a "
+            "different part of the data."
+        ),
+    ),
+    (
+        "Leak",
+        (
+            "test information reaching the model during training, which can make its "
+            "score look better than it would be on new data."
+        ),
+    ),
+)
+GLOSSARY_ITEM = "{term}: {text}"
+
+# -- O1: the recorded-run box (plain) ---------------------------------------------------------------
+# The proposed second sentence ("Every file is re-checked before display.") is not supported:
+# only the files with a recorded hash are re-checked (46 of live6's 85 files), so the existing
+# replay disclosure (REPLAY_DISCLOSURE) stays visible after this line.
+BANNER_RUN_LIVE = (
+    "Recorded run · {model} · finished {date} · replayed here, not re-run."
+)
+BANNER_RUN_FIXTURE = (
+    "Recorded run · scripted replies, no model called · finished {date} · replayed here, "
+    "not re-run."
+)
+HAR_DATA_LINE = "Data: UCI HAR (Reyes-Ortiz et al., 2013), CC BY 4.0, "
+HAR_DOI = "https://doi.org/10.24432/C54S4K"
+HAR_DETAILS = "Data licence details"
+
+# -- O2: the story stepper ----------------------------------------------------------------------------
+CLAIM_LINE = "Claim: {claim}"
+STEPPER_LABEL = "Story steps"
+STEPPER_TITLES = {
+    1: "Claim",
+    2: "What the checks found",
+    3: "The AI's fix",
+    4: "Approval & sealed run",
+    5: "Verified evidence",
+}
+STEPPER_OPTION = "{n} {title}"
+STEPPER_POSITION = "Step {n} of {t}"
+STEP_BACK = "Back"
+STEP_NEXT = "Next"
+SHOW_ALL_STEPS = "Show all steps"
+SHOW_MORE = "Show more"
+# Step 1: the concept diagram for an unseen_group claim (no numbers).
+DIAGRAM_TRAIN_PEOPLE = "Training people"
+DIAGRAM_TEST_PEOPLE = "Test people"
+DIAGRAM_GROUP_CAPTION = "The claim: the model works on people it has never seen."
+DIAGRAM_GROUP_ALT = (
+    "Diagram: two separate groups of people, training people and test people, with a gap "
+    "between them."
+)
+# Step 3: one chip per proposal, from the verified agent report.
+CHIP_REVISION = "Revision {n}: {outcome}"
+CHIP_OUTCOME = {
+    "executed": "approved and executed in the sealed runner",
+    "rejected": "rejected by ATLAS validation",
+    "not_executed": "not executed",
+}
+CHIP_EXECUTED_OTHER = "executed (runner {runner})"
+CHIP_UNKNOWN = "recorded outcome {code}"
+# Step 4: the concept diagram of approval and the sealed run (no numbers).
+DIAGRAM_CODE = "Code"
+DIAGRAM_TYPED_HASH = "Typed hash"
+DIAGRAM_SEALED = "Sealed runner: no network · non-root · read-only"
+DIAGRAM_SEALED_ALT = (
+    "Diagram: code, then a typed hash, then a locked sealed runner with no network, a "
+    "non-root user and read-only files."
+)
+# Step 5: what changed (or what failed), then the integrity line (PROOF_INTACT: the proposed
+# "Recorded files unchanged since recording" is not used, because the count includes outcome
+# comparisons, which are not files).
+WHAT_CHANGED = "What changed"
+WHAT_FAILED = "What failed"
+ALL_PASSED = "All required checks passed"
+CHIP_CHANGE = "{label}: {before} → {after}"
+CHIP_STATUS = "{label}: {status}"
+
+# -- C1-C3: the comparison page (plain) ----------------------------------------------------------------
+VS_ANSWER = (
+    "On these {c} projects, ATLAS's checks found all {k} problems they can assess, with no "
+    "false alarms. The AI model on its own made {ks} of {ns} detections on those same {m} "
+    "problems ({ka} of {na} overall), raised {xm} false alarms, and gave {im} unusable answers "
+    "out of {t}."
+)
+VS_CAVEAT_LINE = (
+    "Read with care: a small test on the projects ATLAS was built on, and the flawed projects' "
+    "files describe their flaws in text the model could read."
+)
+VS_ALL_CAVEATS = "All caveats ({n})"
+VS_TILE_FOUND = "Problems found"
+VS_TILE_FALSE = "False alarms"
+VS_TILE_INVALID = "Unusable answers"
+VS_TILE_ATLAS_FOUND_NOTE = "assessable; {x} of {t} not assessed"
+VS_TILE_MODEL_FOUND_NOTE = "detections on the same {m}; {ka} of {na} overall"
+VS_DATA_TABLE = "Data table"
+VS_MEANS_DETAIL = "What this means in detail"
+VS_ABOUT = "About this comparison"
+VS_FOOT_SEP = " · "
+
+# -- H1-H3: How It Works & Limits (plain) ----------------------------------------------------------------
+HOW_LINES = (
+    "The evaluation runs in a sealed container, and ATLAS records what each step learned from.",
+    "Fixed checks decide whether a rule was broken. No AI takes part.",
+    "An AI may suggest a fix. ATLAS treats it as untrusted.",
+    (
+        "A person approves each exact piece of code, original or fix, by typing the start of "
+        "its hash."
+    ),
+    "The approved fix runs sealed, and the same checks judge it again.",
+)
+# The six safety tiles: (title, line). The "Tamper check" tile keeps the existing sentence
+# (SAFETY's sixth item): the proposed "Every recorded file is re-hashed before display; any
+# change shows 'evidence changed'." is not supported, since only the files with a recorded
+# hash are re-checked.
+SAFETY_TILES = (
+    (
+        "Sealed runner",
+        "No network, no admin rights, read-only files. If it is unavailable, ATLAS stops.",
+    ),
+    ("Typed approval", "Only the exact approved code can run."),
+    ("AI text is not evidence", "Outcomes come only from the fixed checks."),
+    (
+        "Spending caps",
+        "Every AI request is reserved against a cap first. Totals are estimates, not billing.",
+    ),
+    (
+        "Hosted demo runs no project code",
+        "It replays recorded runs and shows AI proposals without executing them.",
+    ),
+    ("Tamper check", SAFETY[5][0]),
+)
+KEY_LIMITS_HEAD = "Key limits"
+KEY_LIMITS = (
+    "A clean result means only that the listed checks passed. It does not prove the claim true.",
+    "Only small tabular scikit-learn classification, with three kinds of claim.",
+    "No held-out test projects: every result here is on projects ATLAS was built on.",
+    (
+        "Tracing starts at the feature table the project supplies; how data was collected, "
+        "labelled or turned into features is not checked."
+    ),
+)
+ALL_LIMITS = "All limitations ({n}), in full"

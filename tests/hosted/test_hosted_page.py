@@ -95,6 +95,11 @@ def test_without_the_kill_switch_nothing_is_sent_and_recorded_runs_render(
         with H.loopback_only():
             at.run()
         assert not at.exception
+        # The stepper's step 5 (readability pass): the integrity record is in its Show more.
+        at.session_state[f"story_step_{case}"] = 5
+        with H.loopback_only():
+            at.run()
+        assert not at.exception
         shown = texts(at)
         assert re.search(
             r"\d+ of \d+ recorded items verified now \(\d+ file hashes?, "
@@ -102,7 +107,7 @@ def test_without_the_kill_switch_nothing_is_sent_and_recorded_runs_render(
             shown,
         ), label
         assert "matches the files on disk" in shown, label
-        assert "finished 2026-10-1" in shown and "not re-run here" in shown
+        assert "finished 2026-10-1" in shown and "replayed here, not re-run." in shown
         if "har_" in label:
             assert "CC BY 4.0" in shown and "Any commercial use is prohibited" in shown
     at = switch_to_live(at)

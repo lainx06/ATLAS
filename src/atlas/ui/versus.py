@@ -45,7 +45,7 @@ CSS = """
 .st-key-vs-caveats { border-left: 2px solid #FBBF24; }
 .st-key-vs-means { border-left: 2px solid #67E8F9; }
 .hud-vs ul { margin: 4px 0 0; padding-left: 18px; }
-.hud-vs li { margin: 0 0 6px; font-size: 14px; line-height: 1.5; color: #E2E8F0; }
+.hud-vs li { margin: 0 0 6px; font-size: 16px; line-height: 1.5; color: #E2E8F0; }
 .hud-vs code { font-size: 12px; }
 .hud-vs-chart svg { display: block; width: 100%; height: auto; }
 .hud-vs-chart .vs-narrow { display: none; }
@@ -54,6 +54,15 @@ CSS = """
   .hud-vs-chart .vs-narrow { display: block; }
 }
 .hud-vs-chart { max-width: 860px; }
+/* Readability pass: the answer, the caveat line and the stat tiles (plain view). */
+.st-key-vs-answer p { font-size: 20px; line-height: 1.45; font-weight: 500; color: #E2E8F0; }
+.st-key-vs-caveat-line { background: #0F1720; border: 1px solid #1E2A36;
+  border-left: 2px solid #FBBF24; border-radius: 4px; padding: 8px 14px; }
+.st-key-vs-caveat-line p { font-size: 16px; line-height: 1.5; margin: 0; }
+.st-key-vs-caveat-line [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
+[class*="st-key-vs-tile-"] { gap: 4px; padding-bottom: 14px; }
+[class*="st-key-vs-tile-"] [data-testid="stMetricValue"] > div { font-size: 30px; }
+[class*="st-key-vs-tile-"] [data-testid="stCaptionContainer"] p { margin: 0; }
 </style>
 """
 
@@ -472,8 +481,11 @@ def page(results_dir: Path | None = None, expected: Path | None = None) -> None:
         with st.container(key="vs-head", horizontal=True):
             st.title(C.PAGE_AGENT)
             story.expert_toggle()
-        with st.container(key="vs-question"):
-            st.markdown(story.md(C.VS_QUESTION))
+        if (
+            story.expert()
+        ):  # plain view: the question moves under "About this comparison"
+            with st.container(key="vs-question"):
+                st.markdown(story.md(C.VS_QUESTION))
         checks = verify(results_dir, expected)
         if not R.intact(checks):
             changed_panel(checks)
@@ -489,8 +501,121 @@ def page(results_dir: Path | None = None, expected: Path | None = None) -> None:
         body(f, checks, scores, suite, exp)
 
 
+def answer(f: Figures) -> str:
+    """C1: the one answer sentence (every number from the verified files)."""
+    return C.VS_ANSWER.format(
+        c=f.cases,
+        k=f.atlas_found,
+        ks=f.same_found,
+        ns=f.same_total,
+        m=f.same_ids,
+        ka=f.all_found,
+        na=f.all_total,
+        xm=f.model_false,
+        im=f.model_invalid,
+        t=f.trials,
+    )
+
+
+def tiles(
+    f: Figures,
+) -> list[tuple[str, tuple[str, str, str | None], tuple[str, str, str | None]]]:
+    """C3: (title, (label, value, caption) for ATLAS, the same for the model alone)."""
+    v = values(f)
+    return [
+        (
+            C.VS_TILE_FOUND,
+            (
+                C.VS_SERIES_ATLAS,
+                C.VS_OF.format(k=f.atlas_found, n=f.atlas_assessable),
+                C.VS_TILE_ATLAS_FOUND_NOTE.format(x=f.not_assessed, t=f.expected_total)
+                if f.not_assessed
+                else None,
+            ),
+            (
+                C.VS_SERIES_MODEL,
+                C.VS_OF.format(k=f.same_found, n=f.same_total),
+                C.VS_TILE_MODEL_FOUND_NOTE.format(
+                    m=f.same_ids, ka=f.all_found, na=f.all_total
+                ),
+            ),
+        ),
+        (
+            C.VS_TILE_FALSE,
+            (C.VS_SERIES_ATLAS, v["xa"], None),
+            (C.VS_SERIES_MODEL, v["xm"], None),
+        ),
+        (
+            C.VS_TILE_INVALID,
+            (C.VS_SERIES_ATLAS, v["ia"], None),
+            (C.VS_SERIES_MODEL, v["im"], None),
+        ),
+    ]
+
+
+def stat_tiles(f: Figures) -> None:
+    with st.container(key="vs-tiles"):
+        for col, (i, (title, *sides)) in zip(
+            st.columns(3), enumerate(tiles(f)), strict=True
+        ):
+            with col, st.container(key=f"vs-tile-{i}", border=True):
+                st.markdown(f"**{story.md(title)}**")
+                for side_col, (label, value, note) in zip(
+                    st.columns(2), sides, strict=True
+                ):
+                    with side_col:
+                        st.metric(label, value)
+                        if note:
+                            st.caption(story.md(note))
+
+
+def plain_body(f: Figures, checks: list) -> None:
+    """Plain view (readability pass): the answer, the caveat line (all six behind a click),
+    three stat tiles, the chart, then the details behind clicks and one footnote line."""
+    with st.container(key="vs-answer"):
+        st.markdown(story.md(answer(f)))
+    with st.container(key="vs-caveat-line"):
+        st.markdown(story.md(C.VS_CAVEAT_LINE))
+    items = caveats(f)
+    with st.expander(C.VS_ALL_CAVEATS.format(n=len(items)), key="vs-all-caveats"):
+        _list("vs-caveats", C.VS_CAVEATS_HEAD, items)
+    stat_tiles(f)
+    with st.container(key="vs-chart"):
+        st.markdown(chart(f), unsafe_allow_html=True)
+    with st.container(key="vs-chart-note"):
+        st.caption(story.md(C.VS_CHART_NOTE.format(v=f.flawed_valid)))
+    with (
+        st.expander(C.VS_DATA_TABLE, key="vs-data-table"),
+        st.container(key="vs-table"),
+    ):
+        st.table(table(f), hide_index=True)
+    with st.expander(C.VS_MEANS_DETAIL, key="vs-means-detail"):
+        _list("vs-means", C.VS_MEANS_HEAD, list(C.VS_MEANS_PLAIN))
+        with st.container(key="vs-means-source"):
+            st.caption(story.md(C.VS_MEANS_PLAIN_SOURCE))
+    with st.expander(C.VS_ABOUT, key="vs-about"):
+        with st.container(key="vs-question"):
+            st.markdown(story.md(C.VS_QUESTION))
+        st.markdown(story.md(C.VS_SETUP.format(r=f.repetitions, c=f.cases)))
+    with st.container(key="vs-footnote"):
+        st.caption(
+            story.md(
+                C.VS_FOOT_SEP.join(
+                    (
+                        C.VS_COST.format(usd=f.cost_usd),
+                        C.VS_REVIEW,
+                        C.VS_INTACT.format(v=len(checks), t=len(checks)),
+                    )
+                )
+            )
+        )
+
+
 def body(f: Figures, checks: list, scores: dict, suite: dict, exp: dict) -> None:
     plain = not story.expert()
+    if plain:
+        plain_body(f, checks)
+        return
     st.markdown(story.md(C.VS_SETUP.format(r=f.repetitions, c=f.cases)))
     _list("vs-caveats", C.VS_CAVEATS_HEAD, caveats(f))
     with st.container(key="vs-chart"):

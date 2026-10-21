@@ -48,9 +48,12 @@ def mode(request, monkeypatch, tmp_path):
     return request.param
 
 
-def run(path: str, *, expert: bool = False, case: str | None = None) -> AppTest:
+def run(
+    path: str, *, expert: bool = False, case: str | None = None, show_all: bool = False
+) -> AppTest:
     at = AppTest.from_file(path, default_timeout=120)
     at.session_state[story.EXPERT] = expert
+    at.session_state[story.SHOW_ALL] = show_all
     if case is not None:
         at.session_state[story.CASE] = case
     at.run()
@@ -258,10 +261,18 @@ def test_the_page_shows_the_note_under_the_chart(mode):
 
 
 # == G9: step 2 and the analogies =====================================================================
+@pytest.mark.parametrize("show_all", [False, True])
 @pytest.mark.parametrize("key", list(CASES))
-def test_step_2_title_and_analogies_only_on_fail(mode, key):
-    at = run(APP, case=key)
+def test_step_2_title_and_analogies_only_on_fail(mode, key, show_all):
+    """The stepper (opening on step 2) and "Show all steps" (the five expanders)."""
+    at = run(APP, case=key, show_all=show_all)
     labels = [e.label for e in at.expander]
+    if not show_all:
+        bar = at.segmented_control(key=story.STEP_WIDGET + key)
+        assert bar.value == 2 and bar.options[1] == "2 What the checks found"
+        labels = [
+            C.STEP_LABEL.format(n=2, title=story.md(C.STEP_TITLES[2]), summary="")
+        ]
     step2 = [x for x in labels if x.startswith("**2 ·")]
     assert len(step2) == 1 and step2[0].startswith("**2 · What the checks found** — ")
     assert not any("The leak" in x for x in labels)

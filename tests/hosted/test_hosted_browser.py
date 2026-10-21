@@ -140,7 +140,9 @@ def live_session(page, server, typed: str, expected: str):
     page.get_by_text("Replay: these are recorded runs", exact=False).wait_for(
         timeout=60_000
     )
-    page.locator(".st-key-step-5 summary").first.click()  # step 5: the evidence panel
+    # Step 5 of the stepper, then its "Show more": the evidence panel.
+    page.locator(".st-key-stepper-row button").nth(4).click()
+    page.locator(".st-key-stepper-more-5 summary").first.click()
     page.locator(".st-key-card-integrity").wait_for(timeout=60_000)
     card = page.locator(".st-key-card-integrity").inner_text()
     assert (

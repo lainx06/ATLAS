@@ -3,9 +3,10 @@
 A1: on the Overview the active case card's "Showing this case" label, and every card's last
 line, lie fully inside their card (with bottom padding left) at every width tested. The tamper
 demo changes one byte in a temporary copy, shows the real check's result and leaves
-demo/recorded unchanged. The ATLAS Checks vs. Model Alone page shows its question, chart, data
-table and caveats without expanding anything; How It Works & Limits shows its diagram, steps
-and limits. With ATLAS_UI_SCREENS set, settled full-page screenshots are saved at 1440 x 900,
+demo/recorded unchanged. The ATLAS Checks vs. Model Alone page shows its answer, caveat line
+and chart without expanding anything, and its caveats and data table one click away
+(readability pass); How It Works & Limits shows its diagram, steps and key limits, and every
+limitation one click away. With ATLAS_UI_SCREENS set, settled full-page screenshots are saved at 1440 x 900,
 1280 x 800 and 390 x 844.
 """
 
@@ -13,7 +14,7 @@ import time
 from pathlib import Path
 
 from helpers import settle, wait_idle
-from test_scenario12_story import full_page, open_overview, toggle_step
+from test_scenario12_story import full_page, go_step, open_more, open_overview
 
 from atlas.ui import artifacts as A
 from atlas.ui import copy as C
@@ -90,12 +91,13 @@ def test_a1_the_card_label_is_fully_visible_at_every_width(app, page):
 
 def test_harflawed_step_4_says_no_ai_agent_took_part(app, page):
     open_overview(page, app, "harflawed")
-    toggle_step(page, 4, True)
-    summary = page.locator(".st-key-step-4 summary").first.inner_text()
-    assert C.SCRIPT_ONLY.rstrip(".") in summary.replace("\n", " ")
+    go_step(page, 4)
+    headline = page.locator(".st-key-stepper-headline").first.inner_text()
+    assert C.SCRIPT_ONLY.rstrip(".") in headline.replace("\n", " ")
+    open_more(page, 4)
     page.locator(".st-key-story-approvals").wait_for()
     wait_idle(page)
-    page.locator(".st-key-step-4").first.scroll_into_view_if_needed()
+    page.locator(".st-key-stepper-body-4").first.scroll_into_view_if_needed()
     full_page(page, "s14_02_harflawed_step4")
 
 
@@ -158,12 +160,16 @@ def test_agent_vs_model_alone_page(app, page):
     page.locator(".st-key-vs-chart svg").first.wait_for(timeout=30_000)
     wait_idle(page)
     body = page.locator(".st-key-vs-page").inner_text()
-    assert C.VS_QUESTION in body
-    # The caveats are visible without expanding anything.
+    assert "On these 4 projects, ATLAS's checks found all 8 problems" in body
+    # The caveat line is visible without expanding anything; all six one click away.
+    assert page.locator(".st-key-vs-caveat-line").is_visible()
+    assert C.VS_CAVEAT_LINE in page.locator(".st-key-vs-caveat-line").inner_text()
+    assert page.locator(".st-key-vs-page details").count() == 4
+    page.locator(".st-key-vs-all-caveats summary").first.click()
     caveats = page.locator(".st-key-vs-caveats")
-    assert caveats.is_visible()
+    caveats.wait_for(timeout=30_000)
     assert "Development cases, not held-out" in caveats.inner_text()
-    assert page.locator(".st-key-vs-page details").count() == 0
+    page.locator(".st-key-vs-data-table summary").first.click()
     page.locator(".st-key-vs-table table tbody tr").nth(2).wait_for(timeout=30_000)
     rows = page.locator(".st-key-vs-table table tbody tr").all_inner_texts()
     assert any(
@@ -173,7 +179,7 @@ def test_agent_vs_model_alone_page(app, page):
     )
     note = page.locator(".st-key-vs-chart-note").inner_text()
     assert "so they are detections, not distinct problems" in note
-    page.locator(".st-key-vs-review").wait_for(timeout=30_000)
+    page.locator(".st-key-vs-footnote").wait_for(timeout=30_000)
     body = page.locator(".st-key-vs-page").inner_text()  # after the page has finished
     assert C.VS_REVIEW in body and "estimate, not billing" in body
     assert page.locator(".st-key-vs-chart svg.vs-wide").is_visible()
@@ -191,7 +197,7 @@ def test_agent_vs_model_alone_page(app, page):
 def test_how_it_works_and_limits_page(app, page):
     open_overview(page, app)
     page.get_by_role("link", name=C.PAGE_LIMITS).click()
-    page.locator(".st-key-lim-limits").wait_for(timeout=30_000)
+    page.locator(".st-key-lim-key-limits").wait_for(timeout=30_000)
     wait_idle(page)
     settle(page)
     assert page.locator(".hud-lim-diagram li").count() == 5
@@ -199,6 +205,9 @@ def test_how_it_works_and_limits_page(app, page):
         C.DIAGRAM_LABEL.upper()
         in page.locator(".st-key-lim-diagram").inner_text().upper()
     )
+    assert page.locator(".st-key-lim-key-limits li").count() == len(C.KEY_LIMITS)
+    page.locator(".st-key-lim-all-limits summary").first.click()
+    page.locator(".st-key-lim-limits").wait_for(timeout=30_000)
     assert page.locator(".st-key-lim-limits li").count() == len(C.LIMITS_PLAIN)
     full_page(page, "s14_04_how_it_works_plain")
     page.get_by_text(C.EXPERT_TOGGLE, exact=True).click()

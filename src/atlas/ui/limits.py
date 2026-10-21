@@ -41,7 +41,7 @@ CSS = """
   .hud-lim-diagram.lim-fade { animation: lim-fade 400ms ease-out 1; }
 }
 .hud-lim ol, .hud-lim ul { margin: 4px 0 0; padding-left: 20px; }
-.hud-lim li { margin: 0 0 8px; font-size: 14px; line-height: 1.5; color: #E2E8F0; }
+.hud-lim li { margin: 0 0 8px; font-size: 16px; line-height: 1.5; color: #E2E8F0; }
 .hud-lim .lim-title { font-weight: 600; }
 .hud-lim .hud-src { margin-top: 2px; }
 .hud-lim .lim-orig { color: #94A3B8; font-size: 13px; margin-top: 2px; }
@@ -125,6 +125,9 @@ def page(readme: Path | None = None) -> None:
         with st.container(key="lim-diagram"):
             st.markdown(diagram(fade=fade), unsafe_allow_html=True)
         st.session_state[PLAYED] = True
+        if plain:
+            plain_body(readme)
+            return
         with st.container(key="lim-steps"):
             st.markdown(
                 _items(list(C.HOW_STEPS), plain, ordered=True), unsafe_allow_html=True
@@ -146,4 +149,50 @@ def page(readme: Path | None = None) -> None:
         with st.container(key="lim-not-do"):
             st.markdown(
                 _items(list(C.NOT_DO), plain, ordered=False), unsafe_allow_html=True
+            )
+
+
+def how_lines() -> list[tuple[str, str, str]]:
+    """H1: each step's short title (the diagram's) with its one line; the longer titles and
+    text are in Expert view."""
+    return [
+        (title, line, source)
+        for title, line, (_title, _text, source) in zip(
+            C.HOW_DIAGRAM_SHORT, C.HOW_LINES, C.HOW_STEPS, strict=True
+        )
+    ]
+
+
+def plain_body(readme: Path) -> None:
+    """Plain view (readability pass): the five steps in one line each, six safety tiles,
+    the four key limits, and every limitation in full behind one click."""
+    with st.container(key="lim-steps"):
+        st.markdown(_items(how_lines(), True, ordered=True), unsafe_allow_html=True)
+    st.subheader(C.SAFETY_HEAD)
+    with st.container(key="lim-safety-tiles"):
+        tiles = list(C.SAFETY_TILES)
+        for start in range(0, len(tiles), 3):
+            for col, (title, line) in zip(
+                st.columns(3), tiles[start : start + 3], strict=True
+            ):
+                with col, st.container(border=True, height="stretch"):
+                    st.markdown(f"**{story.md(title)}**")
+                    st.markdown(story.md(line))
+    st.subheader(C.KEY_LIMITS_HEAD)
+    with st.container(key="lim-key-limits"):
+        st.markdown(
+            '<div class="hud hud-lim"><ul>'
+            + "".join(f"<li>{story.code_html(x)}</li>" for x in C.KEY_LIMITS)
+            + "</ul></div>",
+            unsafe_allow_html=True,
+        )
+    original = readme_limitations(Path(readme).read_text(encoding="utf-8"))
+    with st.expander(C.ALL_LIMITS.format(n=len(C.LIMITS_PLAIN)), key="lim-all-limits"):
+        st.caption(story.md(C.LIMITS_INTRO))
+        with st.container(key="lim-limits"):
+            st.markdown(limits_html(True, original), unsafe_allow_html=True)
+        st.subheader(C.NOT_DO_HEAD)
+        with st.container(key="lim-not-do"):
+            st.markdown(
+                _items(list(C.NOT_DO), True, ordered=False), unsafe_allow_html=True
             )

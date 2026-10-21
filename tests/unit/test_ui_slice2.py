@@ -332,19 +332,29 @@ def test_the_findings_are_copied_exactly_from_evaluation_md():
 def test_the_page_shows_the_question_chart_caveats_findings_cost_and_review(mode):
     at = run_page(VS_PAGE)
     text = shown(at)
-    assert story.md(C.VS_QUESTION) in text
+    assert story.md(C.VS_QUESTION) in text  # plain view: under "About this comparison"
     assert "<svg" in text and 'class="vs-wide"' in text and 'class="vs-narrow"' in text
     f = VS.figures(
         scores(),
         json.loads((RESULTS / "suite.json").read_text(encoding="utf-8")),
         json.loads(EXPECTED.read_text(encoding="utf-8")),
     )
-    # The caveats: every one, in plain words, outside any expander.
+    # The caveats (readability pass): one visible line, outside any expander; all six,
+    # unchanged, behind "All caveats (6)".
+    inside = "\n".join(str(m.value) for m in at.expander(key="vs-all-caveats").markdown)
     for caveat in VS.caveats(f):
-        assert H.esc(caveat) in text, caveat
-        for e in at.expander:
-            assert H.esc(caveat) not in "\n".join(str(m.value) for m in e.markdown)
-    assert at.expander.len == 0
+        assert H.esc(caveat) in inside, caveat
+    assert story.md(C.VS_CAVEAT_LINE) in text
+    for e in at.expander:
+        assert story.md(C.VS_CAVEAT_LINE) not in "\n".join(
+            str(m.value) for m in e.markdown
+        )
+    assert [e.label for e in at.expander] == [
+        C.VS_ALL_CAVEATS.format(n=6),
+        C.VS_DATA_TABLE,
+        C.VS_MEANS_DETAIL,
+        C.VS_ABOUT,
+    ]
     assert "Development cases, not held-out" in VS.caveats(f)[0]
     assert "3 of the model's 12 replies" in VS.caveats(f)[3]
     assert "(3 recorded runs, 1 re-run)" in VS.caveats(f)[2]
@@ -410,14 +420,24 @@ def test_how_it_works_has_five_steps_safety_and_what_atlas_does_not_do(mode):
     at = run_page(LIM_PAGE)
     text = shown(at)
     assert len(C.HOW_STEPS) == 5
-    for title, body, _source in C.HOW_STEPS:
-        assert H.esc(title) in text and story.code_html(body) in text
+    # Plain view (readability pass): one line per step, six tiles, the four key limits;
+    # the longer text is in Expert view, "What ATLAS does not do" behind one click.
+    for title, line in zip(C.HOW_DIAGRAM_SHORT, C.HOW_LINES, strict=True):
+        assert H.esc(title) in text and story.code_html(line) in text
     assert H.esc(C.DIAGRAM_LABEL) in text and "lim-fade" in text
     assert re.search(r'lim-box">[^<]*\d', text) is None  # no number in the diagram
-    for item, _source in C.SAFETY:
+    for title, line in C.SAFETY_TILES:
+        assert story.md(title) in text and story.md(line) in text
+    for item in C.KEY_LIMITS:
         assert story.code_html(item) in text
+    inside = "\n".join(str(m.value) for m in at.expander(key="lim-all-limits").markdown)
     for item, _source in C.NOT_DO:
-        assert story.code_html(item) in text
+        assert story.code_html(item) in inside
+    expert_view = shown(run_page(LIM_PAGE, expert=True))
+    for title, body, _source in C.HOW_STEPS:
+        assert H.esc(title) in expert_view and story.code_html(body) in expert_view
+    for item, _source in C.SAFETY:
+        assert story.code_html(item) in expert_view
     assert "does not prove a claim true" in C.NOT_DO[0][0]
     # Sources only in Expert view; the fade plays once per session.
     assert "docs/SPEC.md" not in text

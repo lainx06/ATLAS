@@ -241,13 +241,21 @@ def overview(case: str | None = None, *, expert: bool = False) -> AppTest:
     return at
 
 
+@pytest.mark.parametrize("show_all", [False, True])
 @pytest.mark.parametrize("case", ["live6", "harflawed", "harclean"])
-def test_the_tamper_demo_is_a_collapsed_expander_after_step_5(mode, case):
+def test_the_tamper_demo_is_a_collapsed_expander_after_step_5(mode, case, show_all):
+    """After step 5 ("Show all steps"), or directly after the stepper."""
     at = overview(case)
+    if show_all:
+        at.session_state[story.SHOW_ALL] = True
+        at.run()
     labels = [e.label for e in at.expander]
-    steps = [i for i, label in enumerate(labels) if label.startswith("**5 ·")]
     assert labels[-1] == story.md(C.TAMPER_HEAD)
-    assert steps and steps[-1] == len(labels) - 2  # directly after step 5
+    if show_all:
+        steps = [i for i, label in enumerate(labels) if label.startswith("**5 ·")]
+        assert steps and steps[-1] == len(labels) - 2  # directly after step 5
+    else:
+        assert labels[-2] == C.SHOW_MORE  # the stepper's last element
     assert C.TAMPER_HEAD == (
         "Try tampering: change one byte in a copy and watch the check catch it"
     )
@@ -272,7 +280,8 @@ def flat(node) -> list:
 
 def test_the_expert_switch_is_beside_the_overview_title_and_only_once(mode):
     at = overview()
-    assert [t.label for t in at.toggle] == [C.EXPERT_TOGGLE]
+    # The switch once; plain view adds the stepper's "Show all steps" after the verdict bar.
+    assert [t.label for t in at.toggle] == [C.EXPERT_TOGGLE, C.SHOW_ALL_STEPS]
     order = flat(at.main)
     kinds = [type(e).__name__ for e in order]
     title = kinds.index("Title")

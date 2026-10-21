@@ -39,6 +39,14 @@ BUNDLE_ROOT = ROOT / "demo" / "recorded"
 EXPERT = "expert"  # session key: Expert view on (plain key; the widget writes it)
 EXPERT_WIDGET = "expert_widget"
 CASE = "story_case"  # session key: the selected case
+STEP = (
+    "story_step_"  # session key prefix: the stepper's step, per case (+ the case key)
+)
+STEP_WIDGET = "stepper-row-"  # the step row's widget key prefix (+ the case key)
+STEP_DEFAULT = 2  # every case opens on "What the checks found"
+STEP_COUNT = 5
+SHOW_ALL = "story_show_all"  # session key: "Show all steps" on (plain key)
+SHOW_ALL_WIDGET = "show_all_widget"
 # Recorded approval reasons of the T-09 audit script's approver (benchmarks/real_sensor/
 # run_audit.py, OriginalOnly): the original approved by the script, no typed confirmation.
 SCRIPT_REASONS = frozenset({"t09_task_authorized_original"})
@@ -61,7 +69,7 @@ CSS = """
 /* The title with the Expert view switch at its right (slice 3: the same place on every page). */
 .st-key-story-head { gap: 8px 16px; align-items: flex-start; flex-wrap: wrap; }
 .st-key-story-tagline p { font-size: 17px; line-height: 1.45; color: #E2E8F0; }
-.st-key-story-why p { font-size: 13px; line-height: 1.45; color: #94A3B8; }
+.st-key-story-why p { font-size: 16px; line-height: 1.45; color: #E2E8F0; }
 /* Case cards: one panel each; the selected one carries the accent edge. The title button is
    stretched over its card, so the whole card is the click target; its focus ring is the
    card's. */
@@ -99,7 +107,7 @@ CSS = """
   margin: 2px 0 6px; }
 .hud .hud-case-codes .hud-code { font-size: 12px; }
 .hud-case-arrow { color: #94A3B8; }
-.hud .hud-case-desc { font-size: 13px; line-height: 1.45; color: #E2E8F0; }
+.hud .hud-case-desc { font-size: 16px; line-height: 1.45; color: #E2E8F0; }
 .hud .hud-case-on { font-family: 'IBM Plex Sans Condensed', sans-serif; font-weight: 600;
   font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #67E8F9;
   margin-top: 6px; }
@@ -116,6 +124,59 @@ CSS = """
   @keyframes story-open { from { opacity: 0; transform: translateY(-4px); } }
   [class*="st-key-step-"] details[open] > :not(summary) {
     animation: story-open 200ms ease-out; }
+}
+/* Readability pass: the glossary beside the tagline, the claim line, the stepper. */
+.st-key-story-tagline-row { gap: 8px 16px; flex-wrap: wrap; }
+.st-key-story-tagline-row > :first-child { flex: 1 1 24rem; }
+.st-key-glossary-terms li { font-size: 16px; line-height: 1.5; margin-bottom: 6px; }
+.st-key-claim-line p { font-size: 18px; line-height: 1.45; color: #E2E8F0; margin: 0; }
+.st-key-claim-line { margin-top: 8px; }
+.st-key-stepper { gap: 0.75rem; }
+.st-key-stepper-row [data-testid="stButtonGroup"] button p { font-size: 15px; }
+.st-key-stepper-nav { gap: 8px 16px; flex-wrap: wrap; }
+.st-key-stepper-position { width: auto; flex: 0 0 auto; }
+.hud.hud-step-pos { margin: 0; font-size: 16px; color: #E2E8F0; }
+.st-key-stepper button:focus-visible, .st-key-show-all label:has(input:focus-visible),
+.st-key-glossary button:focus-visible, [class*="st-key-stepper-more-"] summary:focus-visible,
+.st-key-har-details summary:focus-visible {
+  outline: 2px solid #67E8F9; outline-offset: 2px; border-radius: 4px; }
+.st-key-stepper-headline h3, .st-key-no-proposal h3 { font-size: 22px; line-height: 1.35;
+  padding: 0; font-weight: 600; }
+.hud.hud-analogy .hud-analogy-line { margin: 4px 0 0; font-size: 16px; line-height: 1.5; }
+/* Chips: native badges that wrap on narrow screens instead of overflowing. */
+:is(.st-key-stepper-chips, .st-key-stepper-outcomes) [data-testid="stMarkdownContainer"] li {
+  margin-bottom: 6px; }
+:is(.st-key-stepper-chips, .st-key-stepper-outcomes) [data-testid="stMarkdownContainer"] span {
+  white-space: normal; overflow-wrap: anywhere; font-size: 15px; line-height: 1.45; }
+/* The two concept diagrams: no numbers; static. */
+.hud.hud-concept { margin: 4px 0 0; }
+.hud-concept .hud-lbl { display: block; margin-bottom: 6px; }
+.hud-concept .concept-groups { display: flex; flex-wrap: wrap; align-items: flex-end;
+  gap: 12px 0; }
+.hud-concept .concept-group { background: #0F1720; border: 1px solid #1E2A36;
+  border-radius: 4px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px;
+  align-items: center; }
+.hud-concept .concept-train { border-color: #67E8F9; }
+.hud-concept .concept-test { border-color: #A8A29E; border-style: dashed; }
+.hud-concept .concept-people { display: flex; gap: 6px; }
+.hud-concept .concept-person { width: 18px; height: 26px; fill: #94A3B8; }
+.hud-concept .concept-train .concept-person { fill: #67E8F9; }
+.hud-concept .concept-name { font-size: 15px; color: #E2E8F0; }
+.hud-concept .concept-gap { width: 48px; align-self: stretch;
+  border-left: 1px dashed #1E2A36; margin: 0 0 0 24px; }
+.hud-concept .concept-caption { margin-top: 8px; font-size: 16px; color: #E2E8F0; }
+.hud-concept .concept-flow { display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px 0; }
+.hud-concept .concept-box { background: #0F1720; border: 1px solid #1E2A36;
+  border-radius: 4px; padding: 8px 12px; font-size: 15px; line-height: 1.35; color: #E2E8F0;
+  display: inline-flex; align-items: center; gap: 8px; }
+.hud-concept .concept-locked { border-color: #67E8F9; }
+.hud-concept .concept-lock { width: 16px; height: 20px; fill: #67E8F9; stroke: #67E8F9; }
+.hud-concept .concept-arrow { color: #94A3B8; padding: 0 8px; }
+/* At most a one-time fade when the step changes (a new step's body is a new element). */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes stepper-fade { from { opacity: 0; } }
+  [class*="st-key-stepper-body-"] { animation: stepper-fade 200ms ease-out 1; }
 }
 </style>
 """
@@ -157,7 +218,22 @@ def _sync_expert() -> None:
 
 
 def _select(key: str) -> None:
+    if st.session_state.get(CASE) != key:  # another case starts at its default step
+        st.session_state.pop(step_key(key), None)
     st.session_state[CASE] = key
+
+
+def step_key(case_key: str) -> str:
+    """Session key: the stepper's current step for one case (a plain key)."""
+    return f"{STEP}{case_key}"
+
+
+def show_all() -> bool:
+    return bool(st.session_state.get(SHOW_ALL, False))
+
+
+def _sync_show_all() -> None:
+    st.session_state[SHOW_ALL] = bool(st.session_state[SHOW_ALL_WIDGET])
 
 
 # -- the page --------------------------------------------------------------------------------
@@ -167,12 +243,32 @@ def header(*, toggle: bool = False) -> None:
             st.title(C.APP_NAME)
             if toggle:
                 expert_toggle()
-        with st.container(key="story-tagline"):
-            st.markdown(md(C.TAGLINE))
+        if expert():
+            with st.container(key="story-tagline"):
+                st.markdown(md(C.TAGLINE))
+        else:
+            # R1 (readability pass): the four-term glossary beside the tagline.
+            with st.container(
+                key="story-tagline-row", horizontal=True, vertical_alignment="center"
+            ):
+                with st.container(key="story-tagline"):
+                    st.markdown(md(C.TAGLINE))
+                glossary()
         with st.container(key="story-why"):
             st.markdown(
                 f"**{md(C.WHY_LABEL)}:** {md(C.WHY_TEXT)} [{C.WHY_LINK}]({C.WHY_URL})"
             )
+
+
+def glossary() -> None:
+    """R1: a small popover with the four terms (fixed copy)."""
+    with (
+        st.popover(C.GLOSSARY_BUTTON, key="glossary", icon=":material/menu_book:"),
+        st.container(key="glossary-terms"),
+    ):
+        st.markdown(
+            "\n".join(f"- **{md(term)}:** {md(text)}" for term, text in C.GLOSSARY)
+        )
 
 
 def case_runs(root: Path) -> list[tuple[C.Case, R.RecordedRun | None]]:
@@ -319,8 +415,8 @@ def banner_text(report: dict | None, finished_utc: str | None) -> str:
     if report is None:
         return C.BANNER_AUDIT.format(date=date)
     if report.get("live") is True:
-        return C.BANNER_LIVE.format(model=model_name(report), date=date)
-    return C.BANNER_FIXTURE.format(date=date)
+        return C.BANNER_RUN_LIVE.format(model=model_name(report), date=date)
+    return C.BANNER_RUN_FIXTURE.format(date=date)
 
 
 def banner(
@@ -331,17 +427,22 @@ def banner(
     plain_notes: tuple[str, ...],
 ) -> None:
     """Expert view: the full recorded banner. Plain: one line from the report (recorded,
-    the model, the finish date, not re-run here) and the plain notes."""
+    the model, the finish date, replayed and not re-run), the replay disclosure, and for the
+    HAR runs one data line with the full citation behind "Data licence details"."""
     if expert():
         V.recorded_banner(report, label, finished_utc, notes)
         return
     with st.container(key="banner", border=True):
         with st.container(key="recorded-label"):
-            st.markdown(
-                f":blue-badge[{md(C.BANNER_TAG)}] {md(banner_text(report, finished_utc))}"
-            )
+            st.markdown(md(banner_text(report, finished_utc)))
         for note in plain_notes:
-            st.caption(note)  # fixed copy, as in the Expert banner
+            if note == C.HAR_CITATION_PLAIN:
+                with st.container(key="har-data"):
+                    st.markdown(f"{md(C.HAR_DATA_LINE)}[{C.HAR_DOI}]({C.HAR_DOI})")
+                with st.expander(C.HAR_DETAILS, key="har-details"):
+                    st.caption(note)  # fixed copy, unchanged
+            else:
+                st.caption(note)  # fixed copy, as in the Expert banner
 
 
 # -- facts (read once from the verified files) ----------------------------------------------------
@@ -366,6 +467,11 @@ class Facts:
     untyped: int = 0
     script: int = 0  # approvals by the T-09 audit script (its recorded approval reason)
     ran_isolated: int = 0  # evaluated runs (the original first) in the isolated runner
+    # revision numbers whose recorded execution completed in the isolated Docker runner
+    isolated_revisions: set[int] = field(default_factory=set)
+    exec_runners: dict[int, str] = field(
+        default_factory=dict
+    )  # revision -> recorded runner
     original_runner: str | None = None
     not_here: int = 0
 
@@ -508,6 +614,11 @@ def facts(run: R.RecordedRun, report: dict, checks: list, hud: H.Hud) -> Facts:
         f.executions.append(line)
         f.exec_sources.append(C.EXEC_SOURCE.format(sub=sub))
         f.ran_isolated += isolated
+        n = _revision_of(report, ex.get("candidate_hash"))
+        if n is not None:
+            f.exec_runners[n] = str(ex.get("runner") or H.NOT_RECORDED)
+            if isolated:
+                f.isolated_revisions.add(n)
     for p in report.get("proposals") or []:
         if isinstance(p, dict) and p.get("outcome") == "not_executed_here":
             f.not_here += 1
@@ -691,6 +802,28 @@ def case(
     plain = not expert()
     f = facts(run, report, checks, hud)
     verdict_bar(hud, f, played=played, plain=plain, run=run, checks=checks)
+    if plain:
+        # O2 (readability pass): the claim, always visible, then the stepper (one step at
+        # a time) or, with "Show all steps", the five expanders as before.
+        claim_line(f)
+        show_all_toggle()
+    if plain and not show_all():
+        stepper(run, case_key(run), bundled)
+    else:
+        step_list(run, hud, f, checks, plain, played)
+    # C1 (slice 3): the tamper demo, a collapsed expander directly after step 5.
+    tamper_section(run, checks, plain)
+
+
+def case_key(run: R.RecordedRun) -> str:
+    case = next((c for c in C.CASES if c.run == run.label), None)
+    return case.key if case else H.run_hash(run.label)
+
+
+def step_list(
+    run: R.RecordedRun, hud: H.Hud, f: Facts, checks: list, plain: bool, played: bool
+) -> None:
+    """The five steps as expanders (Expert view, and plain view with "Show all steps")."""
     told = summaries(hud, f, checks)
     bodies = {
         1: lambda: step_claim(f, plain),
@@ -706,8 +839,335 @@ def case(
             )
             with st.expander(label, expanded=n == 2, key=f"step-{n}"):
                 body()
-    # C1 (slice 3): the tamper demo, a collapsed expander directly after step 5.
-    tamper_section(run, checks, plain)
+
+
+# -- the stepper (plain view; readability pass) ------------------------------------------------------
+def claim_line(f: Facts) -> None:
+    """The recorded claim, always visible in plain view (with the ATLAS-authored-variant note
+    that har_flawed's recorded statement carries)."""
+    with st.container(key="claim-line"):
+        if f.claim is not None and getattr(f.claim, "statement", None):
+            st.markdown(f"**{md(C.CLAIM_LINE.format(claim=f.claim.statement))}**")
+        else:
+            st.markdown(md(f.claim_problem or C.NO_MANIFEST))
+
+
+def show_all_toggle() -> None:
+    if SHOW_ALL_WIDGET not in st.session_state:
+        st.session_state[SHOW_ALL_WIDGET] = show_all()
+    with st.container(key="show-all"):
+        st.toggle(C.SHOW_ALL_STEPS, key=SHOW_ALL_WIDGET, on_change=_sync_show_all)
+
+
+def current_step(key: str) -> int:
+    n = st.session_state.get(step_key(key))
+    if not isinstance(n, int) or not 1 <= n <= STEP_COUNT:
+        n = st.session_state[step_key(key)] = STEP_DEFAULT
+    return n
+
+
+def _go(key: str, n: int) -> None:
+    n = min(max(n, 1), STEP_COUNT)
+    st.session_state[step_key(key)] = n
+    st.session_state[STEP_WIDGET + key] = n
+
+
+def _picked(key: str) -> None:
+    n = st.session_state.get(STEP_WIDGET + key)
+    if isinstance(n, int):
+        st.session_state[step_key(key)] = n
+
+
+@st.fragment
+def stepper(run: R.RecordedRun, key: str, bundled: bool) -> None:
+    """One step at a time. A fragment, so a step change reruns only this; and every run of it
+    (the full page's or a step change's) first re-runs the page's own verification of the
+    recorded run, from the files on disk, never cached. If that fails, the whole page reruns
+    (st.rerun(scope="app")) and the page's gate then draws only the evidence-changed panel:
+    no step content is ever drawn from a failed or an earlier verification."""
+    report = (
+        A.read_json(run.path / "agent_report.json") if run.kind == R.AGENT else None
+    )
+    checks = RS.verification(run.path, report, run.kind)
+    if report is None or not R.intact(checks):
+        st.rerun(scope="app")
+    hud = H.build(run.path, report, checks, run.label, bundled=bundled)
+    if hud is None:
+        st.rerun(scope="app")
+    f = facts(run, report, checks, hud)
+    told = summaries(hud, f, checks)
+    played = run.label in st.session_state.get(RS.HUD_PLAYED, set())
+    n = current_step(key)
+    widget = STEP_WIDGET + key
+    if st.session_state.get(widget) != n:
+        st.session_state[widget] = n
+    with st.container(key="stepper"):
+        with st.container(key="stepper-row"):
+            st.segmented_control(
+                C.STEPPER_LABEL,
+                options=list(range(1, STEP_COUNT + 1)),
+                format_func=lambda i: C.STEPPER_OPTION.format(
+                    n=i, title=md(C.STEPPER_TITLES[i])
+                ),
+                required=True,
+                key=widget,
+                on_change=_picked,
+                args=(key,),
+                label_visibility="collapsed",
+                width="stretch",
+            )
+        with st.container(
+            key="stepper-nav", horizontal=True, vertical_alignment="center"
+        ):
+            st.button(
+                C.STEP_BACK,
+                key=f"stepper-back-{key}",
+                on_click=_go,
+                args=(key, n - 1),
+                disabled=n == 1,
+                icon=":material/arrow_back:",
+            )
+            with st.container(key="stepper-position"):
+                st.markdown(
+                    '<p class="hud hud-step-pos" role="status" aria-live="polite">'
+                    f"{esc(C.STEPPER_POSITION.format(n=n, t=STEP_COUNT))}</p>",
+                    unsafe_allow_html=True,
+                )
+            st.button(
+                C.STEP_NEXT,
+                key=f"stepper-next-{key}",
+                on_click=_go,
+                args=(key, n + 1),
+                disabled=n == STEP_COUNT,
+                icon=":material/arrow_forward:",
+            )
+        with st.container(key=f"stepper-body-{n}"):
+            STEP_SCREENS[n](run, hud, f, checks, told[n], played)
+
+
+def _headline(text: str) -> None:
+    with st.container(key="stepper-headline"):
+        st.markdown(f"### {md(text)}")
+
+
+def _more(n: int):
+    return st.expander(C.SHOW_MORE, key=f"stepper-more-{n}")
+
+
+def screen_claim(run, hud, f: Facts, checks, told: str, played: bool) -> None:
+    """Step 1: the claim, the concept diagram for its type, Show more."""
+    if f.claim is not None and getattr(f.claim, "statement", None):
+        st.caption(md(C.CLAIM_INTRO))
+    _headline(told)
+    diagram = claim_diagram(f.claim)
+    if diagram is not None:
+        with st.container(key="concept-groups"):
+            st.markdown(diagram, unsafe_allow_html=True)
+    with _more(1):
+        expert_line(1)
+
+
+def screen_leak(run, hud, f: Facts, checks, told: str, played: bool) -> None:
+    """Step 2: the leak map and fit-scope flow (unchanged), the analogies in one box."""
+    _headline(told)
+    with st.container(key="hud-evidence"):
+        st.markdown(
+            H.evidence(hud, played=played, plain=True, parts=("leak", "flow")),
+            unsafe_allow_html=True,
+        )
+    lines = _analogies(f)
+    if lines:
+        with st.container(key="analogies"):
+            st.markdown(
+                '<div class="hud hud-analogy"><span class="hud-lbl">'
+                f"{esc(C.ANALOGY_LABEL)}</span>"
+                + "".join(f'<p class="hud-analogy-line">{esc(t)}</p>' for t in lines)
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+    with _more(2):
+        expert_line(2, C.SHOW_EVIDENCE)
+
+
+def proposal_chips(f: Facts) -> list[tuple[str, str]]:
+    """Step 3: (text, colour) per proposal of the verified agent report, in order."""
+    out = []
+    for i, p in enumerate(
+        [p for p in f.report.get("proposals") or [] if isinstance(p, dict)], start=1
+    ):
+        n = p.get("revision") if isinstance(p.get("revision"), int) else i
+        code = p.get("outcome")
+        if code == "executed" and n in f.isolated_revisions:
+            outcome, color = C.CHIP_OUTCOME["executed"], "green"
+        elif code == "executed":
+            outcome = C.CHIP_EXECUTED_OTHER.format(
+                runner=f.exec_runners.get(n, H.NOT_RECORDED)
+            )
+            color = "gray"
+        elif code == "rejected":
+            outcome, color = C.CHIP_OUTCOME["rejected"], "red"
+        elif code in ("declined", "unavailable", "not_executed_here"):
+            outcome, color = C.CHIP_OUTCOME["not_executed"], "gray"
+        else:
+            outcome, color = C.CHIP_UNKNOWN.format(code=code), "gray"
+        out.append((C.CHIP_REVISION.format(n=n, outcome=outcome), color))
+    return out
+
+
+def _chips(key: str, head: str | None, chips: list[tuple[str, str]]) -> None:
+    with st.container(key=key):
+        lines = [f"- :{color}-badge[{md(text)}]" for text, color in chips]
+        st.markdown((f"**{md(head)}**\n\n" if head else "") + "\n".join(lines))
+
+
+def screen_fix(run, hud, f: Facts, checks, told: str, played: bool) -> None:
+    """Step 3: one chip per proposal; the model-written text only in Show more."""
+    views = A.proposals(run.path, f.report)
+    if not views:  # the headline is the existing "No revision was proposed." line
+        with st.container(key="no-proposal"):
+            st.markdown(f"### {md(told)}")
+        with _more(3):
+            expert_line(3)
+        return
+    _headline(told)
+    _chips("stepper-chips", None, proposal_chips(f))
+    with _more(3):
+        _proposal_blocks(f, views)
+        expert_line(3)
+
+
+def screen_approval(run, hud, f: Facts, checks, told: str, played: bool) -> None:
+    """Step 4: the concept diagram, the step's summary line under it, Show more."""
+    with st.container(key="concept-sealed"):
+        st.markdown(sealed_diagram(), unsafe_allow_html=True)
+    _headline(told)
+    with _more(4):
+        _fact_list(f.approvals, "story-approvals", C.APPROVALS_HEAD)
+        _fact_list(f.executions, "story-executions", C.EXECUTIONS_HEAD)
+        expert_line(4)
+
+
+def outcome_chips(hud: H.Hud) -> tuple[str, list[tuple[str, str]]]:
+    """Step 5 (a): the checks whose recorded status changed (with an executed revision);
+    else the ones that did not pass; else that all required checks passed."""
+    labels = H.load_descriptions()
+    rows = hud.matrix
+    if hud.candidate is not None:
+        changed = [
+            r for r in rows if r.original and r.candidate and r.original != r.candidate
+        ]
+        if changed:
+            return C.WHAT_CHANGED, [
+                (
+                    C.CHIP_CHANGE.format(
+                        label=labels.get(r.assertion_id, r.assertion_id),
+                        before=r.original,
+                        after=r.candidate,
+                    ),
+                    "green" if r.candidate == "PASS" else "red",
+                )
+                for r in changed
+            ]
+    final = [
+        (r.assertion_id, r.candidate if hud.candidate is not None else r.original)
+        for r in rows
+    ]
+    final = [(aid, s) for aid, s in final if s]
+    bad = [(aid, s) for aid, s in final if s in ("FAIL", "NOT_ASSESSED", "ERROR")]
+    if bad:
+        return C.WHAT_FAILED, [
+            (
+                C.CHIP_STATUS.format(label=labels.get(aid, aid), status=s),
+                {"FAIL": "red", "NOT_ASSESSED": "orange", "ERROR": "violet"}[s],
+            )
+            for aid, s in bad
+        ]
+    if final and all(s == "PASS" for _aid, s in final):
+        return C.ALL_PASSED, []
+    return "", []
+
+
+def screen_proof(run, hud, f: Facts, checks, told: str, played: bool) -> None:
+    """Step 5: what changed, one integrity line, everything else in Show more."""
+    _headline(told)
+    head, chips = outcome_chips(hud)
+    if chips:
+        _chips("stepper-outcomes", head, chips)
+    elif head:
+        with st.container(key="stepper-outcomes"):
+            st.markdown(f":green-badge[{md(head)}]")
+    count = H.integrity_count(checks)
+    line = C.PROOF_INTACT.format(v=count.total - count.differ, t=count.total)
+    if line != told:  # with no executed revision, the headline is this line already
+        with st.container(key="stepper-integrity"):
+            st.markdown(md(line))
+    with _more(5):
+        step_proof(run, hud, f, checks, True, True)
+
+
+STEP_SCREENS = {
+    1: screen_claim,
+    2: screen_leak,
+    3: screen_fix,
+    4: screen_approval,
+    5: screen_proof,
+}
+
+
+# -- the two concept diagrams (no numbers; labelled "Diagram") -----------------------------------
+_PERSON = (
+    '<svg class="concept-person" viewBox="0 0 20 28" aria-hidden="true" focusable="false">'
+    '<circle cx="10" cy="7" r="5"/><path d="M1 27c0-7 4-11 9-11s9 4 9 11z"/></svg>'
+)
+_LOCK = (
+    '<svg class="concept-lock" viewBox="0 0 20 24" aria-hidden="true" focusable="false">'
+    '<path d="M5 10V7a5 5 0 0 1 10 0v3" fill="none" stroke-width="2.4"/>'
+    '<rect x="2" y="10" width="16" height="13" rx="2"/></svg>'
+)
+
+
+def claim_diagram(claim) -> str | None:
+    """Step 1's concept diagram for the claim's type: only an unseen_group claim has one."""
+    if claim is not None and getattr(claim, "type", None) == "unseen_group":
+        return group_diagram()
+    return None
+
+
+def group_diagram() -> str:
+    """Step 1 for an unseen_group claim: training people and test people, apart."""
+
+    def group(cls: str, name: str) -> str:
+        return (
+            f'<div class="concept-group {cls}"><div class="concept-people">'
+            + _PERSON * 4
+            + f'</div><span class="concept-name">{esc(name)}</span></div>'
+        )
+
+    return (
+        f'<figure class="hud hud-concept" role="img" aria-label="{esc(C.DIAGRAM_GROUP_ALT)}">'
+        f'<span class="hud-lbl">{esc(C.DIAGRAM_LABEL)}</span>'
+        '<div class="concept-groups">'
+        + group("concept-train", C.DIAGRAM_TRAIN_PEOPLE)
+        + '<div class="concept-gap" aria-hidden="true"></div>'
+        + group("concept-test", C.DIAGRAM_TEST_PEOPLE)
+        + "</div>"
+        f'<figcaption class="concept-caption">{esc(C.DIAGRAM_GROUP_CAPTION)}</figcaption>'
+        "</figure>"
+    )
+
+
+def sealed_diagram() -> str:
+    """Step 4: code, then a typed hash, then the locked sealed runner."""
+    arrow = '<span class="concept-arrow" aria-hidden="true">→</span>'
+    return (
+        f'<figure class="hud hud-concept" role="img" aria-label="{esc(C.DIAGRAM_SEALED_ALT)}">'
+        f'<span class="hud-lbl">{esc(C.DIAGRAM_LABEL)}</span>'
+        '<div class="concept-flow">'
+        f'<span class="concept-box">{esc(C.DIAGRAM_CODE)}</span>{arrow}'
+        f'<span class="concept-box">{esc(C.DIAGRAM_TYPED_HASH)}</span>{arrow}'
+        f'<span class="concept-box concept-locked">{_LOCK}{esc(C.DIAGRAM_SEALED)}</span>'
+        "</div></figure>"
+    )
 
 
 def verdict_bar(
@@ -1011,6 +1471,13 @@ def step_fix(run: R.RecordedRun, f: Facts, plain: bool) -> None:
             st.markdown(md(C.NO_PROPOSAL))
         expert_line(3)
         return
+    _proposal_blocks(f, views)
+    expert_line(3)
+
+
+def _proposal_blocks(f: Facts, views: list) -> None:
+    """Each proposal: its outcome, then the model-written diff and explanation in the
+    untrusted frame (plain view)."""
     rationale = [
         t
         for t in f.report.get("model_text") or []
@@ -1038,7 +1505,6 @@ def step_fix(run: R.RecordedRun, f: Facts, plain: bool) -> None:
                     rationale[i - 1]["label"],
                     f"model-story-rationale-{i}",
                 )
-    expert_line(3)
 
 
 def _fact_list(lines: list[str], key: str, head: str) -> None:

@@ -1,8 +1,9 @@
 """Scenario 12 (UI restructure slice 1): the Overview & Cases story in the browser (hosted).
 
 ATLAS_HOSTED=1 with the live kill switch off; the bundled runs in demo/recorded are only
-read. Each case card opens its case; the five steps are native expanders, operable by
-keyboard; the compact leak map fits without clipping at 1280 x 800 and keeps its scroll
+read. Each case card opens its case; plain view shows the five steps as a stepper opening on
+step 2 (readability pass), operable by keyboard, and Expert view as native expanders; the
+compact leak map fits without clipping at 1280 x 800 and keeps its scroll
 region at 390 px; no element ID repeats in the document. With ATLAS_UI_SCREENS set, settled
 full-page screenshots (top to bottom) are saved at 1440 x 900, 1280 x 800 and 390 x 844.
 """
@@ -83,6 +84,30 @@ def toggle_step(page, n: int, want: bool) -> None:
         time.sleep(0.3)
 
 
+def go_step(page, n: int) -> None:
+    """Selects step `n` in the plain view's stepper (readability pass) and waits for it."""
+    page.locator(".st-key-stepper-row button").nth(n - 1).click()
+    page.locator(f".st-key-stepper-body-{n}").wait_for(timeout=30_000)
+    wait_idle(page)
+
+
+def step_now(page) -> int:
+    """The step the stepper shows ("Step n of 5")."""
+    text = page.locator(".st-key-stepper-position").inner_text()
+    return int(text.split()[1])
+
+
+def open_more(page, n: int) -> None:
+    """Opens step `n`'s "Show more" (a native expander), if it is collapsed."""
+    details = page.locator(f".st-key-stepper-more-{n} details").first
+    if details.get_attribute("open") is None:
+        page.locator(f".st-key-stepper-more-{n} summary").first.click()
+        page.wait_for_function(
+            f"() => document.querySelector('.st-key-stepper-more-{n} details').open"
+        )
+    wait_idle(page)
+
+
 def duplicate_ids(page) -> list[str]:
     return page.evaluate(
         """() => { const seen = {}, dup = [];
@@ -95,7 +120,10 @@ def duplicate_ids(page) -> list[str]:
 @pytest.mark.parametrize("case", list(TITLES))
 def test_each_case_opens_with_step_2_and_fits(app, page, case):
     open_overview(page, app, case)
-    assert [is_open(page, n) for n in range(1, 6)] == [False, True, False, False, False]
+    # Readability pass: the stepper opens on step 2, one step at a time.
+    assert step_now(page) == 2
+    assert page.locator("[class*='st-key-stepper-body-']").count() == 1
+    assert page.locator(".st-key-stepper-body-2").is_visible()
     assert page.locator("[class*='st-key-case-card-on-']").count() == 1
     assert duplicate_ids(page) == []
     # The compact leak map fits its pane without clipping at 1280 x 800.
@@ -131,19 +159,29 @@ def test_the_case_cards_and_collapsed_steps_are_keyboard_operable(app, page):
     page.keyboard.press("Enter")
     page.locator(".st-key-case-card-on-harclean").wait_for(timeout=30_000)
     wait_idle(page)
-    # A collapsed step's header is focusable and Enter / Space toggle it.
-    summary = page.locator(".st-key-step-3 summary").first
+    # The stepper (readability pass): Next and the step row answer Enter; "Show more" is a
+    # native expander whose header Enter / Space toggle.
+    page.get_by_role("button", name=C.STEP_NEXT).focus()
+    page.keyboard.press("Enter")
+    page.locator(".st-key-stepper-body-3").wait_for(timeout=30_000)
+    wait_idle(page)
+    assert step_now(page) == 3
+    summary = page.locator(".st-key-stepper-more-3 summary").first
     summary.focus()
     assert page.evaluate("() => document.activeElement.tagName") == "SUMMARY"
-    assert not is_open(page, 3)
     page.keyboard.press("Enter")
     page.wait_for_function(
-        "() => document.querySelector('.st-key-step-3 details').open"
+        "() => document.querySelector('.st-key-stepper-more-3 details').open"
     )
     page.keyboard.press(" ")
     page.wait_for_function(
-        "() => !document.querySelector('.st-key-step-3 details').open"
+        "() => !document.querySelector('.st-key-stepper-more-3 details').open"
     )
+    page.locator(".st-key-stepper-row button").first.focus()
+    page.keyboard.press("Enter")
+    page.locator(".st-key-stepper-body-1").wait_for(timeout=30_000)
+    wait_idle(page)
+    assert step_now(page) == 1
     # The whole card is the click target (the stretched title button covers it).
     page.locator(".st-key-case-card-live6").scroll_into_view_if_needed()
     box = page.locator(".st-key-case-card-live6").bounding_box()
@@ -153,13 +191,12 @@ def test_the_case_cards_and_collapsed_steps_are_keyboard_operable(app, page):
 
 def test_each_step_of_live6_and_expert_view(app, page):
     open_overview(page, app)
-    toggle_step(page, 2, False)
     for n in range(1, 6):
-        toggle_step(page, n, True)
-        page.locator(f".st-key-step-{n}").scroll_into_view_if_needed()
+        go_step(page, n)
+        open_more(page, n)
+        page.locator(f".st-key-stepper-body-{n}").scroll_into_view_if_needed()
         assert duplicate_ids(page) == []
         full_page(page, f"s12_02_live6_step{n}")
-        toggle_step(page, n, False)
     # Expert view: one session-wide switch; the full banner and the run-relative sources.
     page.get_by_text(C.EXPERT_TOGGLE, exact=True).click()
     wait_idle(page)
@@ -186,7 +223,7 @@ def test_try_it_live_and_the_slice_2_pages(app, page):
     ):
         page.get_by_role("link", name=title).click()
         page.locator(
-            ".st-key-vs-chart" if name == "agent_vs_model" else ".st-key-lim-limits"
+            ".st-key-vs-chart" if name == "agent_vs_model" else ".st-key-lim-key-limits"
         ).wait_for()
         wait_idle(page)
         full_page(page, f"s12_05_{name}")

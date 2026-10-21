@@ -104,6 +104,17 @@ CSS = """
 [data-testid="stMain"]:focus-visible { outline: 2px solid #67E8F9; outline-offset: -2px; }
 [data-testid="stCheckbox"] label:has(input:focus-visible) { outline: 2px solid #67E8F9;
   outline-offset: 3px; border-radius: 4px; }
+/* R0 (readability pass): the main content at most 1150 px wide, centred, on wide screens
+   (full width at or below 1150 px). Body text is at least 16 px: the paragraphs and list
+   items of st.markdown blocks (not the HUD's own markup, captions, labels or tables, whose
+   sizes the HUD layout was tuned for at the theme's 15 px base), and the plain-view text
+   ATLAS styles itself (story, versus and limits CSS). */
+[data-testid="stMainBlockContainer"] { max-width: 1150px; margin-left: auto;
+  margin-right: auto; }
+:where([data-testid="stMain"] [data-testid="stMarkdown"] [data-testid="stMarkdownContainer"])
+  > p:not(.hud),
+:where([data-testid="stMain"] [data-testid="stMarkdown"] [data-testid="stMarkdownContainer"])
+  > :where(ul, ol) > li:not(.hud *) { font-size: 16px; }
 </style>
 """
 
