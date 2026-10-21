@@ -346,7 +346,7 @@ Streamlit's native multipage navigation (`st.navigation(position="top")` in `app
 | --- | --- | --- |
 | **Overview & Cases** (default) | the story of each bundled case (`atlas.ui.story`, entry `results.case_page`) | the same, from the same bundle (`demo/recorded`) |
 | **Try It Live** | the existing live session (`hosted.page.live_page`) | the existing "Run a project" / "Open a recorded run" page, moved unchanged from `app.py` into `atlas.ui.local_page` |
-| **AI Agent vs. Model Alone** | "Coming in slice 2" | same |
+| **ATLAS Checks vs. Model Alone** (named "AI Agent vs. Model Alone" until the copy fix pass, §15) | "Coming in slice 2" | same |
 | **How It Works & Limits** | "Coming in slice 2" | same |
 
 The hosted sidebar (capability badges) is drawn on every page (`hosted.page.sidebar`). The local Overview notes a run waiting for approval and links to Try It Live. `ATLAS_UI_CASES_DIR` (set only by whoever starts the server; the browser tests use it) points the Overview at another folder with the bundle's layout, verified exactly like the bundle.
@@ -362,10 +362,10 @@ Overview & Cases, top to bottom:
 | Step | Plain | Expert view adds |
 | --- | --- | --- |
 | 1 The claim | the claim statement from the recorded manifest (verified path only) | its run-relative source, the claim fields |
-| 2 The leak | the compact leak map and the fit-scope flow (original \| verified revision), their reason sentences, the analogies | sources, the drill-down (inspection frames of FAIL / NOT_ASSESSED / ERROR), the Finding card |
+| 2 What the checks found (named "The leak" until §15) | the compact leak map and the fit-scope flow (original \| verified revision), their reason sentences, the analogies | sources, the drill-down (inspection frames of FAIL / NOT_ASSESSED / ERROR), the Finding card |
 | 3 The AI's fix (untrusted) | each proposal: its engine outcome in words, the diff in the model-written frame (`st.code`, `inert`), "Proposed by <model>; ATLAS does not trust this text.", the rationale (`st.text`); or "No revision was proposed." | the Revision card (hashes, complete files, candidate details) |
 | 4 Human approval & sealed run | each approval from the verified log, in words; each execution from its verified `execution.json`: isolated Docker runner, no network, non-root user, read-only filesystem (only the facts its recorded `docker_args` state), container removed; "not executed here" for hosted proposals | the approvals table, the sources |
-| 5 Verified proof | the check tiles before/after ("FAIL → PASS"), the descriptive metric line, the track (stages only), the plain briefing, the recorded-evidence panel (no hash table) | IDs, the drill-down, the Analysis card (track with counters, budget, trace), the Comparison and Trust and export cards, the full briefing and the integrity table |
+| 5 Verified evidence (named "Verified proof" until §15) | the check tiles before/after ("FAIL → PASS"), the descriptive metric line, the track (stages only), the plain briefing, the recorded-evidence panel (no hash table) | IDs, the drill-down, the Analysis card (track with counters, budget, trace), the Comparison and Trust and export cards, the full briefing and the integrity table |
 
 Expanders may nest in Streamlit 1.66 (only dialogs may not), so the existing cards sit inside their step in Expert view. Each plain step ends in one "Show expert detail" line (step 2: "Show me the evidence"): a button that turns Expert view on.
 
@@ -411,7 +411,7 @@ Everything in §1–§12 still applies. No engine, evaluator, policy, provider, 
 - **A1, the case card's label.** Streamlit pulls every Markdown block up by 1rem at its bottom (`margin-bottom: -1rem` on `stMarkdownContainer`). That pull-up ate the card's 12 px bottom padding, so "Showing this case" (the card's last line) ran 2 px past the card's bottom edge at 1440 × 900 and 1280 × 800. The card body now keeps its full height (`.st-key-case-body-* [data-testid=stMarkdownContainer] { margin-bottom: 0 }`). Scenario 14 measures, at 1920, 1440, 1366, 1280, 1024, 800 and 390 px wide and for each selected case, that the label and every card's last line end above the card's bottom padding.
 - **A2, step 4 of an audit-script run.** When every recorded approval has the T-09 audit script's approval reason (`t09_task_authorized_original`, `story.SCRIPT_REASONS`), no model proposed anything, the run is not live, and only the original ran, in the isolated Docker runner, the step 4 summary is "No AI agent took part: the audit script approved and ran the original in the isolated Docker runner." The approval line in the body reads "approved by the audit script, without a typed confirmation". The rule follows the recorded reason, not the case name: a renamed copy still matches, and the same run with any other reason does not.
 
-### 13.2 AI Agent vs. Model Alone (`atlas.ui.versus`)
+### 13.2 ATLAS Checks vs. Model Alone (`atlas.ui.versus`; renamed in §15, file and URL path unchanged)
 
 - **Data:** only `evaluation/results/t11-live-20261019/` (`results.md`, `scores.json`, `suite.json`) and `evaluation/expected.json`.
 - **Gate:** before anything is shown, `versus.verify` recomputes each result file's SHA-256 and compares it with the table in that folder's `README.md`. `expected.json` is compared with the hash `suite.json` recorded for it (`inputs`). Any difference, or a missing file, draws only the evidence-changed panel: the code, the count of differing files, their table and the gate note. No result number, chart, caveat, finding, cost or review line appears. This detects changes since recording; it does not authenticate files whose recorded hashes were rewritten too.
@@ -494,7 +494,7 @@ Everything in §1–§13 still applies. No engine, evaluator, policy, provider, 
 ### 14.3 Overview layout
 
 - **C1, the tamper demo:** a collapsed expander directly after step 5, "Try tampering: change one byte in a copy and watch the check catch it". Its behaviour, limits and copy are unchanged. Its file picker has one widget key per view, because a picker redrawn with other labels under the same key could not open its list.
-- **C2, the Expert view switch:** beside the page title, top right, on every page that has an Expert view (Overview, AI Agent vs. Model Alone, How It Works & Limits). Try It Live has no Expert view and no switch. On the Overview the switch is not drawn when the selected case fails verification, so that page still shows only the cards and the evidence-changed panel.
+- **C2, the Expert view switch:** beside the page title, top right, on every page that has an Expert view (Overview, ATLAS Checks vs. Model Alone, How It Works & Limits). Try It Live has no Expert view and no switch. On the Overview the switch is not drawn when the selected case fails verification, so that page still shows only the cards and the evidence-changed panel.
 - **The report button:** the verdict row now holds the verdict line and "Download audit report".
 
 ### 14.4 The one-page audit report (`atlas.ui.report`)
@@ -516,7 +516,7 @@ Everything in §1–§13 still applies. No engine, evaluator, policy, provider, 
   - The footer: the ATLAS commit (read from the git metadata as files, with no git command; left out when unreadable), the policy version, and the UTC time.
 - **What it never holds:** model-written text (no rationale, no reply, no diff). A test checks the live6 report against every model text, reply and diff line. Every value is escaped through `hud.esc`.
 - **Self-contained:** one inline style sheet; no script, link, image, `src`, `href`, `url(` or `@import`.
-- **Print:** a print style (`@page { size: portrait }`, compact type) fits one page on A4 and on Letter. Scenario 15 counts the pages of Chromium's PDF for live6 and har_flawed.
+- **Print:** a print style (`@page { size: portrait }`, compact type) fits one page on A4 and on Letter. Scenario 15 counts the pages of Chromium's PDF for live6 and har_flawed. *Superseded by §15 (R1): 15 mm margins and 10.5 pt type; the report now prints on two pages.*
 - **Deterministic:** byte-identical for the same bundle and an injected clock. It executes nothing (tested with ATLAS_HOSTED=1 under a subprocess, socket and `refuse_if_hosted` tripwire).
 
 ### 14.5 Accessibility
@@ -549,3 +549,43 @@ Everything in §1–§13 still applies. No engine, evaluator, policy, provider, 
 - **Screenshots:** `runs/ui-story/screens3/` (git-ignored; settled full-page captures at 1440 × 900, 1280 × 800 and 390 × 844): `s15_01_overview_live6`, `s15_02_overview_live6_tamper_open`, `s15_03_agent_vs_model_{plain,expert}`, `s15_04_how_it_works_plain`, `s15_05_report_{live6,harflawed}_{screen,print}`.
 - **Tests:** `tests/unit/test_ui_slice3.py`, `tests/acceptance/test_scenario15_slice3.py`, `tests/acceptance/test_scenario16_a11y_local.py`.
 - **Full suite:** `runs/ui-story/full3.log`.
+
+## 15. Copy accuracy fix pass (2026-10-21; branch `ui-story`)
+
+Gemini Argon (high effort) reviewed all user-facing copy against README, docs/EVALUATION.md, docs/HOSTED_OPERATIONS.md, `evaluation/assertion_definitions.json` and the T-11 `scores.json`. This pass changes user-facing copy and the report's print CSS only; no behaviour changes. Each item's old text, new text and source quote are in `runs/ui-story/copy_changes.md` (git-ignored).
+
+### 15.1 Copy
+
+- **Tagline:** "ATLAS checks a machine-learning evaluation for leaks between training and test data, shows its evidence, and tests a proposed fix in an isolated container." (Overview header and the report.)
+- **Steps:** step 2 is "What the checks found" for every case (the report's section too); step 5 is "Verified evidence". The analogies still render only when their check FAILs (none on har_clean).
+- **Comparison page:** renamed "ATLAS Checks vs. Model Alone" (title and navigation label; the file `app_pages/agent_vs_model.py` and the URL path `/agent_vs_model` are unchanged).
+  - The model's figures are labelled as detections summed over usable answers: "19 of 20 detections" (same 8 problems) and "19 of 23 detections" (all 9 problems). ATLAS's figure is "8 of 8 assessable (1 of 9 not assessed)".
+  - One line under the chart explains the count. Plain item 1 now reads 9 planted problems, 5 usable answers, 23 chances, 19 named.
+  - Every number is computed from `scores.json` and `expected.json` (`versus.figures`: `expected_total`, `not_assessed`, `flawed_valid`, `clean_valid`) and tested.
+  - The wide chart is 820 units with a 300-unit right label margin (container 860 px), so the longer ATLAS value is not clipped; the phone layout is unchanged.
+- **Verdict:** a passing revision "passes every required check within the coverage shown".
+- **Case cards:** both HAR projects are "written by ATLAS's authors"; har_clean names its protocol (each person on one side of the split; every step fit inside each fold).
+- **Leak map:** "Groups on both sides of the split, by test fold" on both panes (Expert: "Groups with recorded overlap (observed.overlapping_groups)").
+- **How It Works & Limits:**
+  - Approval is bound to the snapshot and code hashes, for the original and each revision.
+  - The hosted demo executes no project or candidate code and checks proposals in a hosted live session.
+  - The runner sentence states the fail-closed rule.
+  - "What ATLAS does not do" names feature extraction and normalisation before the supplied table.
+  - The T-06 figure follows README: "schema failures in 5 of the 8 live runs (runs 1 to 8, with 3 and 3b counted as one)".
+- **Assertion labels:** the split labels say "within a fold" / "a fold's split", following their definitions. `repeated_measures_rule` names "a unit (or its containing group)" (routes A and B). The cutoff label names the declared gap. The two fit descriptions say "recorded" (and "supported ... on its path"). The briefing's label-length test cap is now 120 characters.
+- **Reason sentences, nothing overlapping:** `copy.REASONS_NONE` ("No subject_id value appears on both sides of the split in any of the 5 folds"). This replaces "0 ... in 0 of 5 folds" for the row, source-observation, group, sampling-unit and repeated-measures templates. `hud.reasons` picks it when k = 0.
+
+### 15.2 Report print (R1; supersedes the print line of §14.4)
+
+- `@page { margin: 15mm }`.
+- On screen, `main` is at most 190 mm wide, centred.
+- In print: 10.5 pt base type (tables 9.5 pt, hashes 8.5 pt), and every cell wraps (`overflow-wrap: anywhere`; hash and ID cells break anywhere).
+- Measured in Chromium: every table fits the printable width (A4 681 px, Letter 703 px) with no overflow. The report now prints on **two pages** on A4 and Letter; the same content does not fit one page at this size. Scenario 15 asserts no overflow and at most two pages.
+- Content and determinism are unchanged by R1.
+
+### 15.3 Evidence
+
+- `runs/ui-story/copy_changes.md` (old, new, source and disposition per item; the proof/safety grep).
+- Screenshots: `runs/ui-story/screens4/`.
+- Tests: `tests/unit/test_ui_copy_fix.py`, with the updated slice 1-3 tests.
+- `runs/ui-story/check_recorded4.txt` (byte-identical to `check_recorded3.txt`).

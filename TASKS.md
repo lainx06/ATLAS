@@ -1908,7 +1908,7 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **reviews:** Gates 1-3 PASS (`8c79e5a`, `f327565`); Gate 4 FAIL (`runs/g4/review.md`) resolved by slices 4c-4h; combined review 1 FAIL (`runs/cr1/review.md`) resolved: the re-verification (`runs/cr2/review.md`) closed F2 and F3; F1 is closed by the lead re-running the reviewer's probes after the end-of-line fix.
   - **Limitations:**
     - the input-token figure is an estimate; provider enforcement and billing are unverified;
-    - model format reliability varies (schema failures in 5 of 8 live runs (runs 1 to 8));
+    - model format reliability varies (schema failures in 5 of the 8 live runs (runs 1 to 8, with 3 and 3b counted as one));
     - raw replies are stored only from live run 3b onward;
     - candidate-output redaction is best-effort, with the documented limits (SPEC §11);
     - tested on this Windows host only;
@@ -2046,6 +2046,21 @@ Task index plus a concise structured entry per task under "Implementation tasks"
   - **Full suite with Docker required:** **1963 passed, 6 skipped** (`runs/ui-story/full3.log`; the skips: UCI HAR data absent (2), the archived model listing (1), symlink permission (2), the evidence-only motion capture (1)).
   - **Ruff:** check and format clean. **check_recorded:** results equal check_recorded2.txt (`runs/ui-story/check_recorded3.txt`).
   - **Screenshots:** `runs/ui-story/screens3/` (27: 9 states at 1440x900, 1280x800 and 390x844).
+  - **No live run, no Nebius call, no Neon connection, no spend, no push.**
+- **Copy fix pass (2026-10-21; Gemini copy review, ACCURATE WITH CHANGES, 17 findings, 3 high): built on branch `ui-story`; not merged, not reviewed.**
+  - **Commits:** `842877c` (copy, labels, report print CSS, tests) and this docs commit.
+  - **Applied:** G1-G18 and R1 (DECISIONS.md "Copy accuracy review (Gemini, 2026-10-21)"; old/new/source per item in `runs/ui-story/copy_changes.md`).
+    - Not applied: G1 in README and the Devpost draft (neither contains the tagline); G3's file and URL path (`app_pages/agent_vs_model.py`, `/agent_vs_model`).
+  - **Comparison:** the model's figures are detections summed over usable answers: 19 of 20 (same 8 problems) and 19 of 23 (all 9). ATLAS: 8 of 8 assessable (1 of 9 not assessed). 9, 8, 5, 4, 23, 20, 19 and 2 are each tested against scores.json and expected.json.
+  - **R1:** the report prints on two pages (A4 and Letter) at 10.5 pt with 15 mm margins; no table overflows. The one-page test is now "no overflow, at most two pages".
+  - **Tests run:**
+    - UI unit and hosted page tests: 345 passed, 6 skipped (5 need Docker; 1 symlink permission).
+    - Browser scenarios 10, 12, 14, 15 and 16, first run: 24 passed, 1 failed, 2 skipped (Docker). The failure was scenario 14 pinning the old table text, then a body read that raced the render; both are fixed.
+    - Rerun after the fix and the chart-margin change: scenarios 14 and 15, `test_ui_slice2.py` and `test_ui_copy_fix.py` all passed (84 passed, 1 skipped), including the axe acceptance test.
+    - Ruff check and format clean.
+    - check_recorded: `runs/ui-story/check_recorded4.txt` is byte-identical to `check_recorded3.txt`.
+  - **Not run:** the full suite with Docker required. Docker was unreachable from this session, and the escalated Docker call was not permitted. So `runs/ui-story/full4.log` does not exist, and `ui-story` was **not** merged into `main`.
+  - **Screenshots:** `runs/ui-story/screens4/` (14: 7 states at 1440x900 and 390x844).
   - **No live run, no Nebius call, no Neon connection, no spend, no push.**
 
 ### T-08 Procedures and transfer benchmark
