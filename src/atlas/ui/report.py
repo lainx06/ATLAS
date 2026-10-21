@@ -34,7 +34,7 @@ CSS = """
 * { box-sizing: border-box; }
 body { margin: 0; background: #ffffff; color: #111827;
   font: 14px/1.5 "IBM Plex Sans", "Segoe UI", Helvetica, Arial, sans-serif; }
-main { max-width: 780px; margin: 0 auto; padding: 28px 24px 32px; }
+main { max-width: 190mm; margin: 0 auto; padding: 28px 24px 32px; }
 h1 { font-size: 22px; margin: 0 0 2px; letter-spacing: 0.02em; }
 h2 { font-size: 15px; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #d1d5db;
   break-after: avoid; page-break-after: avoid; }
@@ -44,8 +44,10 @@ p { margin: 4px 0; }
 .claim { font-size: 16px; font-weight: 600; }
 .code { font-family: "IBM Plex Mono", Consolas, monospace; font-weight: 600; }
 .caveat { font-style: italic; color: #374151; }
-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
-th, td { text-align: left; vertical-align: top; padding: 4px 6px; border: 1px solid #d1d5db; }
+table { width: 100%; max-width: 100%; border-collapse: collapse; margin: 6px 0;
+  font-size: 12.5px; }
+th, td { text-align: left; vertical-align: top; padding: 4px 6px; border: 1px solid #d1d5db;
+  overflow-wrap: anywhere; }
 th { background: #f3f4f6; font-weight: 600; }
 tr { break-inside: avoid; page-break-inside: avoid; }
 td.id, td.hash { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 11.5px;
@@ -56,22 +58,22 @@ td.id, td.hash { font-family: "IBM Plex Mono", Consolas, monospace; font-size: 1
 ul { margin: 4px 0; padding-left: 20px; }
 li { margin: 2px 0; }
 footer { margin-top: 18px; padding-top: 6px; border-top: 1px solid #d1d5db; }
-@page { size: portrait; margin: 9mm 11mm; }
+@page { size: portrait; margin: 15mm; }
 @media print {
-  body { font-size: 8.4pt; line-height: 1.28; }
-  main { max-width: none; padding: 0; }
-  h1 { font-size: 13pt; margin: 0; }
-  h2 { font-size: 9.6pt; margin: 6px 0 2px; padding-bottom: 1px; }
-  p { margin: 1px 0; }
-  .tag { font-size: 9pt; }
-  .claim { font-size: 9.6pt; }
-  .meta, .note, footer { font-size: 7.4pt; }
-  table { font-size: 7.6pt; margin: 2px 0; }
-  th, td { padding: 1px 4px; }
-  td.id, td.hash { font-size: 7pt; }
-  ul { margin: 1px 0; padding-left: 14px; }
-  li { margin: 0; }
-  footer { margin-top: 6px; padding-top: 3px; }
+  body { font-size: 10.5pt; line-height: 1.35; }
+  main { max-width: none; margin: 0; padding: 0; }
+  h1 { font-size: 15pt; margin: 0 0 2pt; }
+  h2 { font-size: 11.5pt; margin: 9pt 0 3pt; padding-bottom: 1pt; }
+  p { margin: 2pt 0; }
+  .tag { font-size: 10.5pt; }
+  .claim { font-size: 11pt; }
+  .meta, .note, footer { font-size: 9pt; }
+  table { font-size: 9.5pt; margin: 3pt 0; }
+  th, td { padding: 2pt 4pt; }
+  td.id, td.hash { font-size: 8.5pt; }
+  ul { margin: 2pt 0; padding-left: 16pt; }
+  li { margin: 1pt 0; }
+  footer { margin-top: 9pt; padding-top: 3pt; }
 }
 """
 

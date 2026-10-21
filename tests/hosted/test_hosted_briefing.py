@@ -26,11 +26,12 @@ EXPECTED = [
     + "1 outcome comparison).",
     "Original outcome: VIOLATION_FOUND. Required checks: 4 FAIL, 0 NOT_ASSESSED, "
     + "0 ERROR (of 9).",
-    "split.no_group_overlap (FAIL): the same subjects appear in training and testing",
-    "split.sampling_unit_disjoint (FAIL): the same sampling units (subjects) appear on "
-    + "both sides of a split",
-    "split.repeated_measures_rule (FAIL): repeated measurements of one subject are split "
-    + "across training and testing",
+    "split.no_group_overlap (FAIL): the same groups (such as people) appear in both "
+    + "training and testing within a fold",
+    "split.sampling_unit_disjoint (FAIL): the same declared sampling units (such as "
+    + "participants) appear on both sides of a fold's split",
+    "split.repeated_measures_rule (FAIL): repeated measurements of a unit (or its "
+    + "containing group) appear on both sides of a fold's split",
     "fit.state_dependencies_within_fold_train (FAIL): a preprocessing or model step was "
     + "fit on rows outside its fold's training data",
     HUD.PROPOSALS_NOT_EXECUTED,

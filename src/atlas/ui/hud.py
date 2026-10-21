@@ -62,9 +62,7 @@ GLOW = {  # the reticle's one subtle glow, per status colour
 NOT_RECORDED = "not recorded"
 LEAK_ASSERTION = "split.no_group_overlap"
 FIT_ASSERTION = "fit.state_dependencies_within_fold_train"
-LEAK_Y_LABEL = (
-    "Groups with recorded overlap in the original (observed.overlapping_groups)"
-)
+LEAK_Y_LABEL = "Groups with recorded overlap (observed.overlapping_groups)"
 BOTH, NONE_SHARED = "on both sides", "0 shared"
 NO_USE = "no use listed"
 TYPED_APPROVAL = "executed in the isolated Docker runner after typed approval"
@@ -486,13 +484,18 @@ def _number(value) -> bool:
 
 
 def reasons(assertion_id: str, observed) -> list[str]:
-    """The fixed reason sentences (copy.REASONS) for one assertion, filled only from its
-    recorded observed fields; [] when the assertion has no template or a needed field is not
-    recorded (never a sentence with "null" or an absent field in it)."""
+    """The fixed reason sentences (copy.REASONS; copy.REASONS_NONE when nothing overlaps, so
+    none reads "0 ... in 0 of N folds") for one assertion, filled only from its recorded
+    observed fields; [] when the assertion has no template or a needed field is not recorded
+    (never a sentence with "null" or an absent field in it)."""
     if not isinstance(observed, dict):
         return []
     return [
-        C.REASONS[key].format(**fields)
+        (
+            C.REASONS_NONE[key]
+            if fields.get("k") == 0 and key in C.REASONS_NONE
+            else C.REASONS[key]
+        ).format(**fields)
         for key, fields in _reason_fields(assertion_id, observed)
         if key in C.REASONS
     ]

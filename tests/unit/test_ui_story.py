@@ -50,21 +50,22 @@ GIVEN = {
     "testing within a fold",
     "split.sampling_unit_disjoint": "Each declared sampling unit, such as a participant, "
     "stays on one side of the split",
-    "split.repeated_measures_rule": "Repeated measurements of one unit are not split between "
-    "training and testing",
+    "split.repeated_measures_rule": "Within each fold, repeated measurements of a unit (or its "
+    "containing group) are not split between training and testing",
     "split.no_window_overlap": "Time windows used for training and testing do not overlap "
     "within the same recording stream",
-    "fit.state_dependencies_within_fold_train": "Every preprocessing and model step used in a "
-    "fold learned only from that fold's training rows",
+    "fit.state_dependencies_within_fold_train": "Every recorded preprocessing and model step "
+    "used in a fold learned only from that fold's training rows",
     "fit.coverage_complete": "Each fold has exactly one set of predictions, traced back "
-    "through every step that produced it",
+    "through every recorded supported step on its path",
     "metric.prediction_ids_match_eval_ids": "Predictions cover exactly the test rows "
     "declared for each fold",
     "metric.reported_matches_recomputed": "The score the project reports matches the score "
     "ATLAS recomputes from its predictions, within tolerance",
 }
-# The failure labels as they were before this slice (unchanged).
-FAILURES_BEFORE = {
+# The failure labels (copy fix pass, 2026-10-21: the split and cutoff labels follow
+# evaluation/assertion_definitions.json; the others are unchanged).
+FAILURES = {
     "fit.coverage_complete": "predictions are not exactly one per fold, or are not "
     "traceable to their producing step",
     "fit.state_dependencies_within_fold_train": "a preprocessing or model step was fit on "
@@ -75,20 +76,21 @@ FAILURES_BEFORE = {
     "ATLAS recomputed",
     "split.evaluation_folds_nonempty": "a declared evaluation fold contains no evaluation "
     "rows",
-    "split.no_group_overlap": "the same subjects appear in training and testing",
-    "split.no_row_overlap": "the same rows appear in both training and testing",
+    "split.no_group_overlap": "the same groups (such as people) appear in both training and "
+    "testing within a fold",
+    "split.no_row_overlap": "the same rows appear in both training and testing within a fold",
     "split.no_shared_source_observation": "the same source observation appears in both "
-    "training and testing",
+    "training and testing within a fold",
     "split.no_window_overlap": "a training time window overlaps an evaluation window in the "
     "same stream",
-    "split.repeated_measures_rule": "repeated measurements of one subject are split across "
-    "training and testing",
-    "split.sampling_unit_disjoint": "the same sampling units (subjects) appear on both sides "
-    "of a split",
+    "split.repeated_measures_rule": "repeated measurements of a unit (or its containing group) "
+    "appear on both sides of a fold's split",
+    "split.sampling_unit_disjoint": "the same declared sampling units (such as participants) "
+    "appear on both sides of a fold's split",
     "split.temporal_separation": "training and evaluation items are closer in time than the "
     "declared minimum gap",
-    "temporal.cutoff_precedes_evaluation": "the training cutoff, plus the allowed gap, is not "
-    "before the earliest evaluation time",
+    "temporal.cutoff_precedes_evaluation": "the declared gap is negative, or the training "
+    "cutoff plus the declared gap comes after the earliest test prediction time",
     "temporal.features_available_when_used": "a feature value was used before the time it "
     "became available",
     "temporal.training_labels_available_by_cutoff": "a training row or its label is dated "
@@ -198,7 +200,10 @@ def test_the_labels_file_has_both_fields_for_exactly_the_canonical_ids():
         assert set(entry) == {"failure", "description"}, aid
         for field in ("failure", "description"):
             assert isinstance(entry[field], str) and entry[field].strip(), (aid, field)
-    assert {aid: e["failure"] for aid, e in labels.items()} == FAILURES_BEFORE
+    assert {aid: e["failure"] for aid, e in labels.items()} == FAILURES
+    assert (
+        "declared gap" in labels["temporal.cutoff_precedes_evaluation"]["description"]
+    )
     for aid, text in GIVEN.items():
         assert labels[aid]["description"] == text, aid
     assert H.load_descriptions() == {aid: e["description"] for aid, e in labels.items()}
@@ -457,7 +462,7 @@ def test_no_local_path_on_the_try_it_live_pages(monkeypatch, tmp_path):
 # -- the verdict bar and the steps ----------------------------------------------------------------
 VERDICTS = {
     "live6": "ATLAS found a violation in this evaluation. A revision proposed by Nemotron was "
-    "executed in isolation and passes every required check.",
+    "executed in isolation and passes every required check within the coverage shown.",
     "harflawed": "ATLAS found a violation in this evaluation. No revision was proposed.",
     "harclean": "ATLAS found no violation in this evaluation. No revision was proposed. 1 check "
     "passed on a documented declaration that ATLAS did not verify.",
@@ -586,7 +591,8 @@ def _expected_reasons(aid: str, o: dict) -> list[str]:
         ]
         k = len({g for v in by.values() for g in v})
         m = sum(1 for v in by.values() if v)
-        return [C.REASONS[aid].format(k=k, m=m, n=o["folds"], column=o["column"])]
+        table = C.REASONS_NONE if k == 0 else C.REASONS
+        return [table[aid].format(k=k, m=m, n=o["folds"], column=o["column"])]
     if aid == "fit.state_dependencies_within_fold_train" and o.get("origins"):
         return [
             C.REASONS[aid].format(

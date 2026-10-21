@@ -97,8 +97,8 @@ def test_the_briefing_and_the_drill_down_on_recorded_runs(app, page):
     ):
         assert line in shown, line
     assert (
-        "split.no_group_overlap (FAIL): the same subjects appear in training and testing"
-        in shown
+        "split.no_group_overlap (FAIL): the same groups (such as people) appear in both "
+        "training and testing within a fold" in shown
     )
     box = brief.bounding_box()
     hero = page.locator(".st-key-hud-hero").bounding_box()

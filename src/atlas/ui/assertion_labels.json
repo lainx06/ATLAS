@@ -3,11 +3,11 @@
   "labels": {
     "fit.coverage_complete": {
       "failure": "predictions are not exactly one per fold, or are not traceable to their producing step",
-      "description": "Each fold has exactly one set of predictions, traced back through every step that produced it"
+      "description": "Each fold has exactly one set of predictions, traced back through every recorded supported step on its path"
     },
     "fit.state_dependencies_within_fold_train": {
       "failure": "a preprocessing or model step was fit on rows outside its fold's training data",
-      "description": "Every preprocessing and model step used in a fold learned only from that fold's training rows"
+      "description": "Every recorded preprocessing and model step used in a fold learned only from that fold's training rows"
     },
     "metric.prediction_ids_match_eval_ids": {
       "failure": "the predictions do not cover exactly the rows each fold was meant to evaluate",
@@ -22,15 +22,15 @@
       "description": "Every test fold contains at least one row to evaluate"
     },
     "split.no_group_overlap": {
-      "failure": "the same subjects appear in training and testing",
+      "failure": "the same groups (such as people) appear in both training and testing within a fold",
       "description": "No group, such as a person, appears in both training and testing within a fold"
     },
     "split.no_row_overlap": {
-      "failure": "the same rows appear in both training and testing",
+      "failure": "the same rows appear in both training and testing within a fold",
       "description": "No data row appears in both training and testing within a fold"
     },
     "split.no_shared_source_observation": {
-      "failure": "the same source observation appears in both training and testing",
+      "failure": "the same source observation appears in both training and testing within a fold",
       "description": "No test row is the same original observation as a training row"
     },
     "split.no_window_overlap": {
@@ -38,11 +38,11 @@
       "description": "Time windows used for training and testing do not overlap within the same recording stream"
     },
     "split.repeated_measures_rule": {
-      "failure": "repeated measurements of one subject are split across training and testing",
-      "description": "Repeated measurements of one unit are not split between training and testing"
+      "failure": "repeated measurements of a unit (or its containing group) appear on both sides of a fold's split",
+      "description": "Within each fold, repeated measurements of a unit (or its containing group) are not split between training and testing"
     },
     "split.sampling_unit_disjoint": {
-      "failure": "the same sampling units (subjects) appear on both sides of a split",
+      "failure": "the same declared sampling units (such as participants) appear on both sides of a fold's split",
       "description": "Each declared sampling unit, such as a participant, stays on one side of the split"
     },
     "split.temporal_separation": {
@@ -50,7 +50,7 @@
       "description": "Within each fold, every training item and test item are at least the declared minimum time gap apart"
     },
     "temporal.cutoff_precedes_evaluation": {
-      "failure": "the training cutoff, plus the allowed gap, is not before the earliest evaluation time",
+      "failure": "the declared gap is negative, or the training cutoff plus the declared gap comes after the earliest test prediction time",
       "description": "In each fold, the training cutoff plus the declared gap comes no later than the earliest test prediction time"
     },
     "temporal.features_available_when_used": {

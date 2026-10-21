@@ -1,4 +1,4 @@
-"""The AI Agent vs. Model Alone page (UI restructure slice 2, part B): the T-11 live comparison.
+"""The ATLAS Checks vs. Model Alone page (UI restructure slice 2, part B): the T-11 live comparison.
 
 Data comes only from the tracked result files in `evaluation/results/t11-live-20261019/`
 (`results.md`, `scores.json`, `suite.json`) and `evaluation/expected.json`. Before anything is
@@ -53,7 +53,7 @@ CSS = """
   .hud-vs-chart .vs-wide { display: none; }
   .hud-vs-chart .vs-narrow { display: block; }
 }
-.hud-vs-chart { max-width: 760px; }
+.hud-vs-chart { max-width: 860px; }
 </style>
 """
 
@@ -108,7 +108,8 @@ class Figures:
     repetitions: int
     atlas_found: int  # predeclared violations ATLAS found
     atlas_assessable: int  # predeclared violations ATLAS could assess
-    expected_total: int  # all predeclared violations
+    expected_total: int  # all predeclared violations (summed over the flawed cases)
+    not_assessed: int  # predeclared violations in ATLAS's coverage gaps
     same_found: int  # the model alone, on the ATLAS-assessable violations
     same_total: int
     same_ids: int  # the ATLAS-assessable violations, counted once per case
@@ -119,6 +120,8 @@ class Figures:
     atlas_invalid: int  # ATLAS cases unavailable or with errors on expected IDs
     model_invalid: int
     trials: int
+    flawed_valid: int  # the model's valid trials on cases with predeclared violations
+    clean_valid: int  # the model's valid trials on cases with none
     recorded_runs: int
     reruns: int
     cost_usd: str
@@ -136,7 +139,7 @@ def figures(scores: dict, suite: dict, expected: dict) -> Figures:
     atlas, base = scores["atlas"], scores["baseline"]
     want = {cid: _ids(c) for cid, c in expected["cases"].items()}
     gaps = {c["case_id"]: set(c.get("coverage_gaps") or []) for c in atlas["cases"]}
-    same_found = same_total = 0
+    same_found = same_total = flawed_valid = clean_valid = 0
     for case in base["cases"]:
         cid = case["case_id"]
         assessable = want[cid] - gaps.get(cid, set())
@@ -145,6 +148,10 @@ def figures(scores: dict, suite: dict, expected: dict) -> Figures:
                 continue
             same_total += len(assessable)
             same_found += len(set(trial.get("tp") or []) & assessable)
+            if want[cid]:
+                flawed_valid += 1
+            else:
+                clean_valid += 1
     sources = suite.get("atlas_sources") or {}
     t = atlas["totals"]
     return Figures(
@@ -153,6 +160,7 @@ def figures(scores: dict, suite: dict, expected: dict) -> Figures:
         atlas_found=t["tp"],
         atlas_assessable=t["tp"] + t["fn"],
         expected_total=sum(len(v) for v in want.values()),
+        not_assessed=sum(len(want[c] & gaps.get(c, set())) for c in want),
         same_found=same_found,
         same_total=same_total,
         same_ids=sum(len(want[c] - gaps.get(c, set())) for c in want),
@@ -165,6 +173,8 @@ def figures(scores: dict, suite: dict, expected: dict) -> Figures:
         ),
         model_invalid=base["totals"]["invalid_reply"],
         trials=base["totals"]["trials_scheduled"],
+        flawed_valid=flawed_valid,
+        clean_valid=clean_valid,
         recorded_runs=sum(
             1 for v in sources.values() if str(v).startswith("recorded:")
         ),
@@ -176,9 +186,22 @@ def figures(scores: dict, suite: dict, expected: dict) -> Figures:
 def values(f: Figures) -> dict[str, str]:
     """The printed value of each bar (and of the data table)."""
     return {
-        "fa": C.VS_FOUND_ATLAS.format(k=f.atlas_found, n=f.atlas_assessable),
-        "fs": C.VS_FOUND_SAME.format(k=f.same_found, n=f.same_total, m=f.same_ids),
+        "fa": (C.VS_FOUND_ATLAS_GAP if f.not_assessed else C.VS_FOUND_ATLAS).format(
+            k=f.atlas_found,
+            n=f.atlas_assessable,
+            x=f.not_assessed,
+            t=f.expected_total,
+        ),
+        "fs": C.VS_FOUND_SAME.format(k=f.same_found, n=f.same_total),
         "fo": C.VS_FOUND_ALL.format(k=f.all_found, n=f.all_total),
+        "fm": C.VS_FOUND_MODEL.format(
+            ks=f.same_found,
+            ns=f.same_total,
+            m=f.same_ids,
+            ka=f.all_found,
+            na=f.all_total,
+            t=f.expected_total,
+        ),
         "xa": str(f.atlas_false),
         "xm": str(f.model_false),
         "ia": C.VS_NONE
@@ -199,7 +222,7 @@ def table(f: Figures) -> pd.DataFrame:
             {
                 C.VS_TABLE_MEASURE: C.VS_PANELS["found"],
                 C.VS_SERIES_ATLAS: v["fa"],
-                C.VS_SERIES_MODEL: v["fs"] + C.VS_TABLE_SEP + v["fo"],
+                C.VS_SERIES_MODEL: v["fm"],
             },
             {
                 C.VS_TABLE_MEASURE: C.VS_PANELS["false"],
@@ -249,7 +272,7 @@ def panels(f: Figures) -> list[tuple[str, float, list[float], list[Bar]]]:
                 ),
                 Bar(
                     "model",
-                    C.VS_ROW_ALL.format(n=f.all_total),
+                    C.VS_ROW_ALL.format(n=f.expected_total),
                     f.all_found / f.all_total,
                     v["fo"],
                 ),
@@ -293,9 +316,9 @@ def _bar_path(x0: float, y: float, w: float, h: float, r: float = 4.0) -> str:
 def chart_svg(f: Figures, *, narrow: bool, prefix: str = "atlas-vs") -> str:
     """The chart. Wide: row labels left of the bars. Narrow (phones): labels above the bars.
     Values are printed at each bar's end in text colours; series colour only on the marks."""
-    W = 360 if narrow else 720
+    W = 360 if narrow else 820
     left = 12 if narrow else 190
-    right = 12 if narrow else 170
+    right = 12 if narrow else 300  # room for "8 of 8 assessable (1 of 9 not assessed)"
     plot = W - left - right
     bar_h, gap = 18, (30 if narrow else 10)
     fill = {"atlas": ACCENT, "model": NEUTRAL}
@@ -472,6 +495,8 @@ def body(f: Figures, checks: list, scores: dict, suite: dict, exp: dict) -> None
     _list("vs-caveats", C.VS_CAVEATS_HEAD, caveats(f))
     with st.container(key="vs-chart"):
         st.markdown(chart(f), unsafe_allow_html=True)
+    with st.container(key="vs-chart-note"):
+        st.caption(story.md(C.VS_CHART_NOTE.format(v=f.flawed_valid)))
     with st.container(key="vs-table"):
         st.table(table(f), hide_index=True)
     # Plain view: the four plain-words items; Expert view: the reviewed findings, exactly.

@@ -26,15 +26,16 @@ HAR_CLEAN = "t09/agent-har_clean-ac63eaecd7a8"
 MARKER = "ZQX-BRIEFING-MARKER-7f31c2"
 
 GROUP = (
-    "split.no_group_overlap (FAIL): the same subjects appear in training and testing"
+    "split.no_group_overlap (FAIL): the same groups (such as people) appear in both "
+    "training and testing within a fold"
 )
 UNIT = (
-    "split.sampling_unit_disjoint (FAIL): the same sampling units (subjects) appear on "
-    "both sides of a split"
+    "split.sampling_unit_disjoint (FAIL): the same declared sampling units (such as "
+    "participants) appear on both sides of a fold's split"
 )
 REPEATED = (
-    "split.repeated_measures_rule (FAIL): repeated measurements of one subject are split "
-    "across training and testing"
+    "split.repeated_measures_rule (FAIL): repeated measurements of a unit (or its "
+    "containing group) appear on both sides of a fold's split"
 )
 FIT = (
     "fit.state_dependencies_within_fold_train (FAIL): a preprocessing or model step was "
@@ -238,11 +239,12 @@ def test_every_assertion_has_exactly_one_fixed_label():
     )  # the same ID set, no more or less
     assert H.load_labels(ROOT / "no-such-file.json") == {}
     for aid, text in labels.items():
-        assert text.strip() == text and 10 <= len(text) <= 90, aid
+        # 120: the copy fix pass (2026-10-21) labels follow their definitions in full.
+        assert text.strip() == text and 10 <= len(text) <= 120, aid
         assert "`" not in text and "*" not in text and "§" not in text, aid
         assert text != defs[aid], aid  # plain words, not the formal definition
     assert labels["split.no_group_overlap"] == (
-        "the same subjects appear in training and testing"
+        "the same groups (such as people) appear in both training and testing within a fold"
     )
 
 

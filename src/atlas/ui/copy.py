@@ -16,8 +16,8 @@ from dataclasses import dataclass
 # -- header ------------------------------------------------------------------------------------
 APP_NAME = "ATLAS"
 TAGLINE = (
-    "ATLAS checks whether an AI model's test results can be trusted, shows its evidence, and "
-    "safely tests a fix."
+    "ATLAS checks a machine-learning evaluation for leaks between training and test data, "
+    "shows its evidence, and tests a proposed fix in an isolated container."
 )
 WHY_LABEL = "Why it matters"
 WHY_TEXT = (
@@ -33,7 +33,7 @@ WHY_LINK = "Source"
 # -- navigation ----------------------------------------------------------------------------------
 PAGE_OVERVIEW = "Overview & Cases"
 PAGE_LIVE = "Try It Live"
-PAGE_AGENT = "AI Agent vs. Model Alone"
+PAGE_AGENT = "ATLAS Checks vs. Model Alone"
 PAGE_LIMITS = "How It Works & Limits"
 RUN_WAITING = "A run is waiting for your approval."
 RUN_WAITING_LINK = "Open Try It Live"
@@ -61,14 +61,14 @@ CASES = (
         "A real-data leak",
         "t09/agent-har_flawed-1e2267f662c0",
         "Real smartphone sensor data (UCI HAR) with a deliberately flawed evaluation written "
-        "by ATLAS.",
+        "by ATLAS's authors.",
     ),
     Case(
         "harclean",
         "A clean evaluation",
         "t09/agent-har_clean-ac63eaecd7a8",
-        "The same real sensor data with an evaluation designed to keep each person on one "
-        "side of the split.",
+        "The same real sensor data with a clean evaluation written by ATLAS's authors: each "
+        "person on one side of the split, and every step fit inside each fold.",
     ),
 )
 CASES_LABEL = "Cases"
@@ -121,7 +121,7 @@ VERDICT_ORIGINAL = {
 }
 VERDICT_ALL_PASS = (
     "A revision proposed by {model} was executed in isolation and passes every required "
-    "check."
+    "check within the coverage shown."
 )
 VERDICT_CANDIDATE = (
     "A revision proposed by {model} was executed in isolation; ATLAS's outcome for it is "
@@ -144,10 +144,10 @@ VERDICT_CONDITIONAL = {
 # -- the five steps ------------------------------------------------------------------------------
 STEP_TITLES = {
     1: "The claim",
-    2: "The leak",
+    2: "What the checks found",
     3: "The AI's fix (untrusted)",
     4: "Human approval & sealed run",
-    5: "Verified proof",
+    5: "Verified evidence",
 }
 STEP_LABEL = "**{n} · {title}** — {summary}"
 SHOW_EXPERT = "Show expert detail"
@@ -289,7 +289,7 @@ PANE_REVISION = "verified revision"
 LEAK_TITLE = "Leak map · {side}"
 FLOW_TITLE = "Fit-scope flow · {side}"
 SIDE_ORIGINAL = "original"
-LEAK_Y_PLAIN = "Groups on both sides of the split in the original, by test fold"
+LEAK_Y_PLAIN = "Groups on both sides of the split, by test fold"
 LEAK_LEGEND_BOTH = "filled red: on both sides of the split in that fold"
 LEAK_LEGEND_NONE = "dotted outline: no shared groups"
 LEAK_NONE_LISTED = "No group is on both sides of the split in any fold."
@@ -350,6 +350,20 @@ REASONS = {
     "temporal.training_labels_available_by_cutoff": "{w} training rows, or their labels, are "
     "dated after their fold's cutoff, across {f} folds",
 }
+# The same sentences when nothing overlaps (k = 0), so none reads "0 ... in 0 of N folds"
+# (`atlas.ui.hud.reasons` picks these; the fields are the same).
+REASONS_NONE = {
+    "split.no_row_overlap": "No row appears in both training and testing in any of the {n} "
+    "folds",
+    "split.no_shared_source_observation": "No original observation appears in both training "
+    "and testing in any fold",
+    "split.no_group_overlap": "No {column} value appears on both sides of the split in any of "
+    "the {n} folds",
+    "split.sampling_unit_disjoint": "No {column} value (the sampling unit) appears on both "
+    "sides of the split in any of the {n} folds",
+    "split.repeated_measures_rule": "No {column} value has measurements on both sides of the "
+    "split in any fold",
+}
 
 
 def plural(table: dict, count: int, **fields) -> str:
@@ -363,7 +377,7 @@ RECORDED_ROOT_ENV = "the folder named by ATLAS_UI_RECORDED_DIR"
 
 
 # ================================================================================================
-# Slice 2 (2026-10-20): AI Agent vs. Model Alone, How It Works & Limits, the tamper demo.
+# Slice 2 (2026-10-20): ATLAS Checks vs. Model Alone, How It Works & Limits, the tamper demo.
 # ================================================================================================
 
 # -- shared ------------------------------------------------------------------------------------
@@ -371,7 +385,7 @@ EVIDENCE_CHANGED_CODE = "EVIDENCE CHANGED"
 SOURCE_LABEL = "Source"
 DIAGRAM_LABEL = "Diagram"
 
-# -- AI Agent vs. Model Alone (atlas.ui.versus) --------------------------------------------------
+# -- ATLAS Checks vs. Model Alone (atlas.ui.versus) ----------------------------------------------
 # Every number on this page comes from the tracked T-11 result files (evaluation/results/
 # t11-live-20261019/) and evaluation/expected.json, after their SHA-256 match the recorded ones.
 VS_QUESTION = (
@@ -412,17 +426,28 @@ VS_PANEL_NOTES = {
     "false": "violations named that were not predeclared",
     "invalid": "replies that broke the answer format and were not scored",
 }
-VS_ROW_SAME = "Model alone, same {m}"
-VS_ROW_ALL = "Model alone, all {n}"
+VS_ROW_SAME = "Model alone, same {m} problems"
+VS_ROW_ALL = "Model alone, all {n} problems"
 VS_FOUND_ATLAS = "{k} of {n} assessable"
-VS_FOUND_SAME = "{k} of {n} on the same {m}"
-VS_FOUND_ALL = "{k} of {n} overall"
+VS_FOUND_ATLAS_GAP = "{k} of {n} assessable ({x} of {t} not assessed)"
+# The model's figures are detections summed over its usable answers (one chance per planted
+# problem per usable answer on that problem's project), not distinct problems.
+VS_FOUND_SAME = "{k} of {n} detections"
+VS_FOUND_ALL = "{k} of {n} detections"
+VS_FOUND_MODEL = (
+    "{ks} of {ns} detections on the same {m} problems; {ka} of {na} on all {t}"
+)
+VS_CHART_NOTE = (
+    "The model's figures count each planted problem once per usable answer on its project "
+    "({v} usable answers on the two flawed projects), so they are detections, not distinct "
+    "problems."
+)
 VS_NONE = "none"
 VS_OF = "{k} of {n}"
 VS_ALT = (
-    "Bar chart in three panels. Predeclared violations found: ATLAS {fa}; model alone {fs} "
-    "and {fo}. False alarms: ATLAS {xa}; model alone {xm}. Invalid answers: ATLAS {ia}; "
-    "model alone {im}."
+    "Bar chart in three panels. Predeclared violations found: ATLAS {fa}; model alone {fm}. "
+    "False alarms: ATLAS {xa}; model alone {xm}. Invalid answers: ATLAS {ia}; model alone "
+    "{im}."
 )
 VS_TABLE_MEASURE = "Measure"
 VS_TABLE_SEP = "; "
@@ -484,9 +509,10 @@ T11_FINDINGS = (
 # is checked against scores.json and the findings above (tests/unit/test_ui_slice3.py).
 VS_MEANS_PLAIN = (
     (
-        "The AI model on its own named 19 of the 23 planted problems across its 9 usable answers. "
-        "It raised 2 false alarms on the flawed real-data project and none on the two clean "
-        "projects."
+        "The two flawed projects contain 9 planted problems. The model on its own gave 5 usable "
+        "answers on those projects, so there were 23 chances to name a planted problem; it named "
+        "19. It raised 2 false alarms on the flawed real-data project and none in its 4 usable "
+        "answers on the two clean projects."
     ),
     (
         "ATLAS found all 8 of the planted problems its checks can assess, with no false alarms. One "
@@ -595,10 +621,14 @@ HOW_STEPS = (
     (
         "A human approves by typing the code hash",
         (
-            "A person approves one exact revision by typing the start of its code hash. Any "
+            "A person approves the original code and each exact revision by typing the start "
+            "of its code hash; the approval is bound to the snapshot and code hashes. Any "
             "change to the code needs a new approval."
         ),
-        "docs/SPEC.md §9 item 5; README.md, Safety controls and their reviews",
+        (
+            "docs/SPEC.md §9 item 5; README.md, Safety controls and their reviews, and Setup "
+            "and running"
+        ),
     ),
     (
         "The revision runs sealed and is re-checked",
@@ -626,17 +656,20 @@ SAFETY = (
     (
         (
             "Isolated Docker runner: no network, a non-root user and a read-only filesystem, with "
-            "limits on memory, CPU, processes and time. If isolation is unavailable, nothing runs "
-            "on the computer itself."
+            "limits on memory, CPU, processes and time. If the container runner is unavailable, "
+            "ATLAS stops and never runs code directly on the host computer."
         ),
         "docs/SPEC.md §10; README.md, Safety and honesty rules",
     ),
     (
         (
-            "Typed approval bound to the code hash: an approval names one exact revision, and "
-            "the runner refuses to run any other code."
+            "Typed approval bound to the snapshot and code hashes: an approval names the exact "
+            "original or revision code, and the runner refuses to run any other code."
         ),
-        "docs/SPEC.md §9 item 5; README.md, Safety controls and their reviews",
+        (
+            "docs/SPEC.md §9 item 5; README.md, Safety controls and their reviews, and Setup "
+            "and running"
+        ),
     ),
     (
         (
@@ -658,10 +691,11 @@ SAFETY = (
     ),
     (
         (
-            "The hosted demo executes nothing: it replays recorded runs and shows the AI's "
-            "proposals as not executed here."
+            "The hosted demo executes no project or candidate code: it replays recorded runs, "
+            "and in a hosted live session it checks the AI's proposals and shows them as not "
+            "executed here."
         ),
-        "docs/HOSTED_OPERATIONS.md §1; docs/SPEC.md §13",
+        "README.md, Architecture; docs/HOSTED_OPERATIONS.md §1; docs/SPEC.md §13",
     ),
     (
         (
@@ -721,8 +755,9 @@ LIMITS_PLAIN = (
     (
         "The live AI agent was accepted within its scope with these limits: the input-token "
         "figure is ATLAS's own estimate, and the provider's enforcement and billing are not "
-        "verified; the model's reply format is not always reliable (schema failures in 5 of 8 "
-        "live runs, runs 1 to 8); raw replies are stored only from live run 3b onward; hiding secrets in a "
+        "verified; the model's reply format is not always reliable (schema failures in 5 of the "
+        "8 live runs: runs 1 to 8, with 3 and 3b counted as one); raw replies are stored only "
+        "from live run 3b onward; hiding secrets in a "
         "revision's output is best-effort; and it was tested on one Windows computer only."
     ),
     (
@@ -756,8 +791,9 @@ NOT_DO = (
     ),
     (
         (
-            "It does not check how the data was collected or labelled: its tracing starts at the "
-            "feature table the project supplies."
+            "It does not check how the data was collected or labelled, or how features were "
+            "extracted or normalised before the feature table the project supplies: its tracing "
+            "starts at that table."
         ),
         'README.md, "Limitations" (provenance begins at the supplied feature table)',
     ),
@@ -855,7 +891,7 @@ REPORT_COL_CHECK = "What the check verifies"
 REPORT_COL_ID = "Assertion ID"
 REPORT_COL_BEFORE = "Before"
 REPORT_COL_AFTER = "After"
-REPORT_LEAK = "The leak"
+REPORT_LEAK = "What the checks found"
 REPORT_APPROVAL = "Approval and sealed run"
 REPORT_AUDIT_ONLY = (
     "Deterministic audit: no model was called and nothing was approved; the trusted, "

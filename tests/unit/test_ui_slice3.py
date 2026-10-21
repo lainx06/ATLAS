@@ -88,7 +88,10 @@ def test_the_limits_page_shows_the_recounted_and_recorded_limitations(mode):
     readme = L.readme_limitations()
     t06 = next(x for x in readme if x.startswith("T-06"))
     hosted_item = next(x for x in readme if "hosted app" in x)
-    assert "schema failures in 5 of 8 live runs (runs 1 to 8)" in t06
+    assert (
+        "schema failures in 5 of the 8 live runs (runs 1 to 8, with 3 and 3b counted as one)"
+        in t06
+    )
     assert "3 of 6" not in t06
     assert hosted_item == (
         "Established on 2026-10-19 for the private hosted app: Nebius connectivity and the "
@@ -98,7 +101,12 @@ def test_the_limits_page_shows_the_recounted_and_recorded_limitations(mode):
     )
     plain = shown(run_page(LIM_PAGE))
     expert = shown(run_page(LIM_PAGE, expert=True))
-    assert story.code_html("schema failures in 5 of 8 live runs, runs 1 to 8") in plain
+    assert (
+        story.code_html(
+            "schema failures in 5 of the 8 live runs: runs 1 to 8, with 3 and 3b counted as one"
+        )
+        in plain
+    )
     for item in (t06, hosted_item):
         assert story.code_html(item) in expert and story.code_html(item) not in plain
     assert "3 of 6" not in plain and "3 of 6" not in expert
@@ -108,9 +116,10 @@ def test_the_limits_page_shows_the_recounted_and_recorded_limitations(mode):
 # == B1 ===========================================================================================
 GIVEN = (
     (
-        "The AI model on its own named 19 of the 23 planted problems across its 9 usable answers. "
-        "It raised 2 false alarms on the flawed real-data project and none on the two clean "
-        "projects."
+        "The two flawed projects contain 9 planted problems. The model on its own gave 5 usable "
+        "answers on those projects, so there were 23 chances to name a planted problem; it named "
+        "19. It raised 2 false alarms on the flawed real-data project and none in its 4 usable "
+        "answers on the two clean projects."
     ),
     (
         "ATLAS found all 8 of the planted problems its checks can assess, with no false alarms. One "
@@ -144,10 +153,29 @@ def test_every_number_in_the_plain_items_equals_its_source():
     base = {c["case_id"]: c for c in s["baseline"]["cases"]}
     atlas = {c["case_id"]: c for c in s["atlas"]["cases"]}
     clean = [cid for cid, c in exp["cases"].items() if not c["expected_violated"]]
+    flawed = [cid for cid, c in exp["cases"].items() if c["expected_violated"]]
     f1, f2, f3, f4 = C.VS_MEANS_PLAIN
-    # 1: 19 of 23 across 9 usable answers; 2 false alarms on har_flawed, none on the clean two.
-    assert numbers(f1) == [19, 23, 9, 2]
-    assert (b["tp"], b["tp"] + b["fn"], b["valid"]) == (19, 23, 9)
+
+    def valid(cids: list[str]) -> int:
+        return sum(1 for c in cids for t in base[c]["trials"] if t["status"] == "VALID")
+
+    # 1: the two flawed projects hold 9 planted problems; 5 usable answers on them give 23
+    # chances, 19 named; 2 false alarms on har_flawed, none in 4 usable clean answers.
+    assert numbers(f1) == [9, 5, 23, 19, 2, 4]
+    assert len(flawed) == 2 and "two flawed" in f1
+    assert sum(len(exp["cases"][c]["expected_violated"]) for c in flawed) == 9
+    assert valid(flawed) == 5 and valid(clean) == 4
+    assert (
+        sum(
+            len(exp["cases"][c]["expected_violated"])
+            for c in flawed
+            for t in base[c]["trials"]
+            if t["status"] == "VALID"
+        )
+        == (b["tp"] + b["fn"])
+        == 23
+    )
+    assert b["tp"] == 19 and b["valid"] == valid(flawed) + valid(clean)
     assert base["har_flawed"]["fp"] == b["fp"] == 2
     assert len(clean) == 2 and "two clean" in f1
     assert all(base[c]["fp"] == 0 for c in clean) and b["clean_false_positives"] == 0

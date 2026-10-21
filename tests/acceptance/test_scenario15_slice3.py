@@ -3,7 +3,8 @@
 C1/C2: the tamper demo is a collapsed expander directly after step 5, and the Expert view
 switch sits beside the page title, top right, on the Overview, the comparison page and How It
 Works & Limits. D: "Download audit report" saves atlas-audit-<case>-<outcome>.html; the file
-renders on its own (no request) and prints to one page. E: axe-core finds no serious or
+renders on its own (no request); printed (copy fix pass R1: 15 mm margins, 10.5 pt type) every
+table fits the page width and the report takes at most two pages. E: axe-core finds no serious or
 critical violation in ATLAS's own markup on any page, at 1440 x 900 and 390 x 844; every chart
 or diagram has role="img" and a name; every control reached by Tab shows a visible focus
 indicator.
@@ -125,7 +126,9 @@ def test_the_tamper_demo_opens_and_runs_after_step_5(app, page):
 
 
 # -- D: the audit report -----------------------------------------------------------------------------
-def test_the_audit_report_downloads_and_prints_on_one_page(app, page, tmp_path):
+def test_the_audit_report_downloads_and_prints_within_the_page_width(
+    app, page, tmp_path
+):
     for case, outcome in (
         ("live6", "VIOLATION_FOUND"),
         ("harflawed", "VIOLATION_FOUND"),
@@ -151,9 +154,21 @@ def test_the_audit_report_downloads_and_prints_on_one_page(app, page, tmp_path):
             report.emulate_media(media="print" if kind == "print" else "screen")
             full_page_file(report, f"s15_05_report_{case}_{kind}")
         report.emulate_media(media="print")
-        for fmt in ("A4", "Letter"):
+        # The printable width of A4 and Letter inside the 15 mm margins, in CSS pixels.
+        for fmt, width in (("A4", 681), ("Letter", 703)):
+            report.set_viewport_size({"width": width, "height": 1000})
+            wide = report.evaluate(
+                """() => [...document.querySelectorAll('table, main')]
+                    .filter(e => e.scrollWidth > e.parentElement.clientWidth)
+                    .map(e => e.tagName)"""
+            )
+            assert wide == [], (case, fmt, wide)
+            assert report.evaluate(
+                "() => document.documentElement.scrollWidth"
+                " <= document.documentElement.clientWidth"
+            )
             pdf = report.pdf(format=fmt)
-            assert _pages(pdf) == 1, (case, fmt, _pages(pdf))
+            assert 1 <= _pages(pdf) <= 2, (case, fmt, _pages(pdf))
         report.close()
 
 
@@ -199,7 +214,10 @@ def test_comparison_and_limits_screens(app, page):
     page.locator(".st-key-lim-limits").wait_for(timeout=30_000)
     wait_idle(page)
     text = " ".join(page.locator(".st-key-lim-limits").inner_text().split())
-    assert "schema failures in 5 of 8 live runs, runs 1 to 8" in text
+    assert (
+        "schema failures in 5 of the 8 live runs: runs 1 to 8, with 3 and 3b counted as one"
+        in text
+    )
     assert "Established on 19 October 2026 for the private hosted app" in text
     full_page(page, "s15_04_how_it_works_plain")
 

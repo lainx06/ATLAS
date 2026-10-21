@@ -3,7 +3,7 @@
 Four pages in Streamlit's native multipage navigation (UI restructure slice 1,
 docs/UI_DESIGN_HUD.md §12): Overview & Cases (the default: the bundled recorded runs told as
 cases), Try It Live (hosted: the one live session per visitor; local: run a project or open a
-recorded run), AI Agent vs. Model Alone (the T-11 comparison, gated on its recorded result
+recorded run), ATLAS Checks vs. Model Alone (the T-11 comparison, gated on its recorded result
 hashes) and How It Works & Limits (slice 2). Every result shown is read from the run's files
 and passes the verification gate (`atlas.ui.results.gate`) first.
 """

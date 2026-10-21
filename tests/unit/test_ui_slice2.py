@@ -1,7 +1,7 @@
 """UI restructure slice 2, offline (AppTest and pure functions).
 
 A2: the step 4 summary of a run approved by the T-09 audit script comes from the recorded
-approval reason, not from the case name. Part B (AI Agent vs. Model Alone): the page shows
+approval reason, not from the case name. Part B (ATLAS Checks vs. Model Alone): the page shows
 nothing but the evidence-changed panel when a result file's SHA-256 differs from the recorded
 one; the chart's values equal scores.json; the caveats are visible without expanding; the
 findings equal docs/EVALUATION.md's. Part C (How It Works & Limits): every README limitation
@@ -151,7 +151,7 @@ def test_live6_keeps_its_typed_approval_summary():
     )
 
 
-# == Part B: AI Agent vs. Model Alone =============================================================
+# == Part B: ATLAS Checks vs. Model Alone =============================================================
 def results_copy(tmp_path: Path) -> tuple[Path, Path]:
     d = tmp_path / "t11"
     shutil.copytree(RESULTS, d)
@@ -252,16 +252,43 @@ def test_the_chart_values_equal_scores_json():
     assert (f.model_invalid, f.trials) == (b["invalid_reply"], b["trials_scheduled"])
     assert (f.atlas_invalid, f.model_invalid, f.trials) == (0, 3, 12)
     assert f.cost_usd == suite["spend"]["estimated_total_usd"] == "0.0630621"
+    # Copy fix pass (2026-10-21): 9 planted problems (expected, summed over the flawed cases),
+    # 1 of them not assessed (in ATLAS's coverage gaps); the model's valid trials split 5 on
+    # the flawed cases and 4 on the clean ones.
+    flawed = [cid for cid in want if want[cid]]
+    assert f.expected_total == sum(len(want[c]) for c in flawed) == 9
+    assert f.not_assessed == sum(len(want[c] & gaps[c]) for c in want) == 1
+    assert f.atlas_assessable + f.not_assessed == f.expected_total
+    valid = {
+        c["case_id"]: sum(1 for t in c["trials"] if t["status"] == "VALID")
+        for c in s["baseline"]["cases"]
+    }
+    assert f.flawed_valid == sum(valid[c] for c in flawed) == 5
+    assert f.clean_valid == sum(valid[c] for c in want if not want[c]) == 4
+    assert f.flawed_valid + f.clean_valid == b["valid"]
     v = VS.values(f)
     assert v == {
-        "fa": "8 of 8 assessable",
-        "fs": "19 of 20 on the same 8",
-        "fo": "19 of 23 overall",
+        "fa": "8 of 8 assessable (1 of 9 not assessed)",
+        "fs": "19 of 20 detections",
+        "fo": "19 of 23 detections",
+        "fm": "19 of 20 detections on the same 8 problems; 19 of 23 on all 9",
         "xa": "0",
         "xm": "2",
         "ia": "none",
         "im": "3 of 12",
     }
+    labels = [b.label for b in VS.panels(f)[0][3]]
+    assert labels == [
+        "ATLAS",
+        "Model alone, same 8 problems",
+        "Model alone, all 9 problems",
+    ]
+    assert C.VS_CHART_NOTE.format(v=f.flawed_valid) == (
+        "The model's figures count each planted problem once per usable answer on its "
+        "project (5 usable answers on the two flawed projects), so they are detections, not "
+        "distinct problems."
+    )
+    assert len(flawed) == 2
     # The bars: lengths in their panel's unit, printed values, and both layouts.
     bars = {
         key: [(b.series, b.value, b.text) for b in bs] for key, _, _, bs in VS.panels(f)
@@ -278,16 +305,13 @@ def test_the_chart_values_equal_scores_json():
     for narrow in (False, True):
         svg = VS.chart_svg(f, narrow=narrow)
         printed = re.findall(r'font-weight="600" text-anchor="\w+">([^<]+)</text>', svg)
-        assert printed == [H.esc(x) for x in v.values()], printed
+        drawn = [v[k] for k in ("fa", "fs", "fo", "xa", "xm", "ia", "im")]
+        assert printed == [H.esc(x) for x in drawn], printed
         assert 'role="img"' in svg and "<desc" in svg and H.esc(VS.alt_text(f)) in svg
     # The data table carries the same values.
     table = VS.table(f)
     assert list(table[C.VS_SERIES_ATLAS]) == [v["fa"], v["xa"], v["ia"]]
-    assert list(table[C.VS_SERIES_MODEL]) == [
-        v["fs"] + "; " + v["fo"],
-        v["xm"],
-        v["im"],
-    ]
+    assert list(table[C.VS_SERIES_MODEL]) == [v["fm"], v["xm"], v["im"]]
 
 
 def evaluation_findings() -> list[str]:
@@ -371,7 +395,7 @@ def test_every_readme_limitation_is_present_plain_and_expert(mode):
         "listed assertions passed": "listed checks passed",
         "development cases": "development projects",
         "not proof of safety": "safe",
-        "5 of 8 live runs": "5 of 8",
+        "5 of the 8 live runs": "5 of the 8",
         "not independent benchmark evidence": "not independent benchmark evidence",
         "exactly three claim types": "exactly three kinds of claim",
         "2026-12-15": "15 December 2026",

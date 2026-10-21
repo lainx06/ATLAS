@@ -3,7 +3,7 @@
 A1: on the Overview the active case card's "Showing this case" label, and every card's last
 line, lie fully inside their card (with bottom padding left) at every width tested. The tamper
 demo changes one byte in a temporary copy, shows the real check's result and leaves
-demo/recorded unchanged. The AI Agent vs. Model Alone page shows its question, chart, data
+demo/recorded unchanged. The ATLAS Checks vs. Model Alone page shows its question, chart, data
 table and caveats without expanding anything; How It Works & Limits shows its diagram, steps
 and limits. With ATLAS_UI_SCREENS set, settled full-page screenshots are saved at 1440 x 900,
 1280 x 800 and 390 x 844.
@@ -166,7 +166,15 @@ def test_agent_vs_model_alone_page(app, page):
     assert page.locator(".st-key-vs-page details").count() == 0
     page.locator(".st-key-vs-table table tbody tr").nth(2).wait_for(timeout=30_000)
     rows = page.locator(".st-key-vs-table table tbody tr").all_inner_texts()
-    assert any("8 of 8 assessable" in r and "19 of 20 on the same 8" in r for r in rows)
+    assert any(
+        "8 of 8 assessable (1 of 9 not assessed)" in r
+        and "19 of 20 detections on the same 8 problems; 19 of 23 on all 9" in r
+        for r in rows
+    )
+    note = page.locator(".st-key-vs-chart-note").inner_text()
+    assert "so they are detections, not distinct problems" in note
+    page.locator(".st-key-vs-review").wait_for(timeout=30_000)
+    body = page.locator(".st-key-vs-page").inner_text()  # after the page has finished
     assert C.VS_REVIEW in body and "estimate, not billing" in body
     assert page.locator(".st-key-vs-chart svg.vs-wide").is_visible()
     full_page(page, "s14_03_agent_vs_model_plain")
