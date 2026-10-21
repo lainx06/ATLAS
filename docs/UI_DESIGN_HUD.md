@@ -589,3 +589,67 @@ Gemini Argon (high effort) reviewed all user-facing copy against README, docs/EV
 - Screenshots: `runs/ui-story/screens4/`.
 - Tests: `tests/unit/test_ui_copy_fix.py`, with the updated slice 1-3 tests.
 - `runs/ui-story/check_recorded4.txt` (byte-identical to `check_recorded3.txt`).
+
+## 16. Readability pass: headline first, one idea per screen (2026-10-21; branch `ui-story`)
+
+The task named this "§15"; §15 already records the copy accuracy fix pass, so it is §16. Everything in §1–§15 still applies. Layout, diagrams, navigation and plain-view copy only: no engine, evaluator, policy, `validate_diff`, provider, request body, spending, reservation, access, kill-switch, execution-guard, approval, recorded-run verification, release-review gate, T-11 hash gate, tamper-demo safety, escaping, briefing-provenance or audit-report change. New copy is in `src/atlas/ui/copy.py` ("Readability pass"); each sentence's source, and each moved item's new place, is in `runs/ui-story/copy_changes2.md` (git-ignored).
+
+### 16.1 Plain-view rules
+
+- **Goal:** a judge who is not an ML expert understands each page in about five seconds: one idea per screen, a visual that carries it, a short caption.
+- **Plain view** shows an answer sentence or headline, one visual, a few large numbers and one-line items. Every existing detail is one click away ("Show more", "All …", "Data licence details") and in Expert view.
+- **Expert view is unchanged:** it renders exactly what it rendered before the pass (`tests/fixtures/ui_readability/before.json`, recorded from `b690af2` by the script beside it; the browser innerText of all five Expert views was also byte-identical).
+- **R0 layout:** the main content is at most 1150 px wide and centred (full width at or below 1150 px). Body text is 16 px: the paragraphs and list items of `st.markdown` blocks (one low-specificity rule in `views.CSS`) and the plain text ATLAS styles itself. The theme's base stays 15 px, so the HUD's own markup, captions, labels and tables keep the sizes their layout was tuned for: raising the base to 16 pushed the recorded-run viewer's hero 50 px below the first viewport at 1280 × 800 (scenario 8). Small grey text only for footnotes (captions). Scenario 17 checks the width, the centring and the 16 px body text.
+- **R1 glossary:** "New to this? 4 terms", a popover beside the tagline (plain view only): Training data, Test data, Fold, Leak.
+
+### 16.2 Always visible in plain view (never behind a click)
+
+The outcome codes (case cards and the verdict bar); "This does not say the scientific claim is true or false."; "estimate, not billing" on any cost; the evidence-changed panel when verification fails; the claim line; the comparison's caveat line; the four key limits. Also kept visible: the replay disclosure, because its proposed replacement ("Every file is re-checked before display.") overclaims (§16.6).
+
+### 16.3 The Overview story as a stepper (`atlas.ui.story`)
+
+- **Above it:** the verdict bar (unchanged), then "Claim: <recorded claim>" (har_flawed's recorded statement carries its ATLAS-authored-variant note), then the "Show all steps" switch.
+- **The stepper:** a step row (`st.segmented_control`, required, one Tab stop, arrow keys inside; "1 Claim · 2 What the checks found · 3 The AI's fix · 4 Approval & sealed run · 5 Verified evidence"), Back and Next (`st.button`, disabled at the ends), and "Step n of 5" in a `role="status"` `aria-live="polite"` region. Visible focus on every control. At most a one-time 200 ms fade when the step changes (a new step's body is a new element), never under reduced motion.
+- **Default and state:** every case opens on step 2. The step is kept per case in `st.session_state["story_step_<case>"]` (a plain key; the widget `stepper-row-<case>` is synced from it); selecting another case starts that case at step 2.
+- **Each step:** a one-sentence headline (the step's existing summary line), one visual, then "Show more" holding only the rest of the step's previous content (never the headline, a visual or an analogy):
+  1. the claim intro and the claim; for an `unseen_group` claim, a concept diagram (two groups of person markers, "Training people" and "Test people", with a gap; caption "The claim: the model works on people it has never seen."); none for other claim types.
+  2. the leak map and fit-scope flow (unchanged), then one box with both analogy lines (each still only when its check FAILs).
+  3. one chip per proposal from the verified agent report, in order: "Revision n: approved and executed in the sealed runner" (only when its verified `execution.json` records `docker_isolated`, `completed`), "Revision n: rejected by ATLAS validation", or "Revision n: not executed"; with no proposal, the existing "No revision was proposed." line once. Model-written text only in Show more, in its untrusted frame.
+  4. a concept diagram ("Code" → "Typed hash" → a locked "Sealed runner: no network · non-root · read-only"), then the step 4 summary line (for the T-09 runs, "No AI agent took part: …").
+  5. "What changed" (the checks whose recorded status changed, "<plain label>: FAIL → PASS"), or "What failed" (FAIL, NOT_ASSESSED and ERROR with plain labels), or "All required checks passed"; then the integrity line "Evidence intact: v of t recorded items verified now" (shown once when it is already the headline); Show more holds the check matrix, the metric line, the track, the briefing and the recorded-evidence card.
+- **The concept diagrams** carry no number (tested on their rendered text and aria-label), are labelled "Diagram", have `role="img"` and a name, and are static.
+- **"Show all steps"** shows the five expanders exactly as before (tested equal to the baseline). **Expert view** shows them as before.
+- **The tamper demo** stays a collapsed expander after the stepper (unchanged behaviour).
+
+### 16.4 Streamlit implementation, and verification on every run
+
+- Native widgets: `st.segmented_control`, `st.button`, `st.toggle`, `st.expander`, `st.popover`, `st.metric` in `st.columns`. Custom HTML only for the existing HUD components and the two concept diagrams, escaped through `hud.esc`.
+- **The stepper is an `@st.fragment`**, so a step change reruns only the stepper. At the top of every run of the fragment (the full page's and each step change's) it re-reads the agent report and re-runs the same recorded-run verification the page's gate uses (`results.verification`, i.e. `recorded.verify`) from the files on disk. If that is not intact it calls `st.rerun(scope="app")`, and the full page's gate then draws only the evidence-changed panel. The fragment builds the HUD, facts and summaries from that fresh verification only: it never draws step content from a failed or an earlier verification.
+- **Nothing is cached:** no `st.cache_data` or `st.cache_resource` on the recorded-run verification, the T-11 hash gate or anything they read (the UI's one cache is the local page's 30-second Docker probe, which no verification reads; a test pins this). "Verified now" stays true on every render, full page or fragment.
+- Tested: a byte changed in a copy between two full renders of the same session, and a byte changed after the page rendered followed by a click on Next inside the stepper, both leave only the evidence-changed panel (scenario 17; the second in AppTest too, by making the stepper's own verification fail).
+
+### 16.5 The comparison page and How It Works & Limits (plain view)
+
+- **Comparison (`atlas.ui.versus`):** under the title, one answer sentence ("On these 4 projects, ATLAS's checks found all 8 problems they can assess, with no false alarms. The AI model on its own made 19 of 20 detections on those same 8 problems (19 of 23 overall), raised 2 false alarms, and gave 3 unusable answers out of 12."); the caveat line, then "All caveats (6)"; three stat tiles (bordered columns, two native metrics each, qualifiers as captions: "Problems found" 8 of 8 | 19 of 20, "False alarms" 0 | 2, "Unusable answers" none | 3 of 12); the chart and its note (unchanged); then "Data table", "What this means in detail", "About this comparison" (the question and setup); one footnote line (cost, estimate not billing · review · result files intact). Every number comes from the verified `scores.json` and `expected.json` and is tested.
+- **How It Works & Limits (`atlas.ui.limits`):** the diagram (unchanged); five one-line steps under the diagram's short titles; six safety tiles (title and one line; the "Tamper check" tile keeps the existing sentence, §16.6); "Key limits" (four); "All limitations (13), in full" (the intro, the 13 plain limitations and "What ATLAS does not do", unchanged).
+- **Try It Live:** R0 applies; its controls and text are unchanged.
+
+### 16.6 Copy not applied (unsupported), and word budgets
+
+- **Not applied** (the existing text is kept): "Every file is re-checked before display." and the tamper tile's "Every recorded file is re-hashed before display; any change shows 'evidence changed'." (only the files with a recorded hash are re-checked: live6 has 85 files, 46 file hashes; `agent_report.json` is not hashed); "Recorded files unchanged since recording: N of N verified now" (N counts 3 outcome comparisons too).
+- **Word counts** (innerText of `[data-testid="stMainBlockContainer"]` at 1440 × 900, with the content of closed expanders, `details:not([open]) > :not(summary)` (Streamlit's expander DOM), and closed popovers excluded; words are whitespace-separated tokens with a letter or digit, so icon ligature names count):
+
+  | Page | Before | After | Requested ceiling |
+  | --- | --- | --- | --- |
+  | Overview, live6, on load (step 2) | 625 | 591 | 220 |
+  | Overview, live6, step 1 | (no stepper) | 356 | 220 |
+  | ATLAS Checks vs. Model Alone | 570 | 278 | 140 |
+  | How It Works & Limits | 975 | 304 | 230 |
+
+  The ceilings are not met without removing items the task keeps visible: on the Overview, everything above the stepper (header, cards, recorded-run box, verdict bar with its outcome codes and caveats, claim line) is about 280 words, and step 2's unchanged leak map and fit-scope flow are 199; on the comparison page the unchanged chart is 85 and the answer and caveat line 77; on the limits page the safety tiles are 119 (40 of them the kept tamper sentence). Scenario 17 holds the pages at or under the measured counts.
+
+### 16.7 Evidence
+
+- Screenshots: `runs/ui-story/screens5/` (45: 15 states at 1920 × 1080, 1440 × 900 and 390 × 844).
+- Tests: `tests/unit/test_ui_readability.py`, `tests/acceptance/test_scenario17_readability.py`, the updated slice 1-3 and copy-fix tests (the five-expander assertions now run with "Show all steps"), and the axe states added to scenario 15 (the stepper at steps 1, 3 and 5 with Show more open, "Show all steps", the glossary open, every plain expander open).
+- Full suite: `runs/ui-story/full5.log`; `runs/ui-story/check_recorded5.txt` (byte-identical to `check_recorded4.txt`).
