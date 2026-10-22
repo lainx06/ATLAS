@@ -653,3 +653,42 @@ The outcome codes (case cards and the verdict bar); "This does not say the scien
 - Screenshots: `runs/ui-story/screens5/` (45: 15 states at 1920 × 1080, 1440 × 900 and 390 × 844).
 - Tests: `tests/unit/test_ui_readability.py`, `tests/acceptance/test_scenario17_readability.py`, the updated slice 1-3 and copy-fix tests (the five-expander assertions now run with "Show all steps"), and the axe states added to scenario 15 (the stepper at steps 1, 3 and 5 with Show more open, "Show all steps", the glossary open, every plain expander open).
 - Full suite: `runs/ui-story/full5.log`; `runs/ui-story/check_recorded5.txt` (byte-identical to `check_recorded4.txt`).
+
+## 17. Final UI fix pass (2026-10-22; branch `ui-story`)
+
+Everything in §1–§16 still applies, except where this section changes it. Plain-view copy, layout polish and one bug fix only. Nothing else changed: no engine, evaluator, policy, `validate_diff`, provider, request body, spending, reservation, access, kill-switch, execution-guard, approval, recorded-run verification, release-review gate, T-11 hash gate, tamper safety, escaping, briefing provenance or audit-report change. Expert view output is unchanged. Sources per sentence: `runs/ui-story/copy_changes2.md`, "Final fix pass".
+
+### 17.1 F1: stepper buttons that switch to Expert view (user-found)
+
+- **Cause:** "Show expert detail" and "Show me the evidence" sit inside the stepper (`@st.fragment`). Their `on_click` (`story._set_expert`) set `expert` and `expert_widget` correctly, but a click inside a fragment reruns only the fragment, so the page (verdict bar, banner, step list) and the Expert view toggle outside it were not redrawn. The page stayed in plain view until some other interaction triggered a full rerun. (`st.rerun` inside a callback is a no-op.)
+- **Fix:** the callback also sets a one-shot request, `st.session_state["story_app_rerun"]` (`story.APP_RERUN`). The stepper's first act on every run pops it and calls `st.rerun(scope="app")`, before its verification and before drawing. The full run that follows draws Expert view with the toggle on. A full run pops the request in `story.case` before drawing, so a click outside the fragment (the "Show all steps" expanders) never causes a second rerun. Verification is still re-run, uncached, on every full and fragment run.
+- **Widget audit** (every widget the stepper draws; `test_every_widget_in_the_stepper_is_classified` fails on a new, unclassified one):
+
+  | Widget | Effect | Disposition |
+  | --- | --- | --- |
+  | step row (`stepper-row-<case>`, `st.segmented_control`) | sets the stepper's own step (`story_step_<case>`), read only inside the fragment | fragment rerun is complete; unchanged |
+  | Back / Next (`stepper-back-<case>`, `stepper-next-<case>`) | same | unchanged |
+  | Show more (`stepper-more-<n>`, `st.expander`, `on_change="ignore"`) | opens in the browser; no rerun | unchanged |
+  | Show expert detail / Show me the evidence (`expert-on-<n>`) | Expert view, page-wide | full-app rerun (the fix) |
+  | "Show all steps" toggle, the tamper demo's file picker and button, the case cards, the Expert view toggle, the report download | drawn by the page, outside the fragment | full rerun already |
+
+### 17.2 Copy (plain view)
+
+- **Recorded-run line:** "Recorded run · <model or scripted replies> · finished <date> · replayed here, not re-run. Every recorded hash is recomputed before display." The replay disclosure (`copy.REPLAY_DISCLOSURE`) is shown in Expert view's banner only (it was already there). This supersedes the §16.2 item that kept it visible in plain view.
+- **HAR data line:** "Data: UCI HAR (Reyes-Ortiz et al., 2013), CC BY 4.0 on the dataset page; the archive's README says no commercial use. No data is redistributed here. <DOI link>" (a space now precedes the link); the full citation stays under "Data licence details".
+- **Step 3 chips:** each recorded outcome uses its reviewed wording (`copy.PROPOSAL_PARTS` without the count): "not executed here", "declined at approval", "not run (runner unavailable)"; executed and rejected are unchanged.
+- **Step 5:** when every required check has a recorded PASS (never with a FAIL, ERROR, NOT_ASSESSED or a missing status), the headline is "All required checks passed within the coverage shown", followed by the integrity line. Otherwise the step is as in §16.3.
+- **Comparison:** the answer adds "asked 3 times per project"; the caveat line is "Read with care: a small test of finding problems, not fixing them, on the 4 projects ATLAS was built on. The flawed projects' files describe their flaws in text the model could read, and only ATLAS ran the code on the data."; tile 1 is "Planted problems found" with labels "ATLAS (problems)" and "Model alone (detections)" (the numbers come from scores.json, as before).
+- **How It Works & Limits:** step 1 "… records what each supported step learned from."; the "Sealed runner" tile "No network, no admin rights, and a read-only filesystem except its output and temporary folders. If it is unavailable, ATLAS stops; it never runs code on the host." (the runner's only writable places are the `/tmp` and `/work/out` tmpfs mounts); the "Tamper check" tile "Every recorded hash is recomputed before display; a change to a hashed file shows 'evidence changed'. It does not catch a run whose files and hashes were both rewritten." (the full sentence stays in Expert view); key limit 1 "… passed within the coverage shown. …"; two more key limits, six in all: "Container isolation reduces risk; it does not prove the code safe, the traces intact, or the science correct." and "The live AI's replies often broke the required format: schema failures in 5 of the 8 live runs."
+- **Changed from the proposal:** the isolation limit's proposed subject "Isolation and tracing reduce risk; they …" is not supported exactly, because the README says this of container isolation only. The README's subject is used and the rest of the wording is kept.
+
+### 17.3 Layout polish
+
+- **Stat tiles (comparison):** the three tiles share one height (`st.container(height="stretch")`, within 2 px at 1920 × 1080 and 1440 × 900; they stack at 390 × 844). Each caption sits directly under its own metric (a 2 px gap). Metric labels wrap instead of being cut. Tile 1's two labels share a two-line slot, bottom-aligned, so both values sit on one line. There is no truncation at the three sizes.
+- **Stepper:** on every step the one-sentence headline is above the visual (step 4's headline now precedes its diagram).
+
+### 17.4 Evidence
+
+- Tests: `tests/unit/test_ui_final_fix.py` (new), `tests/acceptance/test_scenario18_final_fix.py` (new: the F1 click on every step of live6 and har_flawed, tile heights and caption placement, headline order on every step of the three cases). Also updated: the readability, slice 2, scenario 9/14/17 and hosted page tests that pinned the old copy. Before the fix, the scenario 18 F1 test failed (the Expert expanders never appeared within 30 s).
+- Word counts (as §16.6): Overview live6 591 → 571 on load and 356 → 336 on step 1; comparison 278 → 301; limits 304 → 345.
+- Screenshots: `runs/ui-story/screens6/`. Full suite: `runs/ui-story/full6.log`; `runs/ui-story/check_recorded6.txt`.
