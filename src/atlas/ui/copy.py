@@ -944,17 +944,25 @@ GLOSSARY = (
 GLOSSARY_ITEM = "{term}: {text}"
 
 # -- O1: the recorded-run box (plain) ---------------------------------------------------------------
-# The proposed second sentence ("Every file is re-checked before display.") is not supported:
-# only the files with a recorded hash are re-checked (46 of live6's 85 files), so the existing
-# replay disclosure (REPLAY_DISCLOSURE) stays visible after this line.
+# The line ends with the hash sentence (final fix pass; docs/HOSTED_OPERATIONS.md §1: "Every
+# recorded hash is recomputed before anything is shown"). "Every file is re-checked" would not
+# be supported: only the files with a recorded hash are re-checked (46 of live6's 85 files).
+# The replay disclosure (REPLAY_DISCLOSURE) is shown in Expert view's banner only.
+BANNER_HASHES = "Every recorded hash is recomputed before display."
 BANNER_RUN_LIVE = (
-    "Recorded run · {model} · finished {date} · replayed here, not re-run."
+    "Recorded run · {model} · finished {date} · replayed here, not re-run. "
+    + BANNER_HASHES
 )
 BANNER_RUN_FIXTURE = (
     "Recorded run · scripted replies, no model called · finished {date} · replayed here, "
-    "not re-run."
+    "not re-run. " + BANNER_HASHES
 )
-HAR_DATA_LINE = "Data: UCI HAR (Reyes-Ortiz et al., 2013), CC BY 4.0, "
+# F12 (final fix pass): README "License, data and acknowledgements"; the full citation stays
+# behind "Data licence details" (HAR_CITATION_PLAIN).
+HAR_DATA_LINE = (
+    "Data: UCI HAR (Reyes-Ortiz et al., 2013), CC BY 4.0 on the dataset page; the archive's "
+    "README says no commercial use. No data is redistributed here."
+)
 HAR_DOI = "https://doi.org/10.24432/C54S4K"
 HAR_DETAILS = "Data licence details"
 
@@ -982,12 +990,16 @@ DIAGRAM_GROUP_ALT = (
     "Diagram: two separate groups of people, training people and test people, with a gap "
     "between them."
 )
-# Step 3: one chip per proposal, from the verified agent report.
+# Step 3: one chip per proposal, from the verified agent report. Declined, unavailable and
+# not executed here each keep their reviewed wording (PROPOSAL_PARTS, without the count).
 CHIP_REVISION = "Revision {n}: {outcome}"
 CHIP_OUTCOME = {
     "executed": "approved and executed in the sealed runner",
     "rejected": "rejected by ATLAS validation",
-    "not_executed": "not executed",
+    **{
+        code: PROPOSAL_PARTS[code].removeprefix("{k} ")
+        for code in ("declined", "unavailable", "not_executed_here")
+    },
 }
 CHIP_EXECUTED_OTHER = "executed (runner {runner})"
 CHIP_UNKNOWN = "recorded outcome {code}"
@@ -1004,23 +1016,29 @@ DIAGRAM_SEALED_ALT = (
 # comparisons, which are not files).
 WHAT_CHANGED = "What changed"
 WHAT_FAILED = "What failed"
-ALL_PASSED = "All required checks passed"
+# Step 5's headline when every required check is PASS (README: "A green outcome means only
+# that the listed assertions passed within the stated coverage").
+ALL_PASSED = "All required checks passed within the coverage shown"
 CHIP_CHANGE = "{label}: {before} → {after}"
 CHIP_STATUS = "{label}: {status}"
 
 # -- C1-C3: the comparison page (plain) ----------------------------------------------------------------
 VS_ANSWER = (
     "On these {c} projects, ATLAS's checks found all {k} problems they can assess, with no "
-    "false alarms. The AI model on its own made {ks} of {ns} detections on those same {m} "
-    "problems ({ka} of {na} overall), raised {xm} false alarms, and gave {im} unusable answers "
-    "out of {t}."
+    "false alarms. The AI model on its own, asked {r} times per project, made {ks} of {ns} "
+    "detections on those same {m} problems ({ka} of {na} overall), raised {xm} false alarms, "
+    "and gave {im} unusable answers out of {t}."
 )
+# docs/EVALUATION.md "Findings (descriptive)": detection only, not repair; the two asymmetries.
 VS_CAVEAT_LINE = (
-    "Read with care: a small test on the projects ATLAS was built on, and the flawed projects' "
-    "files describe their flaws in text the model could read."
+    "Read with care: a small test of finding problems, not fixing them, on the {c} projects "
+    "ATLAS was built on. The flawed projects' files describe their flaws in text the model "
+    "could read, and only ATLAS ran the code on the data."
 )
 VS_ALL_CAVEATS = "All caveats ({n})"
-VS_TILE_FOUND = "Problems found"
+VS_TILE_FOUND = "Planted problems found"
+VS_TILE_FOUND_ATLAS = "ATLAS (problems)"
+VS_TILE_FOUND_MODEL = "Model alone (detections)"
 VS_TILE_FALSE = "False alarms"
 VS_TILE_INVALID = "Unusable answers"
 VS_TILE_ATLAS_FOUND_NOTE = "assessable; {x} of {t} not assessed"
@@ -1032,7 +1050,10 @@ VS_FOOT_SEP = " · "
 
 # -- H1-H3: How It Works & Limits (plain) ----------------------------------------------------------------
 HOW_LINES = (
-    "The evaluation runs in a sealed container, and ATLAS records what each step learned from.",
+    (
+        "The evaluation runs in a sealed container, and ATLAS records what each supported step "
+        "learned from."
+    ),
     "Fixed checks decide whether a rule was broken. No AI takes part.",
     "An AI may suggest a fix. ATLAS treats it as untrusted.",
     (
@@ -1041,14 +1062,18 @@ HOW_LINES = (
     ),
     "The approved fix runs sealed, and the same checks judge it again.",
 )
-# The six safety tiles: (title, line). The "Tamper check" tile keeps the existing sentence
-# (SAFETY's sixth item): the proposed "Every recorded file is re-hashed before display; any
-# change shows 'evidence changed'." is not supported, since only the files with a recorded
-# hash are re-checked.
+# The six safety tiles: (title, line). "Sealed runner": the runner's only writable places are
+# two tmpfs mounts, /work/out (outputs) and /tmp (scratch) (atlas.runner.docker.docker_run_args).
+# "Tamper check" names only hashed files (the full sentence, SAFETY's sixth item, is in Expert
+# view): only the files with a recorded hash are re-checked.
 SAFETY_TILES = (
     (
         "Sealed runner",
-        "No network, no admin rights, read-only files. If it is unavailable, ATLAS stops.",
+        (
+            "No network, no admin rights, and a read-only filesystem except its output and "
+            "temporary folders. If it is unavailable, ATLAS stops; it never runs code on the "
+            "host."
+        ),
     ),
     ("Typed approval", "Only the exact approved code can run."),
     ("AI text is not evidence", "Outcomes come only from the fixed checks."),
@@ -1060,16 +1085,38 @@ SAFETY_TILES = (
         "Hosted demo runs no project code",
         "It replays recorded runs and shows AI proposals without executing them.",
     ),
-    ("Tamper check", SAFETY[5][0]),
+    (
+        "Tamper check",
+        (
+            "Every recorded hash is recomputed before display; a change to a hashed file shows "
+            "'evidence changed'. It does not catch a run whose files and hashes were both "
+            "rewritten."
+        ),
+    ),
 )
 KEY_LIMITS_HEAD = "Key limits"
+# F9 (final fix pass). README Limitations: "Container isolation reduces risk; it is not proof of
+# safety, provenance integrity or scientific correctness." The proposed subject "Isolation and
+# tracing" is not used: the README says this of container isolation only.
+KEY_LIMIT_ISOLATION = (
+    "Container isolation reduces risk; it does not prove the code safe, the traces intact, or "
+    "the science correct."
+)
 KEY_LIMITS = (
-    "A clean result means only that the listed checks passed. It does not prove the claim true.",
+    (
+        "A clean result means only that the listed checks passed within the coverage shown. It "
+        "does not prove the claim true."
+    ),
     "Only small tabular scikit-learn classification, with three kinds of claim.",
     "No held-out test projects: every result here is on projects ATLAS was built on.",
     (
         "Tracing starts at the feature table the project supplies; how data was collected, "
         "labelled or turned into features is not checked."
+    ),
+    KEY_LIMIT_ISOLATION,
+    (
+        "The live AI's replies often broke the required format: schema failures in 5 of the 8 "
+        "live runs."
     ),
 )
 ALL_LIMITS = "All limitations ({n}), in full"

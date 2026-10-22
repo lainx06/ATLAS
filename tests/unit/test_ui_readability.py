@@ -278,9 +278,9 @@ def test_proposal_chips_follow_each_recorded_outcome():
         ("Revision 1: approved and executed in the sealed runner", "green"),
         ("Revision 2: executed (runner local)", "gray"),
         ("Revision 3: rejected by ATLAS validation", "red"),
-        ("Revision 4: not executed", "gray"),
-        ("Revision 5: not executed", "gray"),
-        ("Revision 6: not executed", "gray"),
+        ("Revision 4: declined at approval", "gray"),
+        ("Revision 5: not executed here", "gray"),
+        ("Revision 6: not run (runner unavailable)", "gray"),
         ("Revision 7: recorded outcome odd", "gray"),
     ]
 
@@ -418,8 +418,9 @@ def test_the_stepper_verifies_again_itself_and_reruns_the_page_on_a_failure(
 # == the comparison page ==========================================================================
 ANSWER = (
     "On these 4 projects, ATLAS's checks found all 8 problems they can assess, with no false "
-    "alarms. The AI model on its own made 19 of 20 detections on those same 8 problems (19 of "
-    "23 overall), raised 2 false alarms, and gave 3 unusable answers out of 12."
+    "alarms. The AI model on its own, asked 3 times per project, made 19 of 20 detections on "
+    "those same 8 problems (19 of 23 overall), raised 2 false alarms, and gave 3 unusable "
+    "answers out of 12."
 )
 
 
@@ -445,8 +446,10 @@ def _from_scores() -> dict:
                 same_n += len(ok)
                 same_k += len(set(t.get("tp") or []) & ok)
     a, b = scores["atlas"]["totals"], scores["baseline"]["totals"]
+    tries = {len(case["trials"]) for case in scores["baseline"]["cases"]}
     return {
         "projects": len(expected["cases"]),
+        "tries": tries,
         "atlas_found": a["tp"],
         "atlas_assessable": a["tp"] + a["fn"],
         "atlas_false": a["fp"],
@@ -463,6 +466,7 @@ def test_the_answer_sentence_and_the_tiles_equal_scores_json(mode):
     s = _from_scores()
     assert s == {
         "projects": 4,
+        "tries": {3},
         "atlas_found": 8,
         "atlas_assessable": 8,
         "atlas_false": 0,
@@ -482,12 +486,12 @@ def test_the_answer_sentence_and_the_tiles_equal_scores_json(mode):
     assert VS.answer(f) == ANSWER
     first = items(at.main)
     assert first.index(f"Markdown:{story.md(ANSWER)}") < first.index(
-        f"Markdown:{story.md(C.VS_CAVEAT_LINE)}"
+        f"Markdown:{story.md(VS.caveat_line(f))}"
     )
     assert first[0] == f"Title:{C.PAGE_AGENT}"
     assert [(m.label, m.value) for m in at.metric] == [
-        ("ATLAS", f"{s['atlas_found']} of {s['atlas_assessable']}"),
-        ("Model alone", "{} of {}".format(*s["same"])),
+        (C.VS_TILE_FOUND_ATLAS, f"{s['atlas_found']} of {s['atlas_assessable']}"),
+        (C.VS_TILE_FOUND_MODEL, "{} of {}".format(*s["same"])),
         ("ATLAS", str(s["atlas_false"])),
         ("Model alone", str(s["model_false"])),
         ("ATLAS", "none"),
@@ -527,11 +531,12 @@ def test_the_always_visible_items_need_no_click(mode, key):
             story.md(story.banner_text(report, R.finished(_rr(key), report)[0]))
             in shown
         )
-        assert C.REPLAY_DISCLOSURE in shown
+        assert C.REPLAY_DISCLOSURE not in shown  # Expert view only (final fix pass, F2)
+        assert C.BANNER_HASHES in story.banner_text(report, None)
     if key == "harflawed":
         assert "ATLAS-authored flawed variant" in f.claim.statement
     vs = "\n".join(visible(page(VS_PAGE).main))
-    for line in (C.VS_CAVEAT_LINE, VS.answer(_figures())):
+    for line in (VS.caveat_line(_figures()), VS.answer(_figures())):
         assert story.md(line) in vs
     assert "estimate, not billing" in vs
     lim = "\n".join(visible(page(LIM_PAGE).main))
@@ -554,7 +559,7 @@ def test_every_moved_item_is_one_click_away_unchanged(mode):
     assert details.label == C.HAR_DETAILS
     assert [str(c.value) for c in details.caption] == [C.HAR_CITATION_PLAIN]
     line = str(find(at.main, "har-data").children[0].value)
-    assert line == f"{story.md(C.HAR_DATA_LINE)}[{C.HAR_DOI}]({C.HAR_DOI})"
+    assert line == f"{story.md(C.HAR_DATA_LINE)} [{C.HAR_DOI}]({C.HAR_DOI})"
     assert C.HAR_DOI in C.HAR_CITATION_PLAIN and "CC BY 4.0" in C.HAR_CITATION_PLAIN
     # The comparison page: the six caveats, the table, the four items, question and setup.
     f = _figures()
@@ -622,12 +627,13 @@ def test_the_glossary_has_exactly_the_four_terms(mode):
 def test_the_recorded_run_line(mode):
     report = A.read_json(BUNDLE / CASES["live6"] / "agent_report.json")
     assert story.banner_text(report, "2026-10-18T01:02:03Z") == (
-        "Recorded run · Nemotron · finished 2026-10-18 · replayed here, not re-run."
+        "Recorded run · Nemotron · finished 2026-10-18 · replayed here, not re-run. "
+        "Every recorded hash is recomputed before display."
     )
     har = A.read_json(BUNDLE / CASES["harflawed"] / "agent_report.json")
     assert story.banner_text(har, "2026-10-19T00:00:00Z") == (
         "Recorded run · scripted replies, no model called · finished 2026-10-19 · "
-        "replayed here, not re-run."
+        "replayed here, not re-run. Every recorded hash is recomputed before display."
     )
 
 
@@ -651,18 +657,35 @@ def test_expert_view_renders_exactly_what_it_rendered_before(name):
 
 
 # == plain copy: one line per item ===================================================================
+# The items whose wording a task fixed word for word, with their word counts (final fix pass
+# 2026-10-22: F3, F5, F4, F9; the fourth key limit and the glossary from the readability pass).
+FIXED_WORDING = {
+    "Sealed runner": 28,
+    "Tamper check": 29,
+    "key limit 1": 21,
+    "key limit 4": 21,
+    "key limit 5": 18,
+    "key limit 6": 18,
+}
+
+
 def test_new_plain_items_are_short():
-    """At most 20 words per new plain item (R0). Three exceptions keep given text: the kept
-    "Tamper check" sentence (the existing text, because the proposed one was not supported)
-    and the fourth key limit (21 words) and the glossary, which the task fixed word for word."""
-    assert len(C.KEY_LIMITS[3].split()) == 21
+    """At most 20 words per new plain item (R0), except the items whose wording a task fixed
+    word for word (`FIXED_WORDING`, counts held exactly) and the glossary."""
+    tiles = dict(C.SAFETY_TILES)
+    counted = {
+        "Sealed runner": tiles["Sealed runner"],
+        "Tamper check": tiles["Tamper check"],
+        **{f"key limit {i}": line for i, line in enumerate(C.KEY_LIMITS, start=1)},
+    }
+    for name, words in FIXED_WORDING.items():
+        assert len(counted[name].split()) == words, name
     lines = [
         *C.HOW_LINES,
-        *(line for title, line in C.SAFETY_TILES if title != "Tamper check"),
-        *C.KEY_LIMITS[:3],
+        *(line for title, line in C.SAFETY_TILES if title not in FIXED_WORDING),
+        *(line for name, line in counted.items() if name not in FIXED_WORDING),
         C.DIAGRAM_GROUP_CAPTION,
     ]
     for line in lines:
         assert len(line.split()) <= 20, line
-    assert dict(C.SAFETY_TILES)["Tamper check"] == C.SAFETY[5][0]
-    assert len(C.SAFETY_TILES) == 6 and len(C.KEY_LIMITS) == 4 and len(C.HOW_LINES) == 5
+    assert len(C.SAFETY_TILES) == 6 and len(C.KEY_LIMITS) == 6 and len(C.HOW_LINES) == 5

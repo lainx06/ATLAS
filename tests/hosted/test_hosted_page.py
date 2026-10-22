@@ -82,7 +82,7 @@ def test_without_the_kill_switch_nothing_is_sent_and_recorded_runs_render(
     at = page()
     assert not at.exception
     shown = texts(at)
-    assert "Replay: these are recorded runs" in shown
+    assert "replayed here, not re-run. Every recorded hash is recomputed" in shown
     assert "Live: unavailable" in shown
     assert at.get("stContainer") is not None
     # Each bundled run renders intact.

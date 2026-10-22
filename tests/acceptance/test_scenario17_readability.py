@@ -33,10 +33,13 @@ ROOT = Path(__file__).resolve().parents[2]
 LIVE6 = "live6/agent-s01_faulty-877f8245a8a2"
 SIZES = ((1920, 1080), (1440, 900), (390, 844))
 CASES_DIR: dict[str, Path] = {}
-# Measured for this pass (closed expanders and popovers excluded); the task's ceilings were
-# 220 (Overview, both measures), 140 (comparison) and 230 (limits).
-WORDS = {"overview_live6_step2": 591, "overview_live6_step1": 356, "agent_vs_model": 278,
-         "how_it_works": 304}  # fmt: skip
+# Measured (closed expanders and popovers excluded); the readability pass's ceilings were
+# 220 (Overview, both measures), 140 (comparison) and 230 (limits). Final fix pass
+# (2026-10-22): 591 -> 571 and 356 -> 336 (the replay disclosure moved to Expert view, the hash
+# sentence added), 278 -> 301 (the longer answer and caveat line, tile labels), 304 -> 345 (the
+# runner and tamper tiles, two more key limits).
+WORDS = {"overview_live6_step2": 571, "overview_live6_step1": 336, "agent_vs_model": 301,
+         "how_it_works": 345}  # fmt: skip
 
 COUNT = """() => {
   const main = document.querySelector('[data-testid="stMainBlockContainer"]');
@@ -182,11 +185,28 @@ def test_word_counts_in_plain_view(app, page):
         r["count"],
         r["text"],
     )
-    for name, path, wait in (
-        ("agent_vs_model", "/agent_vs_model", ".st-key-vs-chart"),
-        ("how_it_works", "/how_it_works", ".st-key-lim-key-limits"),
+    for name, path, wait, last in (
+        (
+            "agent_vs_model",
+            "/agent_vs_model",
+            ".st-key-vs-chart",
+            ".st-key-vs-footnote",
+        ),
+        (
+            "how_it_works",
+            "/how_it_works",
+            ".st-key-lim-key-limits",
+            ".st-key-lim-all-limits",
+        ),
     ):
         goto(page, app, path, wait)
+        # The whole page drawn before counting (the last element, and the six tile metrics).
+        page.locator(last).first.wait_for(timeout=60_000)
+        if name == "agent_vs_model":
+            page.wait_for_function(
+                "() => document.querySelectorAll('[data-testid=stMetricValue]').length === 6"
+            )
+        settle(page)
         r = page.evaluate(COUNT)
         counts[name], texts[name] = r["count"], r["text"]
     folder = os.environ.get("ATLAS_UI_WORDS")
@@ -245,10 +265,10 @@ def test_the_always_visible_items_need_no_click(app, page):
     open_overview(page, app, "harflawed")
     text = page.evaluate(COUNT)["text"]
     assert "[ATLAS-authored flawed variant:" in text
-    assert "Data: UCI HAR (Reyes-Ortiz et al., 2013), CC BY 4.0," in text
+    assert f"{C.HAR_DATA_LINE} {C.HAR_DOI}" in text  # a space before the link
     goto(page, app, "/agent_vs_model", ".st-key-vs-chart")
     text = page.evaluate(COUNT)["text"]
-    assert C.VS_CAVEAT_LINE in text and "(estimate, not billing)" in text
+    assert C.VS_CAVEAT_LINE.format(c=4) in text and "(estimate, not billing)" in text
     goto(page, app, "/how_it_works", ".st-key-lim-key-limits")
     text = page.evaluate(COUNT)["text"]
     for line in C.KEY_LIMITS:

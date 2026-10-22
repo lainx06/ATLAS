@@ -163,7 +163,8 @@ def test_agent_vs_model_alone_page(app, page):
     assert "On these 4 projects, ATLAS's checks found all 8 problems" in body
     # The caveat line is visible without expanding anything; all six one click away.
     assert page.locator(".st-key-vs-caveat-line").is_visible()
-    assert C.VS_CAVEAT_LINE in page.locator(".st-key-vs-caveat-line").inner_text()
+    caveat = C.VS_CAVEAT_LINE.format(c=4)  # the 4 projects of scores.json
+    assert caveat in page.locator(".st-key-vs-caveat-line").inner_text()
     assert page.locator(".st-key-vs-page details").count() == 4
     page.locator(".st-key-vs-all-caveats summary").first.click()
     caveats = page.locator(".st-key-vs-caveats")

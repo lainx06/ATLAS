@@ -71,11 +71,12 @@ def test_the_hosted_header_with_live_unavailable_and_the_live6_hero(app, page, s
             )
             assert boxes and max(boxes) <= h, (selector, boxes)
     banner = page.locator(".st-key-banner").inner_text()
-    # Plain mode: one line, the model named (readability pass; Expert view: the full banner).
-    assert "Replay: these are recorded runs" in banner
+    # Plain mode: one line, the model named (readability pass; Expert view: the full banner,
+    # with the replay disclosure: final fix pass, F2).
+    assert "Replay: these are recorded runs" not in banner
     assert (
-        "Recorded run · Nemotron · finished 2026-10-18 · replayed here, not re-run."
-        in banner
+        "Recorded run · Nemotron · finished 2026-10-18 · replayed here, not re-run. "
+        "Every recorded hash is recomputed before display." in banner
     )
     assert "recomputed now" in page.locator(".hud-ring").inner_text()
     if w < 1024:

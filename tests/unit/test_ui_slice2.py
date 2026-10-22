@@ -344,9 +344,9 @@ def test_the_page_shows_the_question_chart_caveats_findings_cost_and_review(mode
     inside = "\n".join(str(m.value) for m in at.expander(key="vs-all-caveats").markdown)
     for caveat in VS.caveats(f):
         assert H.esc(caveat) in inside, caveat
-    assert story.md(C.VS_CAVEAT_LINE) in text
+    assert story.md(VS.caveat_line(f)) in text
     for e in at.expander:
-        assert story.md(C.VS_CAVEAT_LINE) not in "\n".join(
+        assert story.md(VS.caveat_line(f)) not in "\n".join(
             str(m.value) for m in e.markdown
         )
     assert [e.label for e in at.expander] == [

@@ -47,6 +47,10 @@ STEP_DEFAULT = 2  # every case opens on "What the checks found"
 STEP_COUNT = 5
 SHOW_ALL = "story_show_all"  # session key: "Show all steps" on (plain key)
 SHOW_ALL_WIDGET = "show_all_widget"
+# Session key: a one-shot request, set by a callback, for a full-app rerun. A widget inside the
+# stepper (a fragment) whose effect reaches outside it sets this; the stepper's next run pops it
+# and reruns the whole app (st.rerun inside a callback is a no-op). A full run pops it in `case`.
+APP_RERUN = "story_app_rerun"
 # Recorded approval reasons of the T-09 audit script's approver (benchmarks/real_sensor/
 # run_audit.py, OriginalOnly): the original approved by the script, no typed confirmation.
 SCRIPT_REASONS = frozenset({"t09_task_authorized_original"})
@@ -211,6 +215,9 @@ def expert() -> bool:
 def _set_expert() -> None:
     st.session_state[EXPERT] = True
     st.session_state[EXPERT_WIDGET] = True
+    # From inside the stepper only the fragment would rerun, leaving the page (and the toggle)
+    # in plain view; this asks for the whole app (final fix pass, F1).
+    st.session_state[APP_RERUN] = True
 
 
 def _sync_expert() -> None:
@@ -372,12 +379,13 @@ def case_cards(
 
 
 def case_notes(run: R.RecordedRun) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """A bundled case's banner notes, (Expert view, plain): the replay disclosure, and the
-    HAR citation for HAR runs (in plain mode without its repository file reference)."""
+    """A bundled case's banner notes, (Expert view, plain): in Expert view the replay
+    disclosure and, for HAR runs, the HAR citation; in plain view the HAR citation only (without
+    its repository file reference), since the plain recorded-run line states the replay."""
     har = run.project.startswith("har_")
     return (
         (C.REPLAY_DISCLOSURE, *((C.HAR_CITATION,) if har else ())),
-        (C.REPLAY_DISCLOSURE, *((C.HAR_CITATION_PLAIN,) if har else ())),
+        (C.HAR_CITATION_PLAIN,) if har else (),
     )
 
 
@@ -427,8 +435,8 @@ def banner(
     plain_notes: tuple[str, ...],
 ) -> None:
     """Expert view: the full recorded banner. Plain: one line from the report (recorded,
-    the model, the finish date, replayed and not re-run), the replay disclosure, and for the
-    HAR runs one data line with the full citation behind "Data licence details"."""
+    the model, the finish date, replayed and not re-run, hashes recomputed), and for the HAR
+    runs one data line with the full citation behind "Data licence details"."""
     if expert():
         V.recorded_banner(report, label, finished_utc, notes)
         return
@@ -438,7 +446,7 @@ def banner(
         for note in plain_notes:
             if note == C.HAR_CITATION_PLAIN:
                 with st.container(key="har-data"):
-                    st.markdown(f"{md(C.HAR_DATA_LINE)}[{C.HAR_DOI}]({C.HAR_DOI})")
+                    st.markdown(f"{md(C.HAR_DATA_LINE)} [{C.HAR_DOI}]({C.HAR_DOI})")
                 with st.expander(C.HAR_DETAILS, key="har-details"):
                     st.caption(note)  # fixed copy, unchanged
             else:
@@ -799,6 +807,7 @@ def case(
         st.markdown(md(C.NO_OUTCOME))
         V.integrity(checks, True)
         return
+    st.session_state.pop(APP_RERUN, None)  # this full run draws every part of the page
     plain = not expert()
     f = facts(run, report, checks, hud)
     verdict_bar(hud, f, played=played, plain=plain, run=run, checks=checks)
@@ -884,7 +893,13 @@ def stepper(run: R.RecordedRun, key: str, bundled: bool) -> None:
     (the full page's or a step change's) first re-runs the page's own verification of the
     recorded run, from the files on disk, never cached. If that fails, the whole page reruns
     (st.rerun(scope="app")) and the page's gate then draws only the evidence-changed panel:
-    no step content is ever drawn from a failed or an earlier verification."""
+    no step content is ever drawn from a failed or an earlier verification.
+
+    A widget in here whose effect reaches outside the stepper ("Show expert detail", "Show me
+    the evidence": Expert view) sets APP_RERUN in its callback; the fragment run it causes
+    pops it and reruns the whole app, so the page and the Expert view toggle are redrawn."""
+    if st.session_state.pop(APP_RERUN, False):
+        st.rerun(scope="app")
     report = (
         A.read_json(run.path / "agent_report.json") if run.kind == R.AGENT else None
     )
@@ -1007,7 +1022,7 @@ def proposal_chips(f: Facts) -> list[tuple[str, str]]:
         elif code == "rejected":
             outcome, color = C.CHIP_OUTCOME["rejected"], "red"
         elif code in ("declined", "unavailable", "not_executed_here"):
-            outcome, color = C.CHIP_OUTCOME["not_executed"], "gray"
+            outcome, color = C.CHIP_OUTCOME[code], "gray"
         else:
             outcome, color = C.CHIP_UNKNOWN.format(code=code), "gray"
         out.append((C.CHIP_REVISION.format(n=n, outcome=outcome), color))
@@ -1037,10 +1052,10 @@ def screen_fix(run, hud, f: Facts, checks, told: str, played: bool) -> None:
 
 
 def screen_approval(run, hud, f: Facts, checks, told: str, played: bool) -> None:
-    """Step 4: the concept diagram, the step's summary line under it, Show more."""
+    """Step 4: the step's summary line, the concept diagram under it, Show more."""
+    _headline(told)
     with st.container(key="concept-sealed"):
         st.markdown(sealed_diagram(), unsafe_allow_html=True)
-    _headline(told)
     with _more(4):
         _fact_list(f.approvals, "story-approvals", C.APPROVALS_HEAD)
         _fact_list(f.executions, "story-executions", C.EXECUTIONS_HEAD)
@@ -1049,7 +1064,8 @@ def screen_approval(run, hud, f: Facts, checks, told: str, played: bool) -> None
 
 def outcome_chips(hud: H.Hud) -> tuple[str, list[tuple[str, str]]]:
     """Step 5 (a): the checks whose recorded status changed (with an executed revision);
-    else the ones that did not pass; else that all required checks passed."""
+    else the ones that did not pass; else, only when every required check has a recorded
+    PASS, that all required checks passed (ALL_PASSED, step 5's headline)."""
     labels = H.load_descriptions()
     rows = hud.matrix
     if hud.candidate is not None:
@@ -1082,23 +1098,22 @@ def outcome_chips(hud: H.Hud) -> tuple[str, list[tuple[str, str]]]:
             )
             for aid, s in bad
         ]
-    if final and all(s == "PASS" for _aid, s in final):
+    if rows and len(final) == len(rows) and all(s == "PASS" for _aid, s in final):
         return C.ALL_PASSED, []
     return "", []
 
 
 def screen_proof(run, hud, f: Facts, checks, told: str, played: bool) -> None:
-    """Step 5: what changed, one integrity line, everything else in Show more."""
-    _headline(told)
+    """Step 5: what changed, one integrity line, everything else in Show more. When every
+    required check passed, that is the headline (with the coverage qualifier)."""
     head, chips = outcome_chips(hud)
+    headline = head if head == C.ALL_PASSED else told
+    _headline(headline)
     if chips:
         _chips("stepper-outcomes", head, chips)
-    elif head:
-        with st.container(key="stepper-outcomes"):
-            st.markdown(f":green-badge[{md(head)}]")
     count = H.integrity_count(checks)
     line = C.PROOF_INTACT.format(v=count.total - count.differ, t=count.total)
-    if line != told:  # with no executed revision, the headline is this line already
+    if line != headline:  # with no executed revision, the summary is this line already
         with st.container(key="stepper-integrity"):
             st.markdown(md(line))
     with _more(5):

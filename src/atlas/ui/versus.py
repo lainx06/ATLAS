@@ -63,6 +63,16 @@ CSS = """
 [class*="st-key-vs-tile-"] { gap: 4px; padding-bottom: 14px; }
 [class*="st-key-vs-tile-"] [data-testid="stMetricValue"] > div { font-size: 30px; }
 [class*="st-key-vs-tile-"] [data-testid="stCaptionContainer"] p { margin: 0; }
+/* Final fix pass (F6): each caption directly under its own metric; labels wrap instead of
+   being cut; the first tile's two labels share a two-line slot, bottom-aligned, so both values
+   sit on one line. */
+[class*="st-key-vs-side-"] { gap: 2px; }
+[class*="st-key-vs-tile-"] [data-testid="stMetricLabel"],
+[class*="st-key-vs-tile-"] [data-testid="stMetricLabel"] * { white-space: normal;
+  overflow: visible; text-overflow: clip; }
+.st-key-vs-tile-0 [data-testid="stMetricLabel"] { min-height: 2.8em; display: flex;
+  align-items: flex-end; }
+.st-key-vs-tile-0 [data-testid="stMetricLabel"] p { line-height: 1.4; }
 </style>
 """
 
@@ -505,6 +515,7 @@ def answer(f: Figures) -> str:
     """C1: the one answer sentence (every number from the verified files)."""
     return C.VS_ANSWER.format(
         c=f.cases,
+        r=f.repetitions,
         k=f.atlas_found,
         ks=f.same_found,
         ns=f.same_total,
@@ -517,6 +528,11 @@ def answer(f: Figures) -> str:
     )
 
 
+def caveat_line(f: Figures) -> str:
+    """C2: the one visible caveat line (the number of projects from the verified files)."""
+    return C.VS_CAVEAT_LINE.format(c=f.cases)
+
+
 def tiles(
     f: Figures,
 ) -> list[tuple[str, tuple[str, str, str | None], tuple[str, str, str | None]]]:
@@ -526,14 +542,14 @@ def tiles(
         (
             C.VS_TILE_FOUND,
             (
-                C.VS_SERIES_ATLAS,
+                C.VS_TILE_FOUND_ATLAS,
                 C.VS_OF.format(k=f.atlas_found, n=f.atlas_assessable),
                 C.VS_TILE_ATLAS_FOUND_NOTE.format(x=f.not_assessed, t=f.expected_total)
                 if f.not_assessed
                 else None,
             ),
             (
-                C.VS_SERIES_MODEL,
+                C.VS_TILE_FOUND_MODEL,
                 C.VS_OF.format(k=f.same_found, n=f.same_total),
                 C.VS_TILE_MODEL_FOUND_NOTE.format(
                     m=f.same_ids, ka=f.all_found, na=f.all_total
@@ -558,12 +574,16 @@ def stat_tiles(f: Figures) -> None:
         for col, (i, (title, *sides)) in zip(
             st.columns(3), enumerate(tiles(f)), strict=True
         ):
-            with col, st.container(key=f"vs-tile-{i}", border=True):
+            # height="stretch": the three tiles share one height (F6).
+            with (
+                col,
+                st.container(key=f"vs-tile-{i}", border=True, height="stretch"),
+            ):
                 st.markdown(f"**{story.md(title)}**")
-                for side_col, (label, value, note) in zip(
-                    st.columns(2), sides, strict=True
+                for j, (side_col, (label, value, note)) in enumerate(
+                    zip(st.columns(2), sides, strict=True)
                 ):
-                    with side_col:
+                    with side_col, st.container(key=f"vs-side-{i}-{j}"):
                         st.metric(label, value)
                         if note:
                             st.caption(story.md(note))
@@ -575,7 +595,7 @@ def plain_body(f: Figures, checks: list) -> None:
     with st.container(key="vs-answer"):
         st.markdown(story.md(answer(f)))
     with st.container(key="vs-caveat-line"):
-        st.markdown(story.md(C.VS_CAVEAT_LINE))
+        st.markdown(story.md(caveat_line(f)))
     items = caveats(f)
     with st.expander(C.VS_ALL_CAVEATS.format(n=len(items)), key="vs-all-caveats"):
         _list("vs-caveats", C.VS_CAVEATS_HEAD, items)
