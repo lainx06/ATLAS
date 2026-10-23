@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
 import hosted_helpers as H
 import psycopg
@@ -134,7 +135,7 @@ def assert_absent(data: bytes | str, server, where: str, *, typed: str | None = 
     assert server["db"] not in text, f"DATABASE_URL appeared in {where}"
 
 
-def live_session(page, server, typed: str, expected: str):
+def live_session(page, server, typed: str, expected: str, shots: Path):
     wire = Wire(page)
     page.goto(server["url"])
     page.get_by_text("replayed here, not re-run.", exact=False).wait_for(timeout=60_000)
@@ -146,7 +147,6 @@ def live_session(page, server, typed: str, expected: str):
     assert (
         "recorded items verified now (" in card and "matches the files on disk" in card
     )
-    shots = H.ROOT / "runs" / "t12" / "screens"  # git-ignored evidence
     shots.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(shots / "hosted_recorded.png"), full_page=True)
     page.get_by_role("link", name="Try It Live").click()  # the navigation
@@ -169,7 +169,11 @@ def live_session(page, server, typed: str, expected: str):
     assert page.get_by_role("button", name="Start the live session").count() == 0
 
 
-def test_secrets_stay_on_the_server(server, browser):
+def test_secrets_stay_on_the_server(server, browser, tmp_path):
+    # Screenshots: ATLAS_UI_SCREENS when set (as the other screenshot tests), else this
+    # test's tmp_path; never a fixed folder under runs/ (release review 2, F3).
+    folder = os.environ.get("ATLAS_UI_SCREENS")
+    shots = Path(folder) if folder else tmp_path / "screens"
     wrong = "wrong-" + H.JUDGE_CODE[6:]
     for typed, expected in (
         (wrong, "Route: public demo budget."),
@@ -177,7 +181,7 @@ def test_secrets_stay_on_the_server(server, browser):
     ):
         context = browser.new_context(viewport={"width": 1440, "height": 900})
         try:
-            live_session(context.new_page(), server, typed, expected)
+            live_session(context.new_page(), server, typed, expected, shots)
         finally:
             context.close()
 

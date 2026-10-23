@@ -14,6 +14,11 @@ whose files it will read. When the recomputed hashes and outcomes are not all in
 draws only the evidence-changed panel (the integrity ring and the table of differing items)
 and the page returns without calling any result renderer. `finished_run` calls `gate` again
 itself, so a caller that skipped it still shows nothing but that panel.
+
+The audit report verifies the run once more, from the bytes it reads (`atlas.ui.report`;
+release review 2, F1). When evidence changed after the gate, the report raises `NotIntact`;
+`case_page` and `finished_run` then clear what they drew, draw only the evidence-changed panel
+and rerun the app once (`_evidence_changed`).
 """
 
 import logging
@@ -25,6 +30,7 @@ import streamlit as st
 from atlas.ui import artifacts as A
 from atlas.ui import hud as H
 from atlas.ui import recorded as R
+from atlas.ui import report as RP
 from atlas.ui import views as V
 from atlas.ui.catalogue import BY_NAME
 
@@ -36,6 +42,10 @@ RENDER_FAILED = (
 )
 RENDER_FAILED_EVENT = "results_render_failed"
 HUD_PLAYED = "hud_played"  # session key: the run IDs whose first-load motion has played
+# Session key: the run whose report boundary last found changed evidence and reran the app
+# (`_evidence_changed`); a second failure in a row for the same run draws the panel without
+# another rerun. A report built successfully clears it (`story.report_button`).
+REPORT_RERUN = "report_rerun"
 _log = logging.getLogger(__name__)
 
 
@@ -130,6 +140,15 @@ def case_page(
         try:
             with slot.container():
                 story.case(run, report, checks, bundled=bundled, played=played)
+        except RP.NotIntact as changed:
+            _evidence_changed(
+                slot,
+                changed.checks,
+                H.Ids(H.run_hash(run.label)),
+                key=run.label,
+                played=played,
+                phrase=_ring_phrase(bundled),
+            )
         except Exception:  # noqa: BLE001 - never a partial result; the record is unchanged
             slot.empty()
             _log.error(RENDER_FAILED_EVENT)
@@ -194,8 +213,30 @@ def gate(
     checks = verification(run_dir, report, mode)
     if R.intact(checks):
         return checks
-    V.integrity(checks, False, ring=H.ring(checks, ids, played=played, phrase=phrase))
+    _changed_panel(checks, ids, played=played, phrase=phrase)
     return None
+
+
+def _changed_panel(checks: list[R.Check], ids: H.Ids, *, played: bool, phrase: str):
+    """The evidence-changed panel: the integrity ring and the table of differing items."""
+    V.integrity(checks, False, ring=H.ring(checks, ids, played=played, phrase=phrase))
+
+
+def _evidence_changed(
+    slot, checks: list[R.Check], ids: H.Ids, *, key: str, played: bool, phrase: str
+) -> None:
+    """The report boundary found the evidence changed after the page's gate (release review
+    2, F1; `report.NotIntact`): everything drawn into `slot` since the gate is cleared and only
+    the evidence-changed panel is drawn, from the report boundary's own checks. Then the whole
+    app reruns once, so every part of the page (the case cards, the Expert view toggle, an
+    integrity line above the slot) is drawn again from a fresh verification; a second failure
+    in a row for the same run draws the panel without another rerun."""
+    slot.empty()
+    with slot.container():
+        _changed_panel(checks, ids, played=played, phrase=phrase)
+    if st.session_state.pop(REPORT_RERUN, None) != key:
+        st.session_state[REPORT_RERUN] = key
+        st.rerun(scope="app")
 
 
 def verification(run_dir: Path | None, report: dict | None, mode: str) -> list[R.Check]:
@@ -311,6 +352,15 @@ def finished_run(
                 preamble=preamble,
                 briefing=briefing,
             )
+    except RP.NotIntact as changed:
+        _evidence_changed(
+            slot,
+            changed.checks,
+            hud.ids if hud is not None else H.Ids(H.run_hash(str(run_dir)), "g"),
+            key=str(run_dir),
+            played=True,
+            phrase="recomputed now from the run's files",
+        )
     except Exception:  # noqa: BLE001 - never a partial result; the record is unchanged
         slot.empty()
         _log.error(RENDER_FAILED_EVENT)
@@ -340,8 +390,6 @@ def _cards(
         with st.container(key="run-report"):
             story.report_button(
                 R.RecordedRun(Path(run_dir), Path(run_dir).name, mode),
-                report,
-                checks,
                 subject=Path(run_dir).name,
             )
     if briefing is not None:

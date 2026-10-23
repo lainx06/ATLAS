@@ -10,12 +10,14 @@ import shutil
 from pathlib import Path
 
 from helpers import wait_idle
+from playwright.sync_api import expect
 from test_scenario12_story import full_page
 
 from atlas.ui import copy as C
 
 ROOT = Path(__file__).resolve().parents[2]
 LIVE6 = "live6/agent-s01_faulty-877f8245a8a2"
+WAIT = 30_000  # ms, for each condition after the app settles
 
 
 def app_env(base: Path) -> dict:
@@ -33,16 +35,20 @@ def app_env(base: Path) -> dict:
 
 
 def test_a_changed_bundle_shows_only_the_evidence_changed_panel(app, page):
+    # Release review 2, F4: every check waits for its condition (Playwright's expect, with a
+    # timeout) once the app settles; an element drawn a moment later is no longer missed.
     page.goto(app.url)
     panel = page.locator(".st-key-integrity-failed")
     panel.wait_for(timeout=60_000)
     wait_idle(page)
-    assert "evidence changed since recording" in panel.inner_text()
-    card = page.locator(".st-key-case-card-on-live6").inner_text()
-    assert C.CARD_CHANGED in card and "VIOLATION" not in card
+    expect(panel).to_contain_text("evidence changed since recording", timeout=WAIT)
+    card = page.locator(".st-key-case-card-on-live6")
+    expect(card).to_contain_text(C.CARD_CHANGED, timeout=WAIT)
+    expect(card).not_to_contain_text("VIOLATION", timeout=WAIT)
     for key in ("harflawed", "harclean"):
-        other = page.locator(f".st-key-case-card-{key}").inner_text()
-        assert C.CARD_CHANGED not in other and "VIOLATION_FOUND" in other
+        other = page.locator(f".st-key-case-card-{key}")
+        expect(other).to_contain_text("VIOLATION_FOUND", timeout=WAIT)
+        expect(other).not_to_contain_text(C.CARD_CHANGED, timeout=WAIT)
     for absent in (
         ".st-key-verdict-bar",
         "[class*='st-key-step-']",
@@ -51,7 +57,8 @@ def test_a_changed_bundle_shows_only_the_evidence_changed_panel(app, page):
         ".hud-ret",
         ".hud-brief",
     ):
-        assert page.locator(absent).count() == 0, absent
+        expect(page.locator(absent)).to_have_count(0, timeout=WAIT)
     rows = page.locator(".st-key-trace-integrity table tbody tr")
-    assert rows.count() == 1 and "candidates/c1/outcome.json" in rows.first.inner_text()
+    expect(rows).to_have_count(1, timeout=WAIT)
+    expect(rows.first).to_contain_text("candidates/c1/outcome.json", timeout=WAIT)
     full_page(page, "s12_06_tampered_live6")

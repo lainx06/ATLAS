@@ -135,12 +135,15 @@ def test_the_active_frame_and_the_decision_are_documented_hooks():
 # -- failure and honest-empty states -----------------------------------------------------------
 def finished_app(tmp_path: Path, report: dict) -> AppTest:
     """The report in a run folder whose one recorded file (the log) verifies: finished_run
-    verifies the run itself before drawing anything (release review 1, F1)."""
+    verifies the run itself before drawing anything (release review 1, F1). The report is
+    also written to the folder, as every real caller reads it from there; the audit report
+    reads it again from there (release review 2, F1)."""
     run_dir = tmp_path / "agent-s01_faulty-000000000000"
     run_dir.mkdir()
     log = run_dir / "agent_log.jsonl"
     log.write_bytes(b"")
     report = {**report, "agent_log": {"sha256": A.sha256_file(log)}}
+    (run_dir / "agent_report.json").write_text(json.dumps(report), encoding="utf-8")
     script = tmp_path / "finished.py"
     script.write_text(
         "import json\nfrom pathlib import Path\nfrom atlas.ui import results as R\n"

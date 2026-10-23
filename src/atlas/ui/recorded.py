@@ -89,7 +89,7 @@ def _file_check(run_dir: Path, rel: str, recorded) -> Check:
         path.relative_to(run_dir.resolve())
     except ValueError:
         return Check(rel, recorded, None, "outside")
-    if not path.is_file():
+    if not A.is_file(path):
         return Check(rel, recorded, None, "missing")
     digest = A.sha256_file(path)
     return Check(rel, recorded, digest, "matches" if digest == recorded else "changed")
@@ -103,15 +103,14 @@ def _evaluated(run_dir: Path, sub: str, evidence: dict | None, add) -> dict | No
         add(base + name, digest)
     index = (
         A.read_json(run_dir / base / "index.json")
-        if (run_dir / base / "index.json").is_file()
+        if A.is_file(run_dir / base / "index.json")
         else None
     )
     for group in ("artifacts", "outputs"):
         for name, digest in ((index or {}).get(group) or {}).items():
             add(base + name, digest)
-    if (
-        "outcome.json" not in (evidence or {})
-        and not (run_dir / base / "outcome.json").is_file()
+    if "outcome.json" not in (evidence or {}) and not A.is_file(
+        run_dir / base / "outcome.json"
     ):
         return None  # nothing was evaluated here, so there is no outcome to compare
     return A.read_json(run_dir / base / "outcome.json") or {}
@@ -202,13 +201,13 @@ def claim_source(run: RecordedRun) -> Path | None:
         if run.kind == AGENT
         else ("manifest.snapshot.json",)
     ):
-        if (run.path / rel).is_file():
+        if A.is_file(run.path / rel):
             return run.path / rel
     return None
 
 
 def read_claim(path: Path) -> ClaimView:
-    manifest = Manifest.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    manifest = Manifest.model_validate_json(A.read_text(Path(path)))
     reason = manifest_reason(manifest)
     return claim_view(manifest, reason is None, reason)
 

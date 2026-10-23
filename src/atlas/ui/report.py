@@ -1,8 +1,14 @@
 """The one-page audit report (UI restructure slice 3, part D): a self-contained, printable HTML
 file built from a run's verified files only.
 
-`build` is called only after the run passed the one verification gate (`results.gate`); it
-checks again and raises `NotIntact` otherwise, so a failed verification never yields a report.
+`build` is called only after the run passed the one verification gate (`results.gate`), but it
+never trusts that earlier result (release review 2, F1): inside one `artifacts.snapshot` of the
+run folder it reads every file it consumes exactly once into memory, verifies those bytes
+(`recorded.verify`, its hashing and comparison rules unchanged: every recorded SHA-256 and each
+reported outcome against its outcome.json), then freezes the snapshot and builds the HTML from
+the same in-memory bytes only. A file changed, missing or forged at any time before that read
+raises `NotIntact` (with the failed checks): no report.
+
 The report holds fixed copy (`atlas.ui.copy`, `assertion_labels.json`) filled with values from
 the verified files: the claim, the outcomes, the checks, the reason sentences the page shows,
 the approval and sealed-run facts, and the recorded hashes. It never includes model-written
@@ -79,7 +85,12 @@ footer { margin-top: 18px; padding-top: 6px; border-top: 1px solid #d1d5db; }
 
 
 class NotIntact(Exception):
-    """The run did not verify: no report is built."""
+    """The run did not verify at the report boundary: no report is built. `checks`: that
+    verification's checks (the evidence-changed panel is drawn from them)."""
+
+    def __init__(self, checks: list[R.Check] | None = None) -> None:
+        super().__init__()
+        self.checks = list(checks or [])
 
 
 @dataclass(frozen=True)
@@ -155,10 +166,11 @@ def _ul(items: list[str]) -> str:
     )
 
 
+MISSING_REPORT = R.Check("agent_report.json", None, None, "missing")
+
+
 def build(
     run: R.RecordedRun,
-    report: dict | None,
-    checks: list[R.Check],
     *,
     subject: str,
     subject_title: str | None = None,
@@ -166,20 +178,55 @@ def build(
     now: Callable[[], datetime] | None = None,
     commit: str | None = None,
 ) -> Report:
-    """The report for a verified run. `subject`: the case key (Overview) or the run's ID;
-    `subject_title`: the case title, when there is one; `citation`: the dataset citation the
-    page shows for this run; `now`: the clock (UTC); `commit`: the ATLAS commit (read from the
-    git metadata when not given)."""
+    """The report for a run that verifies now, from the bytes verified here (see the module
+    docstring); raises `NotIntact` otherwise. There is no parameter for an earlier report or
+    earlier checks: nothing verified before this call is used. `subject`: the case key
+    (Overview) or the run's ID; `subject_title`: the case title, when there is one; `citation`:
+    the dataset citation the page shows for this run; `now`: the clock (UTC); `commit`: the
+    ATLAS commit (read from the git metadata when not given)."""
+    commit = commit if commit is not None else atlas_commit()
+    descriptions = H.load_descriptions()
+    with A.snapshot(run.path) as files:
+        report = (
+            A.read_json(run.path / "agent_report.json") if run.kind == R.AGENT else None
+        )
+        if run.kind == R.AGENT and report is None:
+            raise NotIntact([MISSING_REPORT])
+        checks = R.verify(run.path, report)
+        if not checks or not R.intact(checks):
+            raise NotIntact(checks)
+        files.freeze()  # from here on, only the bytes just verified
+        stamp = (now or (lambda: datetime.now(UTC)))().astimezone(UTC)
+        return _build(
+            run,
+            report,
+            checks,
+            subject=subject,
+            subject_title=subject_title,
+            citation=citation,
+            stamp=stamp,
+            commit=commit,
+            descriptions=descriptions,
+        )
+
+
+def _build(
+    run: R.RecordedRun,
+    report: dict | None,
+    checks: list[R.Check],
+    *,
+    subject: str,
+    subject_title: str | None,
+    citation: str | None,
+    stamp: datetime,
+    commit: str | None,
+    descriptions: dict[str, str],
+) -> Report:
+    """The HTML, from `report` and `checks` as just verified in `build`; every run file is
+    read through the active, frozen snapshot."""
     from atlas.ui import story
 
-    if not checks or not R.intact(checks):
-        raise NotIntact()
-    if run.kind == R.AGENT and report is None:
-        raise NotIntact()
-    stamp = (now or (lambda: datetime.now(UTC)))().astimezone(UTC)
-    commit = commit if commit is not None else atlas_commit()
     verified = H.verified_paths(checks)
-    descriptions = H.load_descriptions()
     parts: list[str] = []
 
     # Claim.

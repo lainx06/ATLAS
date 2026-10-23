@@ -316,13 +316,9 @@ def build(
 ):
     run_dir = path or BUNDLE / label
     run = R.RecordedRun(run_dir, label, R.AGENT)
-    report = A.read_json(run_dir / "agent_report.json")
-    checks = R.verify(run_dir, report)
     case = next((c for c in C.CASES if c.run == label), None)
     return RP.build(
         run,
-        report,
-        checks,
         subject=case.key if case else run_dir.name,
         subject_title=case.title if case else None,
         citation=story.report_citation(run),
@@ -442,10 +438,13 @@ def test_no_report_without_an_intact_verification(tmp_path):
     shutil.copytree(BUNDLE / LIVE6, run_dir)
     target = run_dir / "original" / "outcome.json"
     target.write_bytes(target.read_bytes() + b" ")
-    with pytest.raises(RP.NotIntact):
+    with pytest.raises(RP.NotIntact) as changed:
         build(LIVE6, run_dir)
-    with pytest.raises(RP.NotIntact):
-        RP.build(R.RecordedRun(run_dir, LIVE6, R.AGENT), None, [], subject="x")
+    assert not R.intact(changed.value.checks)
+    (run_dir / "agent_report.json").unlink()
+    with pytest.raises(RP.NotIntact) as missing:
+        RP.build(R.RecordedRun(run_dir, LIVE6, R.AGENT), subject="x")
+    assert [c.status for c in missing.value.checks] == ["missing"]
 
 
 def test_the_report_works_hosted_and_executes_nothing(monkeypatch):

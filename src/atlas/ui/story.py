@@ -1211,8 +1211,6 @@ def verdict_bar(
                 case = next((c for c in C.CASES if c.run == run.label), None)
                 report_button(
                     run,
-                    f.report,
-                    checks,
                     subject=case.key if case else run.path.name,
                     title=case.title if case else None,
                 )
@@ -1225,28 +1223,30 @@ def report_citation(run: R.RecordedRun) -> str | None:
 
 def report_button(
     run: R.RecordedRun,
-    report: dict | None,
-    checks: list,
     *,
     subject: str,
     title: str | None = None,
 ) -> None:
     """ "Download audit report" for a verified run (atlas.ui.report); drawn only after the
-    gate passed. A report that cannot be built shows no button (never a partial file)."""
+    gate passed. The report verifies the run again from the bytes it reads (release review 2,
+    F1): when they no longer verify, `report.NotIntact` propagates to the page
+    (`results.case_page`, `results.finished_run`), which then draws only the evidence-changed
+    panel. Any other failure shows no button (never a partial file)."""
     from atlas.ui import report as RP
 
     try:
         built = RP.build(
             run,
-            report,
-            checks,
             subject=subject,
             subject_title=title,
             citation=report_citation(run),
         )
+    except RP.NotIntact:
+        raise
     except Exception:  # noqa: BLE001 - no button rather than a partial report
         _log.error(REPORT_EVENT)
         return
+    st.session_state.pop(RS.REPORT_RERUN, None)
     st.download_button(
         C.REPORT_BUTTON,
         data=built.html.encode("utf-8"),

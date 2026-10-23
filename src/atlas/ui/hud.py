@@ -318,7 +318,7 @@ def fold_fits(
     if rel not in verified:
         return None
     try:
-        lines = (Path(run_dir) / rel).read_text(encoding="utf-8").splitlines()
+        lines = A.read_text(Path(run_dir) / rel).splitlines()
         events = [json.loads(line) for line in lines if line.strip()]
     except (OSError, ValueError):
         return None

@@ -8,6 +8,9 @@ the engine recorded, never assumed.
 
 import hashlib
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
@@ -91,7 +94,95 @@ def next_action_for_intake(reason: str | None) -> str:
     return INTAKE_FALLBACK
 
 
+# -- one run folder's bytes, read once (release review 2, F1) --------------------------------------
+class Snapshot:
+    """The files of one run folder, each read from disk at most once and then kept in memory.
+
+    While `snapshot(root)` is active, the readers below (`read_bytes`, `read_text`, `read_json`,
+    `read_log`, `is_file`, `sha256_file`) serve every path inside `root` from it, so a
+    verification and what is built after it use the same bytes. After `freeze`, a file not
+    read yet reads as missing: nothing more comes from disk. Paths outside `root` are read
+    from disk as usual."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root).resolve()
+        self._files: dict[Path, bytes | None] = {}
+        self._frozen = False
+
+    def holds(self, path) -> Path | None:
+        """The resolved path when it lies inside the root, else None."""
+        resolved = Path(path).resolve()
+        try:
+            resolved.relative_to(self.root)
+        except ValueError:
+            return None
+        return resolved
+
+    def get(self, resolved: Path) -> bytes | None:
+        """The file's bytes (None: missing, not a file or unreadable)."""
+        if resolved not in self._files:
+            if self._frozen:
+                return None
+            try:
+                self._files[resolved] = resolved.read_bytes()
+            except OSError:
+                self._files[resolved] = None
+        return self._files[resolved]
+
+    def freeze(self) -> None:
+        self._frozen = True
+
+
+_SNAPSHOT: ContextVar[Snapshot | None] = ContextVar("atlas_ui_snapshot", default=None)
+
+
+@contextmanager
+def snapshot(root: Path) -> Iterator[Snapshot]:
+    """Serve the files inside `root` from one `Snapshot` for the duration of the block."""
+    snap = Snapshot(root)
+    token = _SNAPSHOT.set(snap)
+    try:
+        yield snap
+    finally:
+        _SNAPSHOT.reset(token)
+
+
+def _held(path) -> tuple[Snapshot, Path] | None:
+    snap = _SNAPSHOT.get()
+    if snap is None:
+        return None
+    resolved = snap.holds(path)
+    return None if resolved is None else (snap, resolved)
+
+
+def read_bytes(path: Path) -> bytes:
+    held = _held(path)
+    if held is None:
+        return Path(path).read_bytes()
+    data = held[0].get(held[1])
+    if data is None:
+        raise FileNotFoundError(str(path))
+    return data
+
+
+def read_text(path: Path) -> str:
+    """Like `Path.read_text(encoding="utf-8")`, newlines translated the same way."""
+    if _held(path) is None:
+        return Path(path).read_text(encoding="utf-8")
+    text = read_bytes(path).decode("utf-8")
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def is_file(path: Path) -> bool:
+    held = _held(path)
+    if held is None:
+        return Path(path).is_file()
+    return held[0].get(held[1]) is not None
+
+
 def sha256_file(path: Path) -> str:
+    if _held(path) is not None:
+        return hashlib.sha256(read_bytes(path)).hexdigest()
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for block in iter(lambda: f.read(1 << 16), b""):
@@ -101,7 +192,7 @@ def sha256_file(path: Path) -> str:
 
 def read_json(path: Path) -> dict | None:
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        return json.loads(read_text(path))
     except (OSError, ValueError):
         return None
 
@@ -109,7 +200,7 @@ def read_json(path: Path) -> dict | None:
 def read_log(run_dir: Path) -> list[dict]:
     """The log so far. A line still being written (no newline yet) is left for next time."""
     try:
-        text = (Path(run_dir) / "agent_log.jsonl").read_text(encoding="utf-8")
+        text = read_text(Path(run_dir) / "agent_log.jsonl")
     except OSError:
         return []
     events = []
