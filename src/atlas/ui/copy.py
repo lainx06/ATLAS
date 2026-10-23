@@ -773,10 +773,8 @@ LIMITS_PLAIN = (
         "store for final held-out labels yet."
     ),
     (
-        "Established on 19 October 2026 for the private hosted app: it reaches Nebius and "
-        "builds from the locked dependencies on the host, and a smoke test passed on the public "
-        "and judge routes. Not yet established: a check of the public app by a signed-out "
-        "visitor, and availability through 15 December 2026 (both at publication)."
+        "The public demo was checked signed out on 23 October 2026. Staying available until "
+        "15 December 2026 is a commitment, not yet established."
     ),
     "Saving and reusing evaluation procedures was cut from this version.",
 )

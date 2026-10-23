@@ -5,7 +5,8 @@ ATLAS is a coding agent that audits machine-learning evaluation code for leakage
 <!-- Sources for this section: PROJECT_BRIEF.md; AGENTS.md "Scope" and "Isolation"; docs/SPEC.md §9, §11. -->
 
 - Outcome codes are exactly `VIOLATION_FOUND`, `NO_VIOLATION_FOUND`, `INCONCLUSIVE` and `NOT_SUPPORTED`. `NO_VIOLATION_FOUND` means every required check passed within the coverage shown; it does not say the claim is true.
-- Status: hosted demo deployed on Streamlit Community Cloud and smoke-tested on both routes; public link at submission [TODO: demo URL]. Public repository URL [TODO: source needed].
+- Live demo: https://atlas-audit.streamlit.app/ · Code: https://github.com/lainx06/atlas
+- Status: repository and hosted demo public (2026-10-23). The hosted demo runs on Streamlit Community Cloud; it was smoke-tested on both routes (2026-10-19), checked signed out (2026-10-23), and has live sessions switched on (2026-10-23) within the caps below. Availability through 2026-12-15 12:00 PT is a commitment, not yet established.
 
 ## Headline results
 
@@ -91,7 +92,7 @@ Source: docs/SPEC.md §6, §9-§11; docs/T09_CONTAINMENT.md §5.
 | Mode | Executes | Model | Labelled |
 | --- | --- | --- | --- |
 | Local build (full) | Original and every candidate in the isolated Docker runner after typed approval | live (CLI, explicit authorization) or fixture | LIVE or NON-LIVE banner |
-| Limited hosted (deployed on Streamlit Community Cloud and smoke-tested on both routes (2026-10-19); public at submission) | Nothing from a project; the original's findings come from a recorded, hash-verified trusted run; proposals are "not executed here" | one capped live session per visitor session; kill switch off by default | disclosed replay, "not executed here" |
+| Limited hosted (deployed on Streamlit Community Cloud and smoke-tested on both routes (2026-10-19); public since 2026-10-23) | Nothing from a project; the original's findings come from a recorded, hash-verified trusted run; proposals are "not executed here" | one capped live session per visitor session; kill switch off by default, switched on 2026-10-23 | disclosed replay, "not executed here" |
 | Fixture | Same loop with scripted model replies | none | NON-LIVE |
 
 Source: docs/SPEC.md §13; docs/HOSTED_OPERATIONS.md §1. The hosted caps are $3.00 public ($1.00 per UTC day), $5.00 judge, $0.0648 and 6 requests per session, enforced in Neon Postgres; the caps are tested on a local PostgreSQL container, and the deployed app's smoke test (2026-10-19) reserved and settled its six requests in Neon (judge $0.0045216, public $0.0076857; estimates, not billing). No cap was reached on the host.
@@ -170,7 +171,7 @@ Copied from `docs/SPEC.md` §15 and the acceptance records; not softened.
 - T-06 (the live agent) was accepted within its scope with these limitations: the input-token figure is an estimate and provider enforcement and billing are unverified; model format reliability varies (schema failures in 5 of the 8 live runs (runs 1 to 8, with 3 and 3b counted as one)); raw replies are stored only from live run 3b onward; candidate-output redaction is best-effort; tested on one Windows host only.
 - The HAR containment declaration is documented, not verified; the upstream normalization's fit scope is not established; both HAR projects are ATLAS-authored and are not independent benchmark evidence (`docs/T09_CONTAINMENT.md` §9).
 - Scope: small tabular classification, CPU scikit-learn, exactly three claim types (`same_population`, `unseen_group`, `future_time`); any other claim is `NOT_SUPPORTED`. No final-holdout label store exists yet.
-- Established on 2026-10-19 for the private hosted app: Nebius connectivity and the locked build on the host, and a smoke test on the public and judge routes. Not yet established: a signed-out check of the public app and availability through 2026-12-15 (both at publication).
+- Established for the public hosted app: Nebius connectivity and the locked build on the host, and a smoke test on the public and judge routes (2026-10-19); a signed-out check of the public app (2026-10-23). Not yet established: availability through 2026-12-15 (a commitment).
 - Procedures (saving and reusing evaluation procedures) were cut from V1 (DECISIONS.md "Lead decisions, 2026-10-17" item 2).
 
 ## License, data and acknowledgements

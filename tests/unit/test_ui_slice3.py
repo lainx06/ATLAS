@@ -94,10 +94,10 @@ def test_the_limits_page_shows_the_recounted_and_recorded_limitations(mode):
     )
     assert "3 of 6" not in t06
     assert hosted_item == (
-        "Established on 2026-10-19 for the private hosted app: Nebius connectivity and the "
-        "locked build on the host, and a smoke test on the public and judge routes. Not yet "
-        "established: a signed-out check of the public app and availability through "
-        "2026-12-15 (both at publication)."
+        "Established for the public hosted app: Nebius connectivity and the locked build on "
+        "the host, and a smoke test on the public and judge routes (2026-10-19); a signed-out "
+        "check of the public app (2026-10-23). Not yet established: availability through "
+        "2026-12-15 (a commitment)."
     )
     plain = shown(run_page(LIM_PAGE))
     expert = shown(run_page(LIM_PAGE, expert=True))

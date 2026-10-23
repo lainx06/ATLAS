@@ -165,7 +165,20 @@ Settling is idempotent per request ID.
 - **Reboot:** after an app reboot the server log showed the server started but the tab kept its old session; a hard browser refresh was needed.
 - **Smoke test** (kill switch on with user approval, then set back off; sidebar "Live: unavailable"): session 1, public route: pre-run model check passed, 3 of 6 model attempts (`read_project_file`, `propose_patch`, `finish`), 1 revision (`new_source`) passed ATLAS validation and was recorded "not executed here", terminal state `REPORT`, original `VIOLATION_FOUND` (recorded, re-verified). Session 2, judge route ("Route: judge pool (access code accepted)"), new browser session: same shape, estimated $0.0045216, 0 held. Model-written text claiming the claim "is now supported" appeared only in labelled model-written boxes; the ATLAS finding stayed `VIOLATION_FOUND`.
 - **Ledger after the smoke test** (read-only SQL by the user): `atlas_reservation`: judge settled 3 requests, reserved $0.0324000, actual $0.0045216; public settled 3, reserved $0.0324000, actual $0.0076857. `atlas_cap`: judge spent $0.0045216 (3 requests); public and `public_daily:2026-10-19` spent $0.0076857 (3 requests); each session cap $0.0648 with its own spend; `reserved_usd` 0 everywhere. Smoke total $0.0122073 (estimate, not billing).
-- **Still to do at publication (each with approval):** make the app public, signed-out check, set `HOSTED_LIVE_ENABLED` to "true" through 2026-12-15 12:00 PT, add the demo URL.
+- **At publication (each with approval):** make the app public, signed-out check, set `HOSTED_LIVE_ENABLED` to "true" through 2026-12-15 12:00 PT, add the demo URL. Done 2026-10-23 (below).
+
+### Publication (user, 2026-10-23)
+
+| Step | Status | Record |
+| --- | --- | --- |
+| Repository public | DONE (2026-10-23) | https://github.com/lainx06/atlas; GitHub shows Apache-2.0 |
+| App public | DONE (2026-10-23) | https://atlas-audit.streamlit.app/ |
+| Signed-out check | DONE (2026-10-23) | incognito window; the page shows live available |
+| Kill switch on | DONE (2026-10-23) | `HOSTED_LIVE_ENABLED = "true"` in the app's secrets; caps unchanged (§4: public $1.00 per UTC day, $3.00 total; judge $5.00 behind the access code; $0.0648 and 6 requests per session) |
+| Demo URL in README.md and docs/DEVPOST_DRAFT.md | DONE (2026-10-23) | |
+| Availability through 2026-12-15 12:00 PT | Commitment, not yet established | restoration per §8 |
+| Demo video | TODO | `docs/VIDEO_SCRIPT.md` |
+| Devpost submission | TODO | `docs/SUBMISSION_CHECKLIST.md` |
 
 ### Waking the app
 

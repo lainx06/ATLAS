@@ -221,7 +221,7 @@ def test_comparison_and_limits_screens(app, page):
         "schema failures in 5 of the 8 live runs: runs 1 to 8, with 3 and 3b counted as one"
         in text
     )
-    assert "Established on 19 October 2026 for the private hosted app" in text
+    assert "The public demo was checked signed out on 23 October 2026." in text
     full_page(page, "s15_04_how_it_works_plain")
 
 

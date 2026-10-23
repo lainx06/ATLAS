@@ -1,6 +1,10 @@
 # Devpost draft (T-13, first draft)
 
-Paste-ready sections for the Devpost fields. Every figure comes from a repository file; the source is in a comment under each section. Anything the records do not contain is marked `[TODO: source needed]`. Nothing here has been submitted or published. Track: Coding and Agentic Engineering (PROJECT_BRIEF.md).
+Paste-ready sections for the Devpost fields. Every figure comes from a repository file; the source is in a comment under each section. Anything the records do not contain is marked `[TODO: source needed]`. Nothing here has been submitted yet; the repository and the hosted app are public (2026-10-23). Category: Coding and Agentic Engineering (PROJECT_BRIEF.md).
+
+- Live demo: https://atlas-audit.streamlit.app/
+- Code: https://github.com/lainx06/atlas (Apache-2.0)
+- Demo video: [TODO: video URL]
 
 ## Project description
 
@@ -27,7 +31,7 @@ Paste-ready sections for the Devpost fields. Every figure comes from a repositor
 - Python 3.11, uv, numpy, pandas, scikit-learn, Pydantic (strict reply schemas)
 - the OpenAI Python SDK (OpenAI-compatible client pointed at Token Factory)
 - Docker (isolated runner: no network, non-root, read-only root filesystem)
-- Streamlit (local UI and the limited hosted page), Neon Postgres via psycopg (server-side budget store), Streamlit Community Cloud (the limited hosted page: deployed on Streamlit Community Cloud and smoke-tested on both routes (2026-10-19); public at submission)
+- Streamlit (local UI and the limited hosted page), Neon Postgres via psycopg (server-side budget store), Streamlit Community Cloud (the limited hosted page: deployed on Streamlit Community Cloud and smoke-tested on both routes (2026-10-19); public since 2026-10-23)
 - pytest, Playwright (browser tests), Ruff
 - UCI HAR dataset (CC BY 4.0, non-commercial note; precomputed results only)
 
@@ -79,8 +83,9 @@ ATLAS was started and built entirely during the submission period. No ATLAS code
 
 ## Testing instructions (for the Devpost field)
 
-- Hosted demo: [TODO: demo URL]. Recorded runs work without any code; every recorded hash is re-verified before a result is shown.
-- Live session: judges enter the private access code (given only in Devpost's private judging field, never here) to use the separate judge budget; each session makes at most 6 model requests, is capped at $0.0648 and never executes code on the host (proposals are marked "not executed here").
+- Open the demo: https://atlas-audit.streamlit.app/ (public; no sign-in).
+- Recorded cases need no setup: open a case on Overview & Cases. Every recorded hash is re-verified before a result is shown.
+- Try It Live: use the public route as is (shared public budget, $1.00 per UTC day, $3.00 in total), or the judge route: enter the access code given privately in Devpost's judge-only field (never in public text) to use the separate $5.00 judge budget. Each session makes at most 6 model requests, is capped at $0.0648 and never executes code on the host (proposals are marked "not executed here"). If a budget is reached, recorded cases remain available.
 - If the page says the app has gone to sleep, click the wake button and wait about 30 seconds; if the tab keeps spinning, refresh with Ctrl+Shift+R.
 - Full workflow (Docker execution of the original and candidates, typed approval): run locally as described in README.md "Setup and running".
 
@@ -88,7 +93,7 @@ ATLAS was started and built entirely during the submission period. No ATLAS code
 
 <!-- Sources: STATUS.md "Next task"; TASKS.md T-12 "ACCEPTANCE", T-10; DECISIONS.md "T-11 re-scope and T-10 (lead, 2026-10-19)"; DECISIONS.md "Lead decisions, 2026-10-17" items 2, 13; docs/HOSTED_OPERATIONS.md §9. -->
 
-- Publish the limited hosted demo: it passed Codex's security-and-spend review (two reviews with fault injection, all findings fixed and re-verified) and is deployed on Streamlit Community Cloud and smoke-tested on both routes (2026-10-19); public at submission. The remaining steps each need their own approval: make the app public, a signed-out check, live sessions switched on through the judging period, and the demo URL here.
+- Keep the limited hosted demo available through the judging period (until 2026-12-15 12:00 PT; a commitment, not yet established). It passed Codex's security-and-spend review (two reviews with fault injection, all findings fixed and re-verified), was smoke-tested on both routes (2026-10-19), and is public with a signed-out check passed and live sessions switched on (2026-10-23).
 - Held-out cases authored outside the builder's view (T-10, cut for the submission), so detection claims rest on more than development cases.
 - An evaluator-only final-holdout label store, so `final_holdout` reported metrics can be assessed rather than `NOT_ASSESSED`.
 - Native tool calling for the model, held in reserve because it changes the decided request contract and needs its own decision and review.
