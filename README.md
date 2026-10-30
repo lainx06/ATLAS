@@ -71,6 +71,15 @@ Model: `nvidia/nemotron-3-super-120b-a12b` (listed $0.30 / $0.90 per 1M input / 
 - **Pre-run model check.** Before any completion, one free authenticated `GET /models` must list the model with exactly the configured prices and context length, or the run aborts.
 - **Roles.** In a bounded loop it chooses one typed action per reply: list the project's files (`list_project_files`), read one project file (`read_project_file`), inspect the original's recorded evidence for one check family (`inspect_evidence`: split integrity, fit provenance, independent metrics or temporal availability), propose a revision of the entry point (`propose_patch`: a unified `diff` or the complete `new_source`, with a rationale), or finish (`finish`, with a summary). ATLAS itself runs the deterministic checks before any model request and, after a typed human approval, executes an accepted revision in Docker and re-evaluates it; the model can do neither. `validate_diff` is the only gate for a proposal; the trusted evaluator is the only source of an outcome.
 
+### Where Token Factory accelerated the workflow
+
+- **Drop-in integration:** Token Factory's OpenAI-compatible API meant the standard OpenAI Python SDK worked by changing only the base URL, so the agent loop could be built and tested without a custom client.
+- **Verification before spending:** the free `GET /models?verbose=true` listing returns prices, context length and supported features, which let ATLAS confirm the exact model, prices and context length before any paid request and abort on any mismatch.
+- **Cheap enough to iterate on real failures:** eight live agent runs, the 12-trial model-alone comparison and the hosted smoke test cost about $0.185 in total (estimate, not billing), so every failure could be reproduced live, diagnosed and fixed instead of guessed at.
+- **Auditable spend:** per-request usage and request IDs let ATLAS reserve each request before sending it, settle it at the reported usage, and trace any cost to a single request.
+
+No other Nebius tools or services were used.
+
 ## Architecture
 
 ```mermaid
